@@ -2,11 +2,17 @@ import { api } from './api';
 
 type TokenRecord = {
   id: number;
+  key?: string;
   name?: string;
   status?: number;
   remain_quota?: number;
   unlimited_quota?: boolean;
   model_limits_enabled?: boolean;
+  created_time?: number;
+  accessed_time?: number;
+  expired_time?: number;
+  group?: string;
+  used_quota?: number;
 };
 
 type TokenResponse = {
