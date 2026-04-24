@@ -34,7 +34,7 @@
 
 @layer components {
   .panel-card {
-    @apply rounded-[32px] border border-white/80 bg-white shadow-[0_24px_80px_-38px_rgba(15,23,42,0.32)] backdrop-blur;
+    @apply rounded-[28px] border border-slate-200 bg-white shadow-sm;
   }
 
   .icon-chip {
@@ -42,11 +42,11 @@
   }
 
   .primary-button {
-    @apply inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition-all hover:bg-slate-800;
+    @apply inline-flex items-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-sm font-medium text-white transition-all hover:bg-slate-800;
   }
 
   .secondary-button {
-    @apply inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition-all hover:border-slate-300 hover:bg-slate-50;
+    @apply inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 transition-all hover:border-slate-300 hover:bg-slate-50;
   }
 
   .icon-button {
@@ -54,7 +54,7 @@
   }
 
   .input-shell {
-    @apply w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-sky-300 focus:ring-4 focus:ring-sky-100;
+    @apply w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-sky-300 focus:ring-4 focus:ring-sky-100;
   }
 
   .eyebrow {
