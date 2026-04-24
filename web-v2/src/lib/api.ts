@@ -19,6 +19,11 @@ export type StatusPayload = {
     setup?: boolean;
     user_agreement_enabled?: boolean;
     privacy_policy_enabled?: boolean;
+    quota_per_unit?: number;
+    quota_display_type?: 'USD' | 'CNY' | 'TOKENS' | 'CUSTOM';
+    custom_currency_symbol?: string;
+    custom_currency_exchange_rate?: number;
+    usd_exchange_rate?: number;
   };
 };
 

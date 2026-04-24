@@ -1,6 +1,7 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import {
   Bell,
+  BarChart3,
   LayoutDashboard,
   Key,
   Layers,
@@ -12,22 +13,24 @@ import {
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { useStatus } from '../hooks/useStatus';
+import { useI18n } from '../i18n/I18nProvider';
 
 function cn(...inputs: Array<string | boolean | undefined>) {
   return twMerge(clsx(inputs));
 }
 
-const navigation = [
-  { name: 'Overview', href: '/console', icon: LayoutDashboard },
-  { name: 'Channels', href: '/console/channels', icon: Layers },
-  { name: 'Tokens', href: '/console/tokens', icon: Key },
-  { name: 'Settings', href: '/console/settings', icon: Settings },
-];
-
 export default function AppLayout() {
   const location = useLocation();
   const status = useStatus();
+  const { t } = useI18n();
   const systemName = status.data?.system_name || 'new-api';
+  const navigation = [
+    { name: 'Overview', href: '/console', icon: LayoutDashboard },
+    { name: t('usageNav'), href: '/console/usage', icon: BarChart3 },
+    { name: 'Channels', href: '/console/channels', icon: Layers },
+    { name: 'Tokens', href: '/console/tokens', icon: Key },
+    { name: 'Settings', href: '/console/settings', icon: Settings },
+  ];
 
   return (
     <div className='flex min-h-screen bg-[linear-gradient(180deg,_#f8fbff_0%,_#f8fafc_55%,_#f1f5f9_100%)]'>
