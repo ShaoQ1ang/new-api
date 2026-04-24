@@ -1,10 +1,40 @@
 import axios from 'axios';
 
+type StoredUser = {
+  id?: number | string;
+};
+
+function getStoredUserId() {
+  const raw = window.localStorage.getItem('user');
+  if (!raw) return '';
+
+  try {
+    const user = JSON.parse(raw) as StoredUser;
+    return user.id ? String(user.id) : '';
+  } catch {
+    return '';
+  }
+}
+
+function getRequestLanguage() {
+  return window.localStorage.getItem('web-v2-locale') || 'en';
+}
+
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '',
+  withCredentials: true,
   headers: {
     'Cache-Control': 'no-store',
+    'New-API-User': getStoredUserId(),
+    'Accept-Language': getRequestLanguage(),
   },
+});
+
+api.interceptors.request.use((config) => {
+  config.headers = config.headers || {};
+  config.headers['New-API-User'] = getStoredUserId();
+  config.headers['Accept-Language'] = getRequestLanguage();
+  return config;
 });
 
 export type StatusPayload = {
