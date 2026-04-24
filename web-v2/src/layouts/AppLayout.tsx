@@ -32,7 +32,6 @@ export default function AppLayout() {
             </div>
             <div className='min-w-0'>
               <p className='truncate text-sm font-semibold text-slate-900'>{systemName}</p>
-              <p className='text-xs text-slate-500'>User console</p>
             </div>
           </div>
 
@@ -67,10 +66,7 @@ export default function AppLayout() {
                 <button className='inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 xl:hidden'>
                   <Menu className='h-4 w-4' />
                 </button>
-                <div>
-                  <p className='text-sm font-semibold text-slate-900'>{systemName}</p>
-                  <p className='text-xs text-slate-500'>Simple customer workspace</p>
-                </div>
+                <p className='text-sm font-semibold text-slate-900'>{systemName}</p>
               </div>
 
               <button

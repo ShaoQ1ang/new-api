@@ -9,13 +9,11 @@ import { useI18n } from '../i18n/I18nProvider';
 type FilterMode = 'all' | 'active' | 'limited' | 'restricted';
 
 function formatTimestamp(timestamp?: number, neverLabel?: string) {
-  if (!timestamp || timestamp <= 0) {
-    return neverLabel || '--';
-  }
+  if (!timestamp || timestamp <= 0) return neverLabel || '--';
   return new Date(timestamp * 1000).toLocaleDateString('en-US', {
-    year: 'numeric',
     month: 'short',
     day: 'numeric',
+    year: 'numeric',
   });
 }
 
@@ -24,79 +22,70 @@ export default function Tokens() {
   const { t } = useI18n();
   const [filter, setFilter] = useState<FilterMode>('all');
 
-  const normalizedTokens = useMemo(() => {
-    return (tokens.data || []).map((token) => ({
-      id: token.id,
-      name: token.name || `Token #${token.id}`,
-      key: token.key || '',
-      group: token.group || 'default',
-      active: token.status === 1,
-      statusText: token.status === 1 ? t('tokensStatusActive') : t('tokensStatusInactive'),
-      quotaText: token.unlimited_quota
-        ? t('tokensUnlimited')
-        : `${(token.remain_quota || 0).toLocaleString()} ${t('tokensQuotaRemaining')}`,
-      unlimited: Boolean(token.unlimited_quota),
-      restricted: Boolean(token.model_limits_enabled),
-      accessMode: token.model_limits_enabled ? t('tokensRestricted') : t('tokensStandard'),
-      createdAt: formatTimestamp(token.created_time),
-      accessedAt: formatTimestamp(token.accessed_time),
-      expiresAt: formatTimestamp(token.expired_time, t('tokensNever')),
-      usedQuota: token.used_quota || 0,
-    }));
-  }, [tokens.data, t]);
+  const rows = useMemo(
+    () =>
+      (tokens.data || []).map((token) => ({
+        id: token.id,
+        name: token.name || `Token #${token.id}`,
+        key: token.key || '',
+        group: token.group || 'default',
+        active: token.status === 1,
+        statusText: token.status === 1 ? t('tokensStatusActive') : t('tokensStatusInactive'),
+        quotaText: token.unlimited_quota
+          ? t('tokensUnlimited')
+          : `${(token.remain_quota || 0).toLocaleString()} ${t('tokensQuotaRemaining')}`,
+        unlimited: Boolean(token.unlimited_quota),
+        restricted: Boolean(token.model_limits_enabled),
+        accessMode: token.model_limits_enabled ? t('tokensRestricted') : t('tokensStandard'),
+        createdAt: formatTimestamp(token.created_time),
+        expiresAt: formatTimestamp(token.expired_time, t('tokensNever')),
+      })),
+    [tokens.data, t],
+  );
 
-  const filteredTokens = normalizedTokens.filter((token) => {
+  const filtered = rows.filter((token) => {
     if (filter === 'active') return token.active;
     if (filter === 'limited') return !token.unlimited;
     if (filter === 'restricted') return token.restricted;
     return true;
   });
 
-  const activeCount = normalizedTokens.filter((token) => token.active).length;
-  const unlimitedCount = normalizedTokens.filter((token) => token.unlimited).length;
-  const restrictedCount = normalizedTokens.filter((token) => token.restricted).length;
-
   const stats = [
     {
       label: t('tokensMetricTotal'),
-      value: String(normalizedTokens.length),
+      value: String(rows.length),
       hint: t('tokensMetricTotalHint'),
       icon: KeyRound,
     },
     {
       label: t('tokensMetricActive'),
-      value: String(activeCount),
+      value: String(rows.filter((item) => item.active).length),
       hint: t('tokensMetricActiveHint'),
       icon: ShieldCheck,
     },
     {
       label: t('tokensMetricUnlimited'),
-      value: String(unlimitedCount),
+      value: String(rows.filter((item) => item.unlimited).length),
       hint: t('tokensMetricUnlimitedHint'),
       icon: Gauge,
     },
     {
       label: t('tokensMetricRestricted'),
-      value: String(restrictedCount),
+      value: String(rows.filter((item) => item.restricted).length),
       hint: t('tokensMetricRestrictedHint'),
       icon: LockKeyhole,
     },
   ];
 
   return (
-    <div className='space-y-8'>
-      <section className='hero-console'>
-        <div className='max-w-3xl space-y-5'>
-          <p className='eyebrow'>{t('tokensEyebrow')}</p>
-          <h1 className='page-hero-title'>{t('tokensTitle')}</h1>
-          <p className='page-hero-description'>{t('tokensDescription')}</p>
-        </div>
-
-        <div className='hero-console-panel'>
-          <p className='text-xs uppercase tracking-[0.24em] text-slate-500'>
-            {t('tokensFilterTitle')}
-          </p>
-          <div className='mt-5 flex flex-wrap gap-3'>
+    <div className='space-y-5'>
+      <section className='rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm'>
+        <div className='flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between'>
+          <div>
+            <h1 className='text-2xl font-semibold text-slate-950'>{t('tokensEyebrow')}</h1>
+            <p className='mt-1 text-sm text-slate-500'>{t('tokensDescription')}</p>
+          </div>
+          <div className='inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1'>
             {(
               [
                 ['all', t('tokensFilterAll')],
@@ -111,21 +100,13 @@ export default function Tokens() {
                 onClick={() => setFilter(value)}
                 className={
                   filter === value
-                    ? 'inline-flex rounded-full bg-slate-950 px-4 py-2 text-sm font-medium text-white'
-                    : 'inline-flex rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50'
+                    ? 'rounded-lg bg-white px-4 py-2 text-sm font-medium text-slate-950 shadow-sm'
+                    : 'rounded-lg px-4 py-2 text-sm text-slate-500'
                 }
               >
                 {label}
               </button>
             ))}
-          </div>
-          <div className='mt-6 grid gap-3 text-sm text-slate-600'>
-            <div className='rounded-2xl border border-slate-200 bg-white px-4 py-3'>
-              {activeCount} / {normalizedTokens.length} {t('tokensFilterActive')}
-            </div>
-            <div className='rounded-2xl border border-slate-200 bg-white px-4 py-3'>
-              {restrictedCount} / {normalizedTokens.length} {t('tokensFilterRestricted')}
-            </div>
           </div>
         </div>
       </section>
@@ -139,77 +120,36 @@ export default function Tokens() {
       <StatePanel
         loading={tokens.loading}
         error={tokens.error}
-        empty={!tokens.loading && !tokens.error && normalizedTokens.length === 0}
+        empty={!tokens.loading && !tokens.error && rows.length === 0}
         title={t('tokensStatusTitle')}
         description={t('tokensStatusDescription')}
       />
 
-      <section className='grid gap-4 lg:grid-cols-3'>
-        {[
-          {
-            title: t('tokensHighlightOne'),
-            description: t('tokensHighlightOneDescription'),
-          },
-          {
-            title: t('tokensHighlightTwo'),
-            description: t('tokensHighlightTwoDescription'),
-          },
-          {
-            title: t('tokensHighlightThree'),
-            description: t('tokensHighlightThreeDescription'),
-          },
-        ].map((item) => (
-          <article key={item.title} className='panel-card p-6'>
-            <p className='text-lg font-semibold text-slate-950'>{item.title}</p>
-            <p className='mt-3 text-sm leading-7 text-slate-600'>{item.description}</p>
-          </article>
-        ))}
-      </section>
-
-      <section className='panel-card overflow-hidden'>
-        <div className='border-b border-slate-200 px-6 py-5'>
-          <p className='eyebrow'>{t('tokensEyebrow')}</p>
-          <h2 className='mt-3 text-3xl font-semibold tracking-tight text-slate-950'>
-            {t('tokensTableTitle')}
-          </h2>
-          <p className='mt-3 max-w-3xl text-base leading-7 text-slate-600'>
-            {t('tokensTableDescription')}
-          </p>
-        </div>
-
-        {filteredTokens.length > 0 ? (
-          <div className='overflow-x-auto'>
-            <table className='min-w-full'>
-              <thead>
-                <tr className='border-b border-slate-200 bg-slate-50/80 text-left text-xs uppercase tracking-[0.2em] text-slate-500'>
-                  <th className='px-6 py-4 font-medium'>{t('tokensColumnToken')}</th>
-                  <th className='px-6 py-4 font-medium'>{t('tokensColumnGroup')}</th>
-                  <th className='px-6 py-4 font-medium'>{t('tokensColumnStatus')}</th>
-                  <th className='px-6 py-4 font-medium'>{t('tokensColumnQuota')}</th>
-                  <th className='px-6 py-4 font-medium'>{t('tokensColumnAccess')}</th>
-                  <th className='px-6 py-4 font-medium'>{t('tokensColumnCreated')}</th>
-                  <th className='px-6 py-4 font-medium'>{t('tokensColumnExpires')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTokens.map((token) => (
-                  <tr
-                    key={token.id}
-                    className='border-b border-slate-100 text-sm text-slate-700 transition-colors hover:bg-slate-50/80'
-                  >
-                    <td className='px-6 py-5'>
-                      <div className='space-y-2'>
+      <section className='overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm'>
+        <div className='overflow-x-auto'>
+          <table className='min-w-full'>
+            <thead>
+              <tr className='border-b border-slate-200 text-left text-xs uppercase tracking-[0.18em] text-slate-500'>
+                <th className='px-5 py-4 font-medium'>{t('tokensColumnToken')}</th>
+                <th className='px-5 py-4 font-medium'>{t('tokensColumnGroup')}</th>
+                <th className='px-5 py-4 font-medium'>{t('tokensColumnStatus')}</th>
+                <th className='px-5 py-4 font-medium'>{t('tokensColumnQuota')}</th>
+                <th className='px-5 py-4 font-medium'>{t('tokensColumnAccess')}</th>
+                <th className='px-5 py-4 font-medium'>{t('tokensColumnExpires')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length > 0 ? (
+                filtered.map((token) => (
+                  <tr key={token.id} className='border-b border-slate-100 text-sm text-slate-700'>
+                    <td className='px-5 py-4'>
+                      <div className='space-y-1'>
                         <p className='font-medium text-slate-950'>{token.name}</p>
-                        {token.key ? (
-                          <p className='font-mono text-xs text-slate-500'>{token.key}</p>
-                        ) : null}
-                        <p className='text-xs text-slate-500'>
-                          {t('tokensUsedAt')}: {token.accessedAt}
-                        </p>
+                        {token.key ? <p className='font-mono text-xs text-slate-500'>{token.key}</p> : null}
                       </div>
                     </td>
-                    <td className='px-6 py-5'>{token.group}</td>
-                    <td className='px-6 py-5'>
+                    <td className='px-5 py-4'>{token.group}</td>
+                    <td className='px-5 py-4'>
                       <span
                         className={
                           token.active
@@ -220,29 +160,21 @@ export default function Tokens() {
                         {token.statusText}
                       </span>
                     </td>
-                    <td className='px-6 py-5'>
-                      <div className='space-y-1'>
-                        <p>{token.quotaText}</p>
-                        <p className='text-xs text-slate-500'>
-                          Used: {token.usedQuota.toLocaleString()}
-                        </p>
-                      </div>
-                    </td>
-                    <td className='px-6 py-5'>
-                      <span className='inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600'>
-                        {token.accessMode}
-                      </span>
-                    </td>
-                    <td className='px-6 py-5'>{token.createdAt}</td>
-                    <td className='px-6 py-5'>{token.expiresAt}</td>
+                    <td className='px-5 py-4'>{token.quotaText}</td>
+                    <td className='px-5 py-4'>{token.accessMode}</td>
+                    <td className='px-5 py-4 text-slate-500'>{token.expiresAt}</td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className='px-6 py-10 text-sm text-slate-500'>{t('tokensEmpty')}</div>
-        )}
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6} className='px-5 py-10 text-center text-sm text-slate-500'>
+                    {t('tokensEmpty')}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );
