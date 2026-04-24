@@ -163,6 +163,19 @@ function buildPresetRange(preset: 'last24' | 'today' | 'last7' | 'thisWeek' | 'l
   return { start: addDays(now, -30), end: now };
 }
 
+function getPresetRangeValues(preset: 'last24' | 'today' | 'last7' | 'thisWeek' | 'last30' | 'thisMonth') {
+  const range = buildPresetRange(preset);
+  const startValue = toDateTimeLocalValue(range.start);
+  const endValue = toDateTimeLocalValue(range.end);
+
+  return {
+    startValue,
+    endValue,
+    startTime: extractTimeValue(startValue),
+    endTime: extractTimeValue(endValue),
+  };
+}
+
 function formatDuration(seconds: number) {
   if (seconds <= 0) return '0.00s';
   return `${seconds.toFixed(2)}s`;
@@ -494,17 +507,18 @@ export default function UsageLogs() {
   const { t } = useI18n();
   const translate = (key: string) => t(key as never);
   const status = useStatus();
+  const defaultCustomRange = getPresetRangeValues('last24');
   const [days, setDays] = useState<1 | 7 | 30>(1);
   const [useCustomRange, setUseCustomRange] = useState(false);
   const [customPreset, setCustomPreset] = useState<'last24' | 'today' | 'last7' | 'thisWeek' | 'last30' | 'thisMonth'>('last24');
-  const [customStart, setCustomStart] = useState(() => toDateTimeLocalValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)));
-  const [customEnd, setCustomEnd] = useState(() => toDateTimeLocalValue(new Date()));
-  const [customStartTime, setCustomStartTime] = useState(() => extractTimeValue(toDateTimeLocalValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))));
-  const [customEndTime, setCustomEndTime] = useState(() => extractTimeValue(toDateTimeLocalValue(new Date())));
+  const [customStart, setCustomStart] = useState(defaultCustomRange.startValue);
+  const [customEnd, setCustomEnd] = useState(defaultCustomRange.endValue);
+  const [customStartTime, setCustomStartTime] = useState(defaultCustomRange.startTime);
+  const [customEndTime, setCustomEndTime] = useState(defaultCustomRange.endTime);
   const [appliedDays, setAppliedDays] = useState<1 | 7 | 30>(1);
   const [appliedUseCustomRange, setAppliedUseCustomRange] = useState(false);
-  const [appliedCustomStart, setAppliedCustomStart] = useState(() => toDateTimeLocalValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)));
-  const [appliedCustomEnd, setAppliedCustomEnd] = useState(() => toDateTimeLocalValue(new Date()));
+  const [appliedCustomStart, setAppliedCustomStart] = useState(defaultCustomRange.startValue);
+  const [appliedCustomEnd, setAppliedCustomEnd] = useState(defaultCustomRange.endValue);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [pickerMonth, setPickerMonth] = useState(() => new Date());
   const [pickerSelectionStep, setPickerSelectionStep] = useState<'start' | 'end'>('start');
@@ -724,14 +738,12 @@ export default function UsageLogs() {
   }
 
   function applyPresetRange(preset: 'last24' | 'today' | 'last7' | 'thisWeek' | 'last30' | 'thisMonth') {
-    const range = buildPresetRange(preset);
-    const startValue = toDateTimeLocalValue(range.start);
-    const endValue = toDateTimeLocalValue(range.end);
+    const { startValue, endValue, startTime, endTime } = getPresetRangeValues(preset);
     setCustomPreset(preset);
     setCustomStart(startValue);
     setCustomEnd(endValue);
-    setCustomStartTime(extractTimeValue(startValue));
-    setCustomEndTime(extractTimeValue(endValue));
+    setCustomStartTime(startTime);
+    setCustomEndTime(endTime);
   }
 
   function handleCustomDateClick(date: Date) {
@@ -768,15 +780,15 @@ export default function UsageLogs() {
     <div className='space-y-4'>
       <section className='rounded-[24px] border border-slate-200 bg-white p-3 shadow-sm'>
         <div className='space-y-3'>
-          <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>
-            <article className='rounded-[18px] border border-slate-200 bg-slate-50/70 px-4 py-3'>
-              <p className='text-[10px] uppercase tracking-[0.2em] text-slate-400'>{t('usageMatchingRecords')}</p>
-              <p className='mt-1.5 text-[30px] font-semibold leading-none text-slate-950'>{summary.matchingRecords.toLocaleString()}</p>
-              <p className='mt-2 text-[11px] text-slate-500'>{t('usageMetricQuery')}</p>
+          <div className='grid gap-2.5 md:grid-cols-2 xl:grid-cols-4'>
+            <article className='rounded-[18px] border border-slate-200 bg-slate-50/70 px-3.5 py-2.5'>
+              <p className='text-[9px] uppercase tracking-[0.18em] text-slate-400'>{t('usageMatchingRecords')}</p>
+              <p className='mt-1 text-[26px] font-semibold leading-none text-slate-950'>{summary.matchingRecords.toLocaleString()}</p>
+              <p className='mt-1.5 text-[10px] text-slate-500'>{t('usageMetricQuery')}</p>
             </article>
-            <article className='rounded-[18px] border border-slate-200 bg-slate-50/70 px-4 py-3'>
-              <p className='text-[10px] uppercase tracking-[0.2em] text-slate-400'>{t('usageConsumedQuota')}</p>
-              <p className='mt-1.5 text-[30px] font-semibold leading-none text-slate-950'>
+            <article className='rounded-[18px] border border-slate-200 bg-slate-50/70 px-3.5 py-2.5'>
+              <p className='text-[9px] uppercase tracking-[0.18em] text-slate-400'>{t('usageConsumedQuota')}</p>
+              <p className='mt-1 text-[26px] font-semibold leading-none text-slate-950'>
                 {formatQuota(
                   summary.consumedQuota,
                   quotaPerUnit,
@@ -786,17 +798,17 @@ export default function UsageLogs() {
                   customCurrencyExchangeRate,
                 )}
               </p>
-              <p className='mt-2 text-[11px] text-slate-500'>{t('usageMetricConsumeOnly')}</p>
+              <p className='mt-1.5 text-[10px] text-slate-500'>{t('usageMetricConsumeOnly')}</p>
             </article>
-            <article className='rounded-[18px] border border-slate-200 bg-slate-50/70 px-4 py-3'>
-              <p className='text-[10px] uppercase tracking-[0.2em] text-slate-400'>{t('usageCurrentRpm')}</p>
-              <p className='mt-1.5 text-[30px] font-semibold leading-none text-slate-950'>{summary.rpm.toLocaleString()}</p>
-              <p className='mt-2 text-[11px] text-slate-500'>{t('usageMetricLiveWindow')}</p>
+            <article className='rounded-[18px] border border-slate-200 bg-slate-50/70 px-3.5 py-2.5'>
+              <p className='text-[9px] uppercase tracking-[0.18em] text-slate-400'>{t('usageCurrentRpm')}</p>
+              <p className='mt-1 text-[26px] font-semibold leading-none text-slate-950'>{summary.rpm.toLocaleString()}</p>
+              <p className='mt-1.5 text-[10px] text-slate-500'>{t('usageMetricLiveWindow')}</p>
             </article>
-            <article className='rounded-[18px] border border-slate-200 bg-slate-50/70 px-4 py-3'>
-              <p className='text-[10px] uppercase tracking-[0.2em] text-slate-400'>{t('usageCurrentTpm')}</p>
-              <p className='mt-1.5 text-[30px] font-semibold leading-none text-slate-950'>{formatCompactNumber(summary.tpm)}</p>
-              <p className='mt-2 text-[11px] text-slate-500'>{t('usageMetricLiveWindow')}</p>
+            <article className='rounded-[18px] border border-slate-200 bg-slate-50/70 px-3.5 py-2.5'>
+              <p className='text-[9px] uppercase tracking-[0.18em] text-slate-400'>{t('usageCurrentTpm')}</p>
+              <p className='mt-1 text-[26px] font-semibold leading-none text-slate-950'>{formatCompactNumber(summary.tpm)}</p>
+              <p className='mt-1.5 text-[10px] text-slate-500'>{t('usageMetricLiveWindow')}</p>
             </article>
           </div>
 
@@ -1043,13 +1055,13 @@ export default function UsageLogs() {
                         setDays(1);
                         setAppliedDays(1);
                         setAppliedUseCustomRange(false);
-                        setCustomPreset('last7');
-                        setCustomStart(toDateTimeLocalValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)));
-                        setCustomEnd(toDateTimeLocalValue(new Date()));
-                        setCustomStartTime(extractTimeValue(toDateTimeLocalValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))));
-                        setCustomEndTime(extractTimeValue(toDateTimeLocalValue(new Date())));
-                        setAppliedCustomStart(toDateTimeLocalValue(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)));
-                        setAppliedCustomEnd(toDateTimeLocalValue(new Date()));
+                        setCustomPreset('last24');
+                        setCustomStart(defaultCustomRange.startValue);
+                        setCustomEnd(defaultCustomRange.endValue);
+                        setCustomStartTime(defaultCustomRange.startTime);
+                        setCustomEndTime(defaultCustomRange.endTime);
+                        setAppliedCustomStart(defaultCustomRange.startValue);
+                        setAppliedCustomEnd(defaultCustomRange.endValue);
                         setPage(1);
                       }}
                       className='secondary-button !h-11 !w-[88px] !justify-center !rounded-2xl !px-4 !py-2 font-medium'
