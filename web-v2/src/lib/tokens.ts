@@ -16,11 +16,17 @@ type TokenRecord = {
   used_quota?: number;
 };
 
-type TokenStatResponse = {
+type TokenLogRecord = {
+  token_name?: string;
+  quota?: number;
+};
+
+type TokenLogResponse = {
   success: boolean;
   message?: string;
   data?: {
-    quota?: number;
+    items?: TokenLogRecord[];
+    total?: number;
   };
 };
 
@@ -32,6 +38,11 @@ export type TokenInput = {
   unlimited_quota: boolean;
   model_limits_enabled: boolean;
   expired_time: number;
+};
+
+type TokenStatusInput = {
+  id: number;
+  status: number;
 };
 
 type TokenResponse = {
@@ -46,6 +57,7 @@ type TokenResponse = {
 export type TokenWorkspaceRecord = TokenRecord & {
   today_quota?: number;
   total_quota?: number;
+  preview?: boolean;
 };
 
 function getRange(days: number) {
@@ -54,20 +66,25 @@ function getRange(days: number) {
   return { start, end };
 }
 
-async function fetchTokenStatByName(tokenName: string, days: number) {
+async function fetchTokenUsageByWindow(days: number) {
   const { start, end } = getRange(days);
-  const response = await api.get<TokenStatResponse>(
-    `/api/log/self/stat?type=2&token_name=${encodeURIComponent(
-      tokenName,
-    )}&start_timestamp=${start}&end_timestamp=${end}`,
+  const response = await api.get<TokenLogResponse>(
+    `/api/log/self/?p=0&page_size=1000&type=2&start_timestamp=${start}&end_timestamp=${end}`,
   );
   const payload = response.data;
 
   if (!payload.success) {
-    throw new Error(payload.message || 'Failed to load token stats');
+    throw new Error(payload.message || 'Failed to load token logs');
   }
 
-  return payload.data?.quota || 0;
+  const usageMap = new Map<string, number>();
+  for (const item of payload.data?.items || []) {
+    const tokenName = item.token_name || '';
+    if (!tokenName) continue;
+    usageMap.set(tokenName, (usageMap.get(tokenName) || 0) + (item.quota || 0));
+  }
+
+  return usageMap;
 }
 
 export async function fetchTokens() {
@@ -80,28 +97,16 @@ export async function fetchTokens() {
     }
 
     const items = payload.data?.items || [];
-    const usagePairs = await Promise.all(
-      items.map(async (token) => {
-        const tokenName = token.name || '';
-        if (!tokenName) {
-          return { today_quota: 0, total_quota: Math.max(0, token.used_quota || 0) };
-        }
+    const [todayUsageMap, last30UsageMap] = await Promise.all([
+      fetchTokenUsageByWindow(1),
+      fetchTokenUsageByWindow(30),
+    ]);
 
-        const [todayQuota, totalQuota] = await Promise.all([
-          fetchTokenStatByName(tokenName, 1),
-          fetchTokenStatByName(tokenName, 30),
-        ]);
-
-        return {
-          today_quota: todayQuota,
-          total_quota: totalQuota,
-        };
-      }),
-    );
-
-    return items.map((token, index) => ({
+    return items.map((token) => ({
       ...token,
-      ...usagePairs[index],
+      today_quota: todayUsageMap.get(token.name || '') || 0,
+      total_quota: last30UsageMap.get(token.name || '') || 0,
+      preview: false,
     }));
   } catch (error) {
     if (!isUnauthorizedError(error)) {
@@ -124,6 +129,7 @@ export async function fetchTokens() {
         group: 'default',
         today_quota: 164300,
         total_quota: 2400000,
+        preview: true,
       },
       {
         id: 2,
@@ -138,6 +144,7 @@ export async function fetchTokens() {
         group: 'internal',
         today_quota: 0,
         total_quota: 448500,
+        preview: true,
       },
     ];
   }
@@ -158,6 +165,17 @@ export async function updateToken(input: TokenInput) {
 
   if (!payload.success) {
     throw new Error(payload.message || 'Failed to update token');
+  }
+
+  return payload.data;
+}
+
+export async function updateTokenStatus(input: TokenStatusInput) {
+  const response = await api.put('/api/token/?status_only=1', input);
+  const payload = response.data;
+
+  if (!payload.success) {
+    throw new Error(payload.message || 'Failed to update token status');
   }
 
   return payload.data;

@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Copy, Gauge, KeyRound, LockKeyhole, Plus, ShieldCheck } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, Copy, Gauge, KeyRound, Plus, ShieldCheck } from 'lucide-react';
 import MetricCard from '../components/ui/MetricCard';
 import StatePanel from '../components/ui/StatePanel';
 import { useAsyncData } from '../hooks/useAsyncData';
@@ -10,29 +10,28 @@ import {
   fetchTokenKey,
   fetchTokens,
   updateToken,
+  updateTokenStatus,
   type TokenInput,
 } from '../lib/tokens';
 import { useI18n } from '../i18n/I18nProvider';
 
-type FilterMode = 'all' | 'active' | 'limited' | 'restricted';
+type FilterMode = 'all' | 'active' | 'limited';
 
 type FormState = {
   id?: number;
   name: string;
-  group: string;
   remain_quota: string;
-  unlimited_quota: boolean;
-  model_limits_enabled: boolean;
   expires_in_days: string;
+  expires_at_input: string;
+  expires_mode: 'never' | '7' | '30' | '90' | 'custom';
 };
 
 const defaultFormState: FormState = {
   name: '',
-  group: 'default',
-  remain_quota: '500000',
-  unlimited_quota: false,
-  model_limits_enabled: false,
+  remain_quota: '0',
   expires_in_days: '',
+  expires_at_input: '',
+  expires_mode: 'never',
 };
 
 function formatTimestamp(timestamp?: number, neverLabel?: string) {
@@ -55,6 +54,21 @@ function formatDateTime(timestamp?: number, neverLabel?: string) {
     second: '2-digit',
     hour12: false,
   });
+}
+
+function formatDateTimeInput(timestamp?: number) {
+  if (!timestamp || timestamp <= 0) return '';
+  const date = new Date(timestamp * 1000);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours(),
+  )}:${pad(date.getMinutes())}`;
+}
+
+function parseDateTimeInput(value: string) {
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) return -1;
+  return Math.floor(timestamp / 1000);
 }
 
 function formatQuotaValue(
@@ -84,25 +98,52 @@ function formatQuotaValue(
   return `$${usdValue.toFixed(4)}`;
 }
 
-function buildTokenInput(form: FormState): TokenInput {
-  const expiresInDays = Number(form.expires_in_days || 0);
-  const expiredTime =
-    expiresInDays > 0
-      ? Math.floor(Date.now() / 1000) + expiresInDays * 24 * 60 * 60
-      : -1;
+function formatQuotaInputValue(quota: number, quotaPerUnit?: number) {
+  if (!quotaPerUnit || quotaPerUnit <= 0) {
+    return String(Math.max(0, quota));
+  }
+
+  const usdValue = Math.max(0, quota) / quotaPerUnit;
+  return usdValue.toFixed(4).replace(/\.?0+$/, '');
+}
+
+function parseQuotaInputValue(value: string, quotaPerUnit?: number) {
+  const normalized = Number(value || 0);
+  if (!Number.isFinite(normalized) || normalized <= 0) return 0;
+
+  if (!quotaPerUnit || quotaPerUnit <= 0) {
+    return Math.round(normalized);
+  }
+
+  return Math.round(normalized * quotaPerUnit);
+}
+
+function buildTokenInput(form: FormState, quotaPerUnit?: number): TokenInput {
+  let expiredTime = -1;
+
+  if (form.expires_mode === 'custom') {
+    expiredTime = parseDateTimeInput(form.expires_at_input);
+  } else if (form.expires_mode !== 'never') {
+    const expiresInDays = Math.max(0, Number(form.expires_mode));
+    expiredTime =
+      expiresInDays > 0
+        ? Math.floor(Date.now() / 1000) + expiresInDays * 24 * 60 * 60
+        : -1;
+  }
 
   return {
     id: form.id,
     name: form.name.trim(),
-    group: form.group.trim() || 'default',
-    remain_quota: form.unlimited_quota ? 0 : Math.max(0, Number(form.remain_quota || 0)),
-    unlimited_quota: form.unlimited_quota,
-    model_limits_enabled: form.model_limits_enabled,
+    group: 'default',
+    remain_quota: parseQuotaInputValue(form.remain_quota, quotaPerUnit),
+    unlimited_quota: parseQuotaInputValue(form.remain_quota, quotaPerUnit) === 0,
+    model_limits_enabled: false,
     expired_time: expiredTime,
   };
 }
 
 export default function Tokens() {
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const tokens = useAsyncData(fetchTokens, []);
   const status = useStatus();
   const { t } = useI18n();
@@ -113,7 +154,13 @@ export default function Tokens() {
   const [submitting, setSubmitting] = useState(false);
   const [actionError, setActionError] = useState('');
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [copyToast, setCopyToast] = useState('');
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [statusOverrides, setStatusOverrides] = useState<Record<number, number>>({});
+  const [scrollState, setScrollState] = useState({
+    left: 0,
+    max: 0,
+  });
 
   const quotaPerUnit = status.data?.quota_per_unit;
   const quotaDisplayType = status.data?.quota_display_type;
@@ -123,71 +170,88 @@ export default function Tokens() {
 
   const rows = useMemo(
     () =>
-      (tokens.data || []).map((token) => ({
-        id: token.id,
-        name: token.name || `Token #${token.id}`,
-        key: token.key || '',
-        group: token.group || 'default',
-        active: token.status === 1,
-        remainQuota: token.remain_quota || 0,
-        usedQuota: token.used_quota || 0,
-        totalQuota: Math.max(0, (token.used_quota || 0) + (token.remain_quota || 0)),
-        todayQuota: token.today_quota || 0,
-        totalUsageQuota: token.total_quota || Math.max(0, token.used_quota || 0),
-        statusText: token.status === 1 ? t('tokensStatusActive') : t('tokensStatusInactive'),
-        quotaText: token.unlimited_quota
-          ? t('tokensUnlimited')
-          : `${(token.remain_quota || 0).toLocaleString()} ${t('tokensQuotaRemaining')}`,
-        unlimited: Boolean(token.unlimited_quota),
-        restricted: Boolean(token.model_limits_enabled),
-        accessMode: token.model_limits_enabled ? t('tokensRestricted') : t('tokensStandard'),
-        createdAt: token.created_time,
-        createdAtText: formatDateTime(token.created_time),
-        lastUsedAt: token.accessed_time,
-        lastUsedAtText: formatDateTime(token.accessed_time, '--'),
-        expiresAt: token.expired_time,
-        expiresAtText: formatTimestamp(token.expired_time, t('tokensNever')),
-        usedQuotaText: formatQuotaValue(
-          Math.max(0, token.used_quota || 0),
-          quotaPerUnit,
-          quotaDisplayType,
-          usdExchangeRate,
-          customCurrencySymbol,
-          customCurrencyExchangeRate,
-        ),
-        remainQuotaText: formatQuotaValue(
-          Math.max(0, token.remain_quota || 0),
-          quotaPerUnit,
-          quotaDisplayType,
-          usdExchangeRate,
-          customCurrencySymbol,
-          customCurrencyExchangeRate,
-        ),
-        totalQuotaText: formatQuotaValue(
-          Math.max(0, (token.used_quota || 0) + (token.remain_quota || 0)),
-          quotaPerUnit,
-          quotaDisplayType,
-          usdExchangeRate,
-          customCurrencySymbol,
-          customCurrencyExchangeRate,
-        ),
-        todayQuotaText: formatQuotaValue(
-          Math.max(0, token.today_quota || 0),
-          quotaPerUnit,
-          quotaDisplayType,
-          usdExchangeRate,
-          customCurrencySymbol,
-          customCurrencyExchangeRate,
-        ),
-        totalUsageQuotaText: formatQuotaValue(
-          Math.max(0, token.total_quota || token.used_quota || 0),
-          quotaPerUnit,
-          quotaDisplayType,
-          usdExchangeRate,
-          customCurrencySymbol,
-          customCurrencyExchangeRate,
-        ),
-      })),
+      (tokens.data || []).map((token) => {
+        const effectiveStatus = statusOverrides[token.id] ?? token.status ?? 1;
+
+        return {
+          id: token.id,
+          name: token.name || `Token #${token.id}`,
+          key: token.key || '',
+          group: token.group || 'default',
+          preview: Boolean(token.preview),
+          active: effectiveStatus === 1,
+          remainQuota: token.remain_quota || 0,
+          usedQuota: token.used_quota || 0,
+          totalQuota: Math.max(0, (token.used_quota || 0) + (token.remain_quota || 0)),
+          todayQuota: token.today_quota || 0,
+          totalUsageQuota: token.total_quota || Math.max(0, token.used_quota || 0),
+          statusText: effectiveStatus === 1 ? t('tokensStatusActive') : t('tokensStatusInactive'),
+          unlimited: Boolean(token.unlimited_quota),
+          createdAt: token.created_time,
+          createdAtText: formatDateTime(token.created_time),
+          lastUsedAt: token.accessed_time,
+          lastUsedAtText: formatDateTime(token.accessed_time, '--'),
+          expiresAt: token.expired_time,
+          expiresAtText: formatTimestamp(token.expired_time, t('tokensNever')),
+          usedQuotaText: formatQuotaValue(
+            Math.max(0, token.used_quota || 0),
+            quotaPerUnit,
+            quotaDisplayType,
+            usdExchangeRate,
+            customCurrencySymbol,
+            customCurrencyExchangeRate,
+          ),
+          remainQuotaText: formatQuotaValue(
+            Math.max(0, token.remain_quota || 0),
+            quotaPerUnit,
+            quotaDisplayType,
+            usdExchangeRate,
+            customCurrencySymbol,
+            customCurrencyExchangeRate,
+          ),
+          totalQuotaText: formatQuotaValue(
+            Math.max(0, (token.used_quota || 0) + (token.remain_quota || 0)),
+            quotaPerUnit,
+            quotaDisplayType,
+            usdExchangeRate,
+            customCurrencySymbol,
+            customCurrencyExchangeRate,
+          ),
+          todayQuotaText: formatQuotaValue(
+            Math.max(0, token.today_quota || 0),
+            quotaPerUnit,
+            quotaDisplayType,
+            usdExchangeRate,
+            customCurrencySymbol,
+            customCurrencyExchangeRate,
+          ),
+          totalUsageQuotaText: formatQuotaValue(
+            Math.max(0, token.total_quota || token.used_quota || 0),
+            quotaPerUnit,
+            quotaDisplayType,
+            usdExchangeRate,
+            customCurrencySymbol,
+            customCurrencyExchangeRate,
+          ),
+          quotaLimitText: token.unlimited_quota
+            ? t('tokensUsageUnlimited')
+            : `${formatQuotaValue(
+                Math.max(0, token.used_quota || 0),
+                quotaPerUnit,
+                quotaDisplayType,
+                usdExchangeRate,
+                customCurrencySymbol,
+                customCurrencyExchangeRate,
+              )} / ${formatQuotaValue(
+                Math.max(0, (token.used_quota || 0) + (token.remain_quota || 0)),
+                quotaPerUnit,
+                quotaDisplayType,
+                usdExchangeRate,
+                customCurrencySymbol,
+                customCurrencyExchangeRate,
+              )}`,
+        };
+      }),
     [
       tokens.data,
       t,
@@ -196,13 +260,13 @@ export default function Tokens() {
       usdExchangeRate,
       customCurrencySymbol,
       customCurrencyExchangeRate,
+      statusOverrides,
     ],
   );
 
   const filtered = rows.filter((token) => {
     if (filter === 'active') return token.active;
     if (filter === 'limited') return !token.unlimited;
-    if (filter === 'restricted') return token.restricted;
     return true;
   });
 
@@ -225,12 +289,6 @@ export default function Tokens() {
       hint: '',
       icon: Gauge,
     },
-    {
-      label: t('tokensMetricRestricted'),
-      value: String(rows.filter((item) => item.restricted).length),
-      hint: '',
-      icon: LockKeyhole,
-    },
   ];
 
   function openCreateForm() {
@@ -250,11 +308,19 @@ export default function Tokens() {
     setForm({
       id: row.id,
       name: row.name,
-      group: row.group,
-      remain_quota: row.unlimited ? '0' : String(row.remainQuota),
-      unlimited_quota: row.unlimited,
-      model_limits_enabled: row.restricted,
-      expires_in_days: String(expiresInDays),
+      remain_quota: row.unlimited ? '0' : formatQuotaInputValue(Math.max(0, row.remainQuota), quotaPerUnit),
+      expires_in_days: expiresInDays ? String(expiresInDays) : '',
+      expires_at_input: row.expiresAt && row.expiresAt > 0 ? formatDateTimeInput(row.expiresAt) : '',
+      expires_mode:
+        expiresInDays === 7
+          ? '7'
+          : expiresInDays === 30
+            ? '30'
+            : expiresInDays === 90
+              ? '90'
+              : row.expiresAt && row.expiresAt > 0
+                ? 'custom'
+                : 'never',
     });
     setActionError('');
     setIsFormOpen(true);
@@ -270,7 +336,7 @@ export default function Tokens() {
     setActionError('');
 
     try {
-      const payload = buildTokenInput(form);
+      const payload = buildTokenInput(form, quotaPerUnit);
       if (isEditing) {
         await updateToken(payload);
       } else {
@@ -301,20 +367,66 @@ export default function Tokens() {
     }
   }
 
+  async function handleToggleStatus(id: number, active: boolean) {
+    const nextStatus = active ? 2 : 1;
+    setBusyId(id);
+    setActionError('');
+    setStatusOverrides((current) => ({ ...current, [id]: nextStatus }));
+    try {
+      await updateTokenStatus({
+        id,
+        status: nextStatus,
+      });
+    } catch (error) {
+      setStatusOverrides((current) => {
+        const rollback = { ...current };
+        delete rollback[id];
+        return rollback;
+      });
+      setActionError(error instanceof Error ? error.message : t('tokensActionError'));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function handleCopy(id: number) {
+    const target = rows.find((row) => row.id === id);
+    if (target?.preview) {
+      setActionError('Copy is unavailable in preview mode');
+      return;
+    }
+
     setBusyId(id);
     setActionError('');
     try {
       const key = await fetchTokenKey(id);
       await navigator.clipboard.writeText(`sk-${key}`);
       setCopiedId(id);
+      setCopyToast(t('tokensCopied'));
       window.setTimeout(() => setCopiedId((current) => (current === id ? null : current)), 1600);
+      window.setTimeout(() => setCopyToast(''), 1600);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : t('tokensActionError'));
     } finally {
       setBusyId(null);
     }
   }
+
+  function updateScrollState() {
+    const node = tableScrollRef.current;
+    if (!node) return;
+
+    setScrollState({
+      left: node.scrollLeft,
+      max: Math.max(0, node.scrollWidth - node.clientWidth),
+    });
+  }
+
+  useEffect(() => {
+    updateScrollState();
+    window.addEventListener('resize', updateScrollState);
+    return () => window.removeEventListener('resize', updateScrollState);
+  }, [rows.length]);
 
   return (
     <div className='space-y-5'>
@@ -330,7 +442,6 @@ export default function Tokens() {
                   ['all', t('tokensFilterAll')],
                   ['active', t('tokensFilterActive')],
                   ['limited', t('tokensFilterLimited')],
-                  ['restricted', t('tokensFilterRestricted')],
                 ] as Array<[FilterMode, string]>
               ).map(([value, label]) => (
                 <button
@@ -362,7 +473,13 @@ export default function Tokens() {
         </div>
       ) : null}
 
-      <section className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
+      {copyToast ? (
+        <div className='fixed left-1/2 top-24 z-50 min-w-[220px] -translate-x-1/2 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-base font-semibold text-emerald-700 shadow-[0_18px_40px_-18px_rgba(16,185,129,0.45)] lg:top-28'>
+          {copyToast}
+        </div>
+      ) : null}
+
+      <section className='grid gap-4 md:grid-cols-3'>
         {stats.map((item) => (
           <MetricCard key={item.label} {...item} />
         ))}
@@ -377,16 +494,22 @@ export default function Tokens() {
       />
 
       <section className='overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm'>
-        <div className='overflow-x-auto'>
-          <table className='min-w-[1380px]'>
+        <div
+          ref={tableScrollRef}
+          onScroll={updateScrollState}
+          className='no-scrollbar overflow-x-auto'
+        >
+          <table className='min-w-[1600px]'>
             <thead>
               <tr className='border-b border-slate-200 text-left text-xs uppercase tracking-[0.18em] text-slate-500'>
-                <th className='w-[190px] px-5 py-4 font-medium'>{t('tokensColumnToken')}</th>
+                <th className='sticky left-0 z-10 w-[320px] border-r border-slate-200 bg-white px-5 py-4 font-medium shadow-[12px_0_24px_-18px_rgba(15,23,42,0.18)]'>
+                  {t('tokensColumnToken')}
+                </th>
                 <th className='w-[280px] px-5 py-4 font-medium'>{t('tokensColumnApiKey')}</th>
-                <th className='w-[200px] px-5 py-4 font-medium'>{t('tokensColumnGroup')}</th>
-                <th className='w-[280px] px-5 py-4 font-medium'>{t('tokensColumnUsage')}</th>
-                <th className='w-[150px] px-5 py-4 font-medium'>{t('tokensColumnExpires')}</th>
                 <th className='w-[120px] px-5 py-4 font-medium'>{t('tokensColumnStatus')}</th>
+                <th className='w-[360px] px-5 py-4 font-medium'>{t('tokensColumnUsage')}</th>
+                <th className='w-[150px] px-5 py-4 font-medium'>{t('tokensColumnExpires')}</th>
+                <th className='w-[140px] px-5 py-4 font-medium'>{t('tokensColumnGroup')}</th>
                 <th className='w-[170px] px-5 py-4 font-medium'>{t('tokensColumnLastUsed')}</th>
                 <th className='w-[170px] px-5 py-4 font-medium'>{t('tokensColumnCreated')}</th>
                 <th className='sticky right-0 z-10 border-l border-slate-200 bg-white px-5 py-4 font-medium shadow-[-12px_0_24px_-18px_rgba(15,23,42,0.22)]'>
@@ -397,13 +520,13 @@ export default function Tokens() {
             <tbody>
               {filtered.length > 0 ? (
                 filtered.map((token) => (
-                  <tr key={token.id} className='border-b border-slate-100 text-sm text-slate-700'>
-                    <td className='px-5 py-4'>
+                  <tr key={token.id} className='h-[118px] border-b border-slate-100 text-sm text-slate-700'>
+                    <td className='sticky left-0 z-10 w-[320px] border-r border-slate-100 bg-white px-5 py-4 align-middle shadow-[12px_0_24px_-18px_rgba(15,23,42,0.18)]'>
                       <div className='space-y-1'>
-                        <p className='font-medium text-slate-950'>{token.name}</p>
+                        <p className='break-words font-medium text-slate-950'>{token.name}</p>
                       </div>
                     </td>
-                    <td className='w-[280px] px-5 py-4'>
+                    <td className='w-[280px] px-5 py-4 align-middle'>
                       <div className='flex items-center gap-3'>
                         <p className='rounded-xl bg-slate-50 px-3 py-2 font-mono text-xs text-sky-700'>
                           {token.key || '--'}
@@ -411,29 +534,48 @@ export default function Tokens() {
                         <button
                           type='button'
                           onClick={() => handleCopy(token.id)}
-                          disabled={busyId === token.id}
-                          className='inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900'
+                          disabled={busyId === token.id || token.preview}
+                          className={
+                            copiedId === token.id
+                              ? 'inline-flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 transition-colors'
+                              : 'inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900'
+                          }
                           aria-label={copiedId === token.id ? t('tokensCopied') : t('tokensCopy')}
                         >
-                          <Copy className='h-4 w-4' />
+                          {copiedId === token.id ? (
+                            <Check className='h-4 w-4' />
+                          ) : (
+                            <Copy className='h-4 w-4' />
+                          )}
                         </button>
                       </div>
                     </td>
-                    <td className='px-5 py-4 text-slate-600'>
-                      <div className='inline-flex items-center gap-2 rounded-2xl bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700'>
-                        <span className='h-2 w-2 rounded-full bg-emerald-500' />
-                        {token.group}
-                      </div>
+                    <td className='px-5 py-4 align-middle'>
+                      <span
+                        className={
+                          token.active
+                            ? 'inline-flex w-[76px] justify-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700'
+                            : 'inline-flex w-[76px] justify-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600'
+                        }
+                      >
+                        {token.statusText}
+                      </span>
                     </td>
-                    <td className='w-[280px] px-5 py-4'>
-                      <div className='space-y-2'>
+                    <td className='w-[360px] px-5 py-4 align-middle'>
+                      <div className='flex min-h-[72px] flex-col justify-center space-y-2'>
                         <div className='flex items-baseline gap-3 text-sm'>
                           <span className='text-slate-500'>{t('tokensUsageToday')}</span>
                           <span className='font-semibold text-slate-950'>{token.todayQuotaText}</span>
                         </div>
                         <div className='flex items-baseline gap-3 text-sm'>
-                          <span className='text-slate-500'>{t('tokensUsageTotal')}</span>
+                          <span className='text-slate-500'>{t('tokensUsageLast30d')}</span>
                           <span className='font-medium text-slate-700'>{token.totalUsageQuotaText}</span>
+                        </div>
+                        <div className='flex items-baseline gap-3 text-sm'>
+                          <span className='text-slate-500'>{t('tokensUsageQuota')}</span>
+                          <span className='whitespace-nowrap font-medium text-slate-700'>
+                            {token.quotaLimitText}
+                          </span>
                         </div>
                         {!token.unlimited ? (
                           <div className='h-2 rounded-full bg-slate-100'>
@@ -448,31 +590,38 @@ export default function Tokens() {
                               }}
                             />
                           </div>
-                        ) : null}
+                        ) : (
+                          <div className='h-2 rounded-full bg-transparent' />
+                        )}
                       </div>
                     </td>
-                    <td className='px-5 py-4 text-slate-500'>{token.expiresAtText}</td>
-                    <td className='px-5 py-4'>
-                      <span
-                        className={
-                          token.active
-                            ? 'inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700'
-                            : 'inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600'
-                        }
-                      >
-                        {token.statusText}
-                      </span>
+                    <td className='px-5 py-4 align-middle text-slate-500'>{token.expiresAtText}</td>
+                    <td className='px-5 py-4 align-middle text-slate-600'>
+                      <div className='inline-flex items-center gap-2 rounded-full bg-slate-100 px-2.5 py-1.5 text-xs font-medium text-slate-700'>
+                        <span className='h-2 w-2 rounded-full bg-emerald-500' />
+                        {token.group}
+                      </div>
                     </td>
-                    <td className='whitespace-nowrap px-5 py-4 text-slate-500'>{token.lastUsedAtText}</td>
-                    <td className='px-5 py-4 text-slate-500'>{token.createdAtText}</td>
-                    <td className='sticky right-0 z-10 border-l border-slate-100 bg-white px-5 py-4 shadow-[-12px_0_24px_-18px_rgba(15,23,42,0.22)]'>
-                      <div className='flex min-w-[220px] flex-wrap gap-2'>
+                    <td className='whitespace-nowrap px-5 py-4 align-middle text-slate-500'>{token.lastUsedAtText}</td>
+                    <td className='whitespace-nowrap px-5 py-4 align-middle text-slate-500'>
+                      {token.createdAtText}
+                    </td>
+                    <td className='sticky right-0 z-10 border-l border-slate-100 bg-white px-5 py-4 align-middle shadow-[-12px_0_24px_-18px_rgba(15,23,42,0.22)]'>
+                      <div className='flex w-fit flex-nowrap gap-2'>
                         <button
                           type='button'
                           onClick={() => openEditForm(token)}
                           className='secondary-button !rounded-lg !px-3 !py-2'
                         >
                           {t('tokensEdit')}
+                        </button>
+                        <button
+                          type='button'
+                          onClick={() => handleToggleStatus(token.id, token.active)}
+                          disabled={busyId === token.id}
+                          className='secondary-button !w-[84px] !justify-center !rounded-lg !px-3 !py-2'
+                        >
+                          {token.active ? t('tokensDisable') : t('tokensEnable')}
                         </button>
                         <button
                           type='button'
@@ -495,6 +644,22 @@ export default function Tokens() {
               )}
             </tbody>
           </table>
+        </div>
+        <div className='border-t border-slate-200 bg-slate-50/70 px-4 py-3'>
+          <input
+            type='range'
+            min={0}
+            max={Math.max(1, scrollState.max)}
+            value={Math.min(scrollState.left, Math.max(1, scrollState.max))}
+            onChange={(event) => {
+              const next = Number(event.target.value);
+              if (tableScrollRef.current) {
+                tableScrollRef.current.scrollLeft = next;
+              }
+              setScrollState((current) => ({ ...current, left: next }));
+            }}
+            className='token-scrollbar w-full'
+          />
         </div>
       </section>
 
@@ -528,72 +693,106 @@ export default function Tokens() {
               </div>
 
               <div className='space-y-2'>
-                <label className='text-sm font-medium text-slate-700'>{t('tokensFormGroup')}</label>
-                <input
-                  value={form.group}
-                  onChange={(event) => setForm((current) => ({ ...current, group: event.target.value }))}
-                  placeholder={t('tokensFormGroupPlaceholder')}
-                  className='input-shell'
-                />
+                <label className='text-sm font-medium text-slate-700'>
+                  {t('tokensFormQuota')} ({t('tokensFormQuotaHint')})
+                </label>
+                <div className='relative'>
+                  <span className='pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm text-slate-400'>
+                    $
+                  </span>
+                  <input
+                    type='number'
+                    min='0'
+                    step='0.0001'
+                    value={form.remain_quota}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, remain_quota: event.target.value }))
+                    }
+                    className='input-shell pl-8'
+                  />
+                  <span className='pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-400'>
+                    USD
+                  </span>
+                </div>
               </div>
 
-              <div className='space-y-2'>
-                <label className='text-sm font-medium text-slate-700'>{t('tokensFormQuota')}</label>
-                <input
-                  type='number'
-                  min='0'
-                  value={form.remain_quota}
-                  disabled={form.unlimited_quota}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, remain_quota: event.target.value }))
-                  }
-                  className='input-shell'
-                />
-              </div>
-
-              <div className='space-y-2'>
+              <div className='space-y-2 sm:col-span-2'>
                 <label className='text-sm font-medium text-slate-700'>{t('tokensFormExpires')}</label>
-                <input
-                  type='number'
-                  min='0'
-                  value={form.expires_in_days}
-                  placeholder={t('tokensFormNever')}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, expires_in_days: event.target.value }))
-                  }
-                  className='input-shell'
-                />
+                <div className='flex flex-wrap gap-2'>
+                  {(
+                    [
+                      ['never', t('tokensFormNever')],
+                      ['7', t('tokensFormPreset7d')],
+                      ['30', t('tokensFormPreset30d')],
+                      ['90', t('tokensFormPreset90d')],
+                      ['custom', t('tokensFormPresetCustom')],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type='button'
+                      onClick={() =>
+                        setForm((current) => ({
+                          ...current,
+                          expires_mode: value,
+                          expires_in_days:
+                            value === '7' || value === '30' || value === '90'
+                              ? value
+                              : value === 'never'
+                                ? ''
+                                : current.expires_in_days,
+                          expires_at_input:
+                            value === 'custom'
+                              ? current.expires_at_input
+                              : value === 'never'
+                                ? ''
+                                : formatDateTimeInput(
+                                    Math.floor(Date.now() / 1000) +
+                                      Number(value) * 24 * 60 * 60,
+                                  ),
+                        }))
+                      }
+                      className={
+                        form.expires_mode === value
+                          ? 'rounded-xl bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700'
+                          : 'rounded-xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-600'
+                      }
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {form.expires_mode !== 'never' ? (
+                  <div className='rounded-2xl border border-slate-200 bg-slate-50/60 p-4'>
+                    <div className='space-y-2'>
+                      <label className='text-sm font-medium text-slate-700'>
+                        {t('tokensFormExpiresAt')}
+                      </label>
+                      {form.expires_mode === 'custom' ? (
+                        <input
+                          type='datetime-local'
+                          value={form.expires_at_input}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              expires_at_input: event.target.value,
+                            }))
+                          }
+                          className='input-shell bg-white'
+                        />
+                      ) : (
+                        <div className='input-shell bg-white text-slate-600'>
+                          {formatDateTimeInput(
+                            Math.floor(Date.now() / 1000) +
+                              Number(form.expires_mode || 0) * 24 * 60 * 60,
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            </div>
-
-            <div className='mt-5 flex flex-wrap gap-5'>
-              <label className='inline-flex items-center gap-3 text-sm text-slate-700'>
-                <input
-                  type='checkbox'
-                  checked={form.unlimited_quota}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      unlimited_quota: event.target.checked,
-                    }))
-                  }
-                />
-                {t('tokensFormUnlimited')}
-              </label>
-
-              <label className='inline-flex items-center gap-3 text-sm text-slate-700'>
-                <input
-                  type='checkbox'
-                  checked={form.model_limits_enabled}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      model_limits_enabled: event.target.checked,
-                    }))
-                  }
-                />
-                {t('tokensFormRestricted')}
-              </label>
             </div>
 
             <div className='mt-6 flex justify-end gap-3'>
