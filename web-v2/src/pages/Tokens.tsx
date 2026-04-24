@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Gauge, KeyRound, LockKeyhole, Plus, ShieldCheck } from 'lucide-react';
+import { Copy, Gauge, KeyRound, LockKeyhole, Plus, ShieldCheck } from 'lucide-react';
 import MetricCard from '../components/ui/MetricCard';
 import StatePanel from '../components/ui/StatePanel';
 import { useAsyncData } from '../hooks/useAsyncData';
@@ -360,7 +360,7 @@ export default function Tokens() {
 
       <section className='overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm'>
         <div className='overflow-x-auto'>
-          <table className='min-w-[1440px]'>
+          <table className='min-w-[1520px]'>
             <thead>
               <tr className='border-b border-slate-200 text-left text-xs uppercase tracking-[0.18em] text-slate-500'>
                 <th className='px-5 py-4 font-medium'>{t('tokensColumnToken')}</th>
@@ -371,7 +371,9 @@ export default function Tokens() {
                 <th className='px-5 py-4 font-medium'>{t('tokensColumnStatus')}</th>
                 <th className='px-5 py-4 font-medium'>{t('tokensColumnLastUsed')}</th>
                 <th className='px-5 py-4 font-medium'>{t('tokensColumnCreated')}</th>
-                <th className='px-5 py-4 font-medium'>{t('tokensColumnActions')}</th>
+                <th className='sticky right-0 z-10 border-l border-slate-200 bg-white px-5 py-4 font-medium shadow-[-12px_0_24px_-18px_rgba(15,23,42,0.22)]'>
+                  {t('tokensColumnActions')}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -386,10 +388,26 @@ export default function Tokens() {
                     </td>
                     <td className='px-5 py-4'>
                       <div className='flex items-center gap-3'>
-                        <p className='font-mono text-xs text-slate-500'>{token.key || '--'}</p>
+                        <p className='rounded-xl bg-slate-50 px-3 py-2 font-mono text-xs text-sky-700'>
+                          {token.key || '--'}
+                        </p>
+                        <button
+                          type='button'
+                          onClick={() => handleCopy(token.id)}
+                          disabled={busyId === token.id}
+                          className='inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900'
+                          aria-label={copiedId === token.id ? t('tokensCopied') : t('tokensCopy')}
+                        >
+                          <Copy className='h-4 w-4' />
+                        </button>
                       </div>
                     </td>
-                    <td className='px-5 py-4 text-slate-600'>{token.group}</td>
+                    <td className='px-5 py-4 text-slate-600'>
+                      <div className='inline-flex items-center gap-2 rounded-2xl bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700'>
+                        <span className='h-2 w-2 rounded-full bg-emerald-500' />
+                        {token.group}
+                      </div>
+                    </td>
                     <td className='px-5 py-4'>
                       <div className='min-w-[220px] space-y-2'>
                         <div className='flex items-center justify-between gap-4 text-sm'>
@@ -436,7 +454,7 @@ export default function Tokens() {
                     </td>
                     <td className='px-5 py-4 text-slate-500'>{token.lastUsedAtText}</td>
                     <td className='px-5 py-4 text-slate-500'>{token.createdAtText}</td>
-                    <td className='px-5 py-4'>
+                    <td className='sticky right-0 z-10 border-l border-slate-100 bg-white px-5 py-4 shadow-[-12px_0_24px_-18px_rgba(15,23,42,0.22)]'>
                       <div className='flex min-w-[220px] flex-wrap gap-2'>
                         <button
                           type='button'
@@ -444,14 +462,6 @@ export default function Tokens() {
                           className='secondary-button !rounded-lg !px-3 !py-2'
                         >
                           {t('tokensEdit')}
-                        </button>
-                        <button
-                          type='button'
-                          onClick={() => handleCopy(token.id)}
-                          disabled={busyId === token.id}
-                          className='secondary-button !rounded-lg !px-3 !py-2'
-                        >
-                          {copiedId === token.id ? t('tokensCopied') : t('tokensCopy')}
                         </button>
                         <button
                           type='button'
