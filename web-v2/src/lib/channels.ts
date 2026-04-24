@@ -7,6 +7,10 @@ type ChannelRecord = {
   status?: number;
   models?: string;
   model_mapping?: string;
+  response_time?: number;
+  group?: string;
+  priority?: number;
+  tag?: string;
 };
 
 type ChannelResponse = {
