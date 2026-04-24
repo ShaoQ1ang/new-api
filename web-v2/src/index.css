@@ -100,6 +100,51 @@
   .hero-console-panel {
     @apply rounded-[30px] border border-slate-200 bg-slate-50/80 p-5;
   }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .token-scrollbar {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 14px;
+    background: transparent;
+  }
+
+  .token-scrollbar::-webkit-slider-runnable-track {
+    height: 10px;
+    border-radius: 9999px;
+    background: #d7dde6;
+  }
+
+  .token-scrollbar::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    margin-top: -3px;
+    height: 16px;
+    width: 88px;
+    border-radius: 9999px;
+    background: #8f98a7;
+  }
+
+  .token-scrollbar::-moz-range-track {
+    height: 10px;
+    border-radius: 9999px;
+    background: #d7dde6;
+  }
+
+  .token-scrollbar::-moz-range-thumb {
+    height: 16px;
+    width: 88px;
+    border: 0;
+    border-radius: 9999px;
+    background: #8f98a7;
+  }
 }
 
 @layer utilities {
