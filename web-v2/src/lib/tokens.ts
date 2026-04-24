@@ -16,6 +16,14 @@ type TokenRecord = {
   used_quota?: number;
 };
 
+type TokenStatResponse = {
+  success: boolean;
+  message?: string;
+  data?: {
+    quota?: number;
+  };
+};
+
 export type TokenInput = {
   id?: number;
   name: string;
@@ -35,6 +43,33 @@ type TokenResponse = {
   };
 };
 
+export type TokenWorkspaceRecord = TokenRecord & {
+  today_quota?: number;
+  total_quota?: number;
+};
+
+function getRange(days: number) {
+  const end = Math.floor(Date.now() / 1000);
+  const start = end - days * 24 * 60 * 60;
+  return { start, end };
+}
+
+async function fetchTokenStatByName(tokenName: string, days: number) {
+  const { start, end } = getRange(days);
+  const response = await api.get<TokenStatResponse>(
+    `/api/log/self/stat?type=2&token_name=${encodeURIComponent(
+      tokenName,
+    )}&start_timestamp=${start}&end_timestamp=${end}`,
+  );
+  const payload = response.data;
+
+  if (!payload.success) {
+    throw new Error(payload.message || 'Failed to load token stats');
+  }
+
+  return payload.data?.quota || 0;
+}
+
 export async function fetchTokens() {
   try {
     const response = await api.get<TokenResponse>('/api/token/?p=1&size=20');
@@ -44,7 +79,30 @@ export async function fetchTokens() {
       throw new Error(payload.message || 'Failed to load tokens');
     }
 
-    return payload.data?.items || [];
+    const items = payload.data?.items || [];
+    const usagePairs = await Promise.all(
+      items.map(async (token) => {
+        const tokenName = token.name || '';
+        if (!tokenName) {
+          return { today_quota: 0, total_quota: Math.max(0, token.used_quota || 0) };
+        }
+
+        const [todayQuota, totalQuota] = await Promise.all([
+          fetchTokenStatByName(tokenName, 1),
+          fetchTokenStatByName(tokenName, 30),
+        ]);
+
+        return {
+          today_quota: todayQuota,
+          total_quota: totalQuota,
+        };
+      }),
+    );
+
+    return items.map((token, index) => ({
+      ...token,
+      ...usagePairs[index],
+    }));
   } catch (error) {
     if (!isUnauthorizedError(error)) {
       throw error;
@@ -61,8 +119,11 @@ export async function fetchTokens() {
         unlimited_quota: false,
         model_limits_enabled: false,
         created_time: now - 86400 * 15,
+        accessed_time: now - 4000,
         expired_time: now + 86400 * 30,
         group: 'default',
+        today_quota: 164300,
+        total_quota: 2400000,
       },
       {
         id: 2,
@@ -72,8 +133,11 @@ export async function fetchTokens() {
         unlimited_quota: true,
         model_limits_enabled: true,
         created_time: now - 86400 * 7,
+        accessed_time: now - 8200,
         expired_time: -1,
         group: 'internal',
+        today_quota: 0,
+        total_quota: 448500,
       },
     ];
   }

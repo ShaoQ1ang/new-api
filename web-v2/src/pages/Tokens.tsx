@@ -132,6 +132,8 @@ export default function Tokens() {
         remainQuota: token.remain_quota || 0,
         usedQuota: token.used_quota || 0,
         totalQuota: Math.max(0, (token.used_quota || 0) + (token.remain_quota || 0)),
+        todayQuota: token.today_quota || 0,
+        totalUsageQuota: token.total_quota || Math.max(0, token.used_quota || 0),
         statusText: token.status === 1 ? t('tokensStatusActive') : t('tokensStatusInactive'),
         quotaText: token.unlimited_quota
           ? t('tokensUnlimited')
@@ -163,6 +165,22 @@ export default function Tokens() {
         ),
         totalQuotaText: formatQuotaValue(
           Math.max(0, (token.used_quota || 0) + (token.remain_quota || 0)),
+          quotaPerUnit,
+          quotaDisplayType,
+          usdExchangeRate,
+          customCurrencySymbol,
+          customCurrencyExchangeRate,
+        ),
+        todayQuotaText: formatQuotaValue(
+          Math.max(0, token.today_quota || 0),
+          quotaPerUnit,
+          quotaDisplayType,
+          usdExchangeRate,
+          customCurrencySymbol,
+          customCurrencyExchangeRate,
+        ),
+        totalUsageQuotaText: formatQuotaValue(
+          Math.max(0, token.total_quota || token.used_quota || 0),
           quotaPerUnit,
           quotaDisplayType,
           usdExchangeRate,
@@ -383,7 +401,6 @@ export default function Tokens() {
                     <td className='px-5 py-4'>
                       <div className='space-y-1'>
                         <p className='font-medium text-slate-950'>{token.name}</p>
-                        <p className='text-xs text-slate-500'>{token.accessMode}</p>
                       </div>
                     </td>
                     <td className='w-[280px] px-5 py-4'>
@@ -411,33 +428,27 @@ export default function Tokens() {
                     <td className='w-[280px] px-5 py-4'>
                       <div className='space-y-2'>
                         <div className='flex items-baseline gap-3 text-sm'>
-                          <span className='text-slate-500'>{t('tokensUsageUsed')}</span>
-                          <span className='font-semibold text-slate-950'>{token.usedQuotaText}</span>
+                          <span className='text-slate-500'>{t('tokensUsageToday')}</span>
+                          <span className='font-semibold text-slate-950'>{token.todayQuotaText}</span>
                         </div>
-                        {token.unlimited ? (
-                          <div className='text-sm text-slate-400'>{t('tokensUsageUnlimited')}</div>
-                        ) : (
-                          <>
-                            <div className='flex items-baseline gap-3 text-sm'>
-                              <span className='text-slate-500'>{t('tokensUsageRemaining')}</span>
-                              <span className='font-medium text-slate-700'>
-                                {token.remainQuotaText} / {token.totalQuotaText}
-                              </span>
-                            </div>
-                            <div className='h-2 rounded-full bg-slate-100'>
-                              <div
-                                className='h-2 rounded-full bg-sky-500'
-                                style={{
-                                  width: `${
-                                    token.totalQuota > 0
-                                      ? Math.min(100, (token.usedQuota / token.totalQuota) * 100)
-                                      : 0
-                                  }%`,
-                                }}
-                              />
-                            </div>
-                          </>
-                        )}
+                        <div className='flex items-baseline gap-3 text-sm'>
+                          <span className='text-slate-500'>{t('tokensUsageTotal')}</span>
+                          <span className='font-medium text-slate-700'>{token.totalUsageQuotaText}</span>
+                        </div>
+                        {!token.unlimited ? (
+                          <div className='h-2 rounded-full bg-slate-100'>
+                            <div
+                              className='h-2 rounded-full bg-sky-500'
+                              style={{
+                                width: `${
+                                  token.totalQuota > 0
+                                    ? Math.min(100, (token.usedQuota / token.totalQuota) * 100)
+                                    : 0
+                                }%`,
+                              }}
+                            />
+                          </div>
+                        ) : null}
                       </div>
                     </td>
                     <td className='px-5 py-4 text-slate-500'>{token.expiresAtText}</td>
@@ -452,7 +463,7 @@ export default function Tokens() {
                         {token.statusText}
                       </span>
                     </td>
-                    <td className='px-5 py-4 text-slate-500'>{token.lastUsedAtText}</td>
+                    <td className='whitespace-nowrap px-5 py-4 text-slate-500'>{token.lastUsedAtText}</td>
                     <td className='px-5 py-4 text-slate-500'>{token.createdAtText}</td>
                     <td className='sticky right-0 z-10 border-l border-slate-100 bg-white px-5 py-4 shadow-[-12px_0_24px_-18px_rgba(15,23,42,0.22)]'>
                       <div className='flex min-w-[220px] flex-wrap gap-2'>
