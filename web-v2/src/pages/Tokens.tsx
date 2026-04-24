@@ -360,17 +360,17 @@ export default function Tokens() {
 
       <section className='overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm'>
         <div className='overflow-x-auto'>
-          <table className='min-w-[1520px]'>
+          <table className='min-w-[1380px]'>
             <thead>
               <tr className='border-b border-slate-200 text-left text-xs uppercase tracking-[0.18em] text-slate-500'>
-                <th className='px-5 py-4 font-medium'>{t('tokensColumnToken')}</th>
-                <th className='px-5 py-4 font-medium'>{t('tokensColumnApiKey')}</th>
-                <th className='px-5 py-4 font-medium'>{t('tokensColumnGroup')}</th>
-                <th className='px-5 py-4 font-medium'>{t('tokensColumnUsage')}</th>
-                <th className='px-5 py-4 font-medium'>{t('tokensColumnExpires')}</th>
-                <th className='px-5 py-4 font-medium'>{t('tokensColumnStatus')}</th>
-                <th className='px-5 py-4 font-medium'>{t('tokensColumnLastUsed')}</th>
-                <th className='px-5 py-4 font-medium'>{t('tokensColumnCreated')}</th>
+                <th className='w-[190px] px-5 py-4 font-medium'>{t('tokensColumnToken')}</th>
+                <th className='w-[280px] px-5 py-4 font-medium'>{t('tokensColumnApiKey')}</th>
+                <th className='w-[200px] px-5 py-4 font-medium'>{t('tokensColumnGroup')}</th>
+                <th className='w-[280px] px-5 py-4 font-medium'>{t('tokensColumnUsage')}</th>
+                <th className='w-[150px] px-5 py-4 font-medium'>{t('tokensColumnExpires')}</th>
+                <th className='w-[120px] px-5 py-4 font-medium'>{t('tokensColumnStatus')}</th>
+                <th className='w-[170px] px-5 py-4 font-medium'>{t('tokensColumnLastUsed')}</th>
+                <th className='w-[170px] px-5 py-4 font-medium'>{t('tokensColumnCreated')}</th>
                 <th className='sticky right-0 z-10 border-l border-slate-200 bg-white px-5 py-4 font-medium shadow-[-12px_0_24px_-18px_rgba(15,23,42,0.22)]'>
                   {t('tokensColumnActions')}
                 </th>
@@ -386,7 +386,7 @@ export default function Tokens() {
                         <p className='text-xs text-slate-500'>{token.accessMode}</p>
                       </div>
                     </td>
-                    <td className='px-5 py-4'>
+                    <td className='w-[280px] px-5 py-4'>
                       <div className='flex items-center gap-3'>
                         <p className='rounded-xl bg-slate-50 px-3 py-2 font-mono text-xs text-sky-700'>
                           {token.key || '--'}
@@ -408,17 +408,17 @@ export default function Tokens() {
                         {token.group}
                       </div>
                     </td>
-                    <td className='px-5 py-4'>
-                      <div className='min-w-[220px] space-y-2'>
-                        <div className='flex items-center justify-between gap-4 text-sm'>
+                    <td className='w-[280px] px-5 py-4'>
+                      <div className='space-y-2'>
+                        <div className='flex items-baseline gap-3 text-sm'>
                           <span className='text-slate-500'>{t('tokensUsageUsed')}</span>
-                          <span className='font-medium text-slate-950'>{token.usedQuotaText}</span>
+                          <span className='font-semibold text-slate-950'>{token.usedQuotaText}</span>
                         </div>
                         {token.unlimited ? (
                           <div className='text-sm text-slate-400'>{t('tokensUsageUnlimited')}</div>
                         ) : (
                           <>
-                            <div className='flex items-center justify-between gap-4 text-sm'>
+                            <div className='flex items-baseline gap-3 text-sm'>
                               <span className='text-slate-500'>{t('tokensUsageRemaining')}</span>
                               <span className='font-medium text-slate-700'>
                                 {token.remainQuotaText} / {token.totalQuotaText}
