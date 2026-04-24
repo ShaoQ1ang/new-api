@@ -15,6 +15,10 @@ export type StatusPayload = {
     docs_link?: string;
     logo?: string;
     version?: string;
+    passkey_login?: boolean;
+    setup?: boolean;
+    user_agreement_enabled?: boolean;
+    privacy_policy_enabled?: boolean;
   };
 };
 
