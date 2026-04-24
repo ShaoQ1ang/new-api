@@ -44,6 +44,19 @@ function formatTimestamp(timestamp?: number, neverLabel?: string) {
   });
 }
 
+function formatDateTime(timestamp?: number, neverLabel?: string) {
+  if (!timestamp || timestamp <= 0) return neverLabel || '--';
+  return new Date(timestamp * 1000).toLocaleString('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
 function formatQuotaValue(
   quota: number,
   quotaPerUnit?: number,
@@ -127,7 +140,9 @@ export default function Tokens() {
         restricted: Boolean(token.model_limits_enabled),
         accessMode: token.model_limits_enabled ? t('tokensRestricted') : t('tokensStandard'),
         createdAt: token.created_time,
-        createdAtText: formatTimestamp(token.created_time),
+        createdAtText: formatDateTime(token.created_time),
+        lastUsedAt: token.accessed_time,
+        lastUsedAtText: formatDateTime(token.accessed_time, '--'),
         expiresAt: token.expired_time,
         expiresAtText: formatTimestamp(token.expired_time, t('tokensNever')),
         usedQuotaText: formatQuotaValue(
@@ -345,13 +360,17 @@ export default function Tokens() {
 
       <section className='overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm'>
         <div className='overflow-x-auto'>
-          <table className='min-w-full'>
+          <table className='min-w-[1440px]'>
             <thead>
               <tr className='border-b border-slate-200 text-left text-xs uppercase tracking-[0.18em] text-slate-500'>
                 <th className='px-5 py-4 font-medium'>{t('tokensColumnToken')}</th>
+                <th className='px-5 py-4 font-medium'>{t('tokensColumnApiKey')}</th>
+                <th className='px-5 py-4 font-medium'>{t('tokensColumnGroup')}</th>
                 <th className='px-5 py-4 font-medium'>{t('tokensColumnUsage')}</th>
                 <th className='px-5 py-4 font-medium'>{t('tokensColumnExpires')}</th>
                 <th className='px-5 py-4 font-medium'>{t('tokensColumnStatus')}</th>
+                <th className='px-5 py-4 font-medium'>{t('tokensColumnLastUsed')}</th>
+                <th className='px-5 py-4 font-medium'>{t('tokensColumnCreated')}</th>
                 <th className='px-5 py-4 font-medium'>{t('tokensColumnActions')}</th>
               </tr>
             </thead>
@@ -360,15 +379,17 @@ export default function Tokens() {
                 filtered.map((token) => (
                   <tr key={token.id} className='border-b border-slate-100 text-sm text-slate-700'>
                     <td className='px-5 py-4'>
-                      <div className='space-y-2'>
+                      <div className='space-y-1'>
                         <p className='font-medium text-slate-950'>{token.name}</p>
-                        <div className='flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500'>
-                          {token.key ? <p className='font-mono'>{token.key}</p> : null}
-                          <p>{token.group}</p>
-                          <p>{token.accessMode}</p>
-                        </div>
+                        <p className='text-xs text-slate-500'>{token.accessMode}</p>
                       </div>
                     </td>
+                    <td className='px-5 py-4'>
+                      <div className='flex items-center gap-3'>
+                        <p className='font-mono text-xs text-slate-500'>{token.key || '--'}</p>
+                      </div>
+                    </td>
+                    <td className='px-5 py-4 text-slate-600'>{token.group}</td>
                     <td className='px-5 py-4'>
                       <div className='min-w-[220px] space-y-2'>
                         <div className='flex items-center justify-between gap-4 text-sm'>
@@ -413,8 +434,10 @@ export default function Tokens() {
                         {token.statusText}
                       </span>
                     </td>
+                    <td className='px-5 py-4 text-slate-500'>{token.lastUsedAtText}</td>
+                    <td className='px-5 py-4 text-slate-500'>{token.createdAtText}</td>
                     <td className='px-5 py-4'>
-                      <div className='flex flex-wrap gap-2'>
+                      <div className='flex min-w-[220px] flex-wrap gap-2'>
                         <button
                           type='button'
                           onClick={() => openEditForm(token)}
@@ -444,7 +467,7 @@ export default function Tokens() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className='px-5 py-10 text-center text-sm text-slate-500'>
+                  <td colSpan={9} className='px-5 py-10 text-center text-sm text-slate-500'>
                     {t('tokensEmpty')}
                   </td>
                 </tr>
