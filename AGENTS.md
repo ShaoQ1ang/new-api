@@ -130,3 +130,45 @@ For request structs that are parsed from client JSON and then re-marshaled to up
   - field absent in client JSON => `nil` => omitted on marshal;
   - field explicitly set to zero/false => non-`nil` pointer => must still be sent upstream.
 - Avoid using non-pointer scalars with `omitempty` for optional request parameters, because zero values (`0`, `0.0`, `false`) will be silently dropped during marshal.
+
+### Rule 7: web-v2 i18n Layout Stability — Do Not Let Copy Length Change Layout
+
+For the greenfield `web-v2` frontend, all new pages and page refactors MUST be designed so that switching between English and Chinese does not materially change layout, alignment, or perceived visual hierarchy.
+
+Required practices:
+- Prefer fixed table layout (`table-fixed`) for data tables with explicit column widths.
+- Avoid content-sized layout for critical controls. Do not rely on default `auto` sizing for toolbars, filter chips, action buttons, status badges, pagination controls, and modal option groups.
+- Give repeated controls explicit widths or minimum widths when copy length differs across locales.
+- Prefer truncation, no-wrap, or fixed-height label regions over allowing core layout blocks to expand unpredictably.
+- For top toolbars, tables, and pagination bars, stabilize both horizontal and vertical rhythm before polishing typography.
+- When reviewing a `web-v2` page, explicitly check the English and Chinese variants and fix any visible reflow or shape change before considering the page complete.
+
+This is a hard UX requirement for future `web-v2` work, especially for operator pages such as tokens, channels, dashboard, usage, and settings.
+
+### Rule 8: web-v2 Docker Preview Sync — Refresh Alone Is Not Enough
+
+The current `web-v2` Docker preview workflow does **not** bind-mount the local source tree into the running container. The `new-api-web-v2` container runs Vite from its internal `/app` copy.
+
+Implications:
+- Editing local files under `web-v2/src/` does not automatically update `http://127.0.0.1:3001`.
+- A browser refresh alone is not a valid verification step after local edits.
+- After changing `web-v2` code, you MUST either rebuild/recreate the preview container or copy the changed files into the container before validating in the browser.
+
+Preferred fallback when registry/network rebuilds are blocked:
+- Use `docker cp` to sync changed files into `new-api-web-v2:/app/...`.
+- Then verify the in-container file timestamps and reload the page.
+
+This rule exists to avoid false negatives during UI review where the browser appears unchanged only because the running container is stale.
+
+### Rule 9: Go Docker Builds Must Set GOPROXY
+
+When building Go services in Docker for this project, you MUST explicitly provide a reachable `GOPROXY`. Do not rely on the container's default Go module network path.
+
+Required practice:
+- For Docker builds and Docker Compose builds that compile Go code, pass `GOPROXY` as a build arg or environment variable.
+- Preferred value in this environment: `https://goproxy.cn,direct`
+- If the user specifies another proxy, use the user-provided value instead.
+
+Why this is required:
+- Containerized Go builds can fail or hang on module resolution when direct access is unstable.
+- This project is frequently built in proxy-constrained environments, so `GOPROXY` must be treated as part of the standard build configuration, not an optional tweak.
