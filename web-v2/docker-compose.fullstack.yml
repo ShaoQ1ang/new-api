@@ -1,0 +1,42 @@
+services:
+  new-api:
+    build:
+      context: ..
+      args:
+        HTTP_PROXY: ${HTTP_PROXY-}
+        HTTPS_PROXY: ${HTTPS_PROXY-}
+        ALL_PROXY: ${ALL_PROXY-}
+        http_proxy: ${http_proxy-}
+        https_proxy: ${https_proxy-}
+        all_proxy: ${all_proxy-}
+    container_name: new-api-web-v2-backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      TZ: Asia/Shanghai
+      SESSION_SECRET: dev-web-v2-session-secret
+      MEMORY_CACHE_ENABLED: "true"
+    volumes:
+      - ../data:/data
+      - ../logs:/app/logs
+
+  web-v2:
+    build:
+      context: .
+      args:
+        HTTP_PROXY: ${HTTP_PROXY-}
+        HTTPS_PROXY: ${HTTPS_PROXY-}
+        ALL_PROXY: ${ALL_PROXY-}
+        http_proxy: ${http_proxy-}
+        https_proxy: ${https_proxy-}
+        all_proxy: ${all_proxy-}
+    container_name: new-api-web-v2
+    restart: unless-stopped
+    depends_on:
+      - new-api
+    ports:
+      - "3001:3001"
+    environment:
+      VITE_API_BASE_URL: ""
+      VITE_API_PROXY_TARGET: "http://new-api:3000"
