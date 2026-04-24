@@ -3,6 +3,7 @@ import { Gauge, KeyRound, LockKeyhole, Plus, ShieldCheck } from 'lucide-react';
 import MetricCard from '../components/ui/MetricCard';
 import StatePanel from '../components/ui/StatePanel';
 import { useAsyncData } from '../hooks/useAsyncData';
+import { useStatus } from '../hooks/useStatus';
 import {
   createToken,
   deleteToken,
@@ -43,6 +44,33 @@ function formatTimestamp(timestamp?: number, neverLabel?: string) {
   });
 }
 
+function formatQuotaValue(
+  quota: number,
+  quotaPerUnit?: number,
+  displayType?: string,
+  usdExchangeRate?: number,
+  customCurrencySymbol?: string,
+  customCurrencyExchangeRate?: number,
+) {
+  if (!quotaPerUnit || quotaPerUnit <= 0 || displayType === 'TOKENS') {
+    return quota.toLocaleString();
+  }
+
+  const usdValue = quota / quotaPerUnit;
+
+  if (displayType === 'CNY') {
+    return `¥${(usdValue * (usdExchangeRate || 1)).toFixed(4)}`;
+  }
+
+  if (displayType === 'CUSTOM') {
+    return `${customCurrencySymbol || '¤'}${(
+      usdValue * (customCurrencyExchangeRate || 1)
+    ).toFixed(4)}`;
+  }
+
+  return `$${usdValue.toFixed(4)}`;
+}
+
 function buildTokenInput(form: FormState): TokenInput {
   const expiresInDays = Number(form.expires_in_days || 0);
   const expiredTime =
@@ -63,6 +91,7 @@ function buildTokenInput(form: FormState): TokenInput {
 
 export default function Tokens() {
   const tokens = useAsyncData(fetchTokens, []);
+  const status = useStatus();
   const { t } = useI18n();
   const [filter, setFilter] = useState<FilterMode>('all');
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -73,6 +102,12 @@ export default function Tokens() {
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
+  const quotaPerUnit = status.data?.quota_per_unit;
+  const quotaDisplayType = status.data?.quota_display_type;
+  const usdExchangeRate = status.data?.usd_exchange_rate;
+  const customCurrencySymbol = status.data?.custom_currency_symbol;
+  const customCurrencyExchangeRate = status.data?.custom_currency_exchange_rate;
+
   const rows = useMemo(
     () =>
       (tokens.data || []).map((token) => ({
@@ -82,6 +117,8 @@ export default function Tokens() {
         group: token.group || 'default',
         active: token.status === 1,
         remainQuota: token.remain_quota || 0,
+        usedQuota: token.used_quota || 0,
+        totalQuota: Math.max(0, (token.used_quota || 0) + (token.remain_quota || 0)),
         statusText: token.status === 1 ? t('tokensStatusActive') : t('tokensStatusInactive'),
         quotaText: token.unlimited_quota
           ? t('tokensUnlimited')
@@ -93,8 +130,40 @@ export default function Tokens() {
         createdAtText: formatTimestamp(token.created_time),
         expiresAt: token.expired_time,
         expiresAtText: formatTimestamp(token.expired_time, t('tokensNever')),
+        usedQuotaText: formatQuotaValue(
+          Math.max(0, token.used_quota || 0),
+          quotaPerUnit,
+          quotaDisplayType,
+          usdExchangeRate,
+          customCurrencySymbol,
+          customCurrencyExchangeRate,
+        ),
+        remainQuotaText: formatQuotaValue(
+          Math.max(0, token.remain_quota || 0),
+          quotaPerUnit,
+          quotaDisplayType,
+          usdExchangeRate,
+          customCurrencySymbol,
+          customCurrencyExchangeRate,
+        ),
+        totalQuotaText: formatQuotaValue(
+          Math.max(0, (token.used_quota || 0) + (token.remain_quota || 0)),
+          quotaPerUnit,
+          quotaDisplayType,
+          usdExchangeRate,
+          customCurrencySymbol,
+          customCurrencyExchangeRate,
+        ),
       })),
-    [tokens.data, t],
+    [
+      tokens.data,
+      t,
+      quotaPerUnit,
+      quotaDisplayType,
+      usdExchangeRate,
+      customCurrencySymbol,
+      customCurrencyExchangeRate,
+    ],
   );
 
   const filtered = rows.filter((token) => {
@@ -108,25 +177,25 @@ export default function Tokens() {
     {
       label: t('tokensMetricTotal'),
       value: String(rows.length),
-      hint: t('tokensMetricTotalHint'),
+      hint: '',
       icon: KeyRound,
     },
     {
       label: t('tokensMetricActive'),
       value: String(rows.filter((item) => item.active).length),
-      hint: t('tokensMetricActiveHint'),
+      hint: '',
       icon: ShieldCheck,
     },
     {
       label: t('tokensMetricUnlimited'),
       value: String(rows.filter((item) => item.unlimited).length),
-      hint: t('tokensMetricUnlimitedHint'),
+      hint: '',
       icon: Gauge,
     },
     {
       label: t('tokensMetricRestricted'),
       value: String(rows.filter((item) => item.restricted).length),
-      hint: t('tokensMetricRestrictedHint'),
+      hint: '',
       icon: LockKeyhole,
     },
   ];
@@ -220,7 +289,6 @@ export default function Tokens() {
         <div className='flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between'>
           <div>
             <h1 className='text-2xl font-semibold text-slate-950'>{t('tokensEyebrow')}</h1>
-            <p className='mt-1 text-sm text-slate-500'>{t('tokensDescription')}</p>
           </div>
           <div className='flex flex-wrap items-center gap-3'>
             <div className='inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1'>
@@ -281,11 +349,9 @@ export default function Tokens() {
             <thead>
               <tr className='border-b border-slate-200 text-left text-xs uppercase tracking-[0.18em] text-slate-500'>
                 <th className='px-5 py-4 font-medium'>{t('tokensColumnToken')}</th>
-                <th className='px-5 py-4 font-medium'>{t('tokensColumnGroup')}</th>
-                <th className='px-5 py-4 font-medium'>{t('tokensColumnStatus')}</th>
-                <th className='px-5 py-4 font-medium'>{t('tokensColumnQuota')}</th>
-                <th className='px-5 py-4 font-medium'>{t('tokensColumnAccess')}</th>
+                <th className='px-5 py-4 font-medium'>{t('tokensColumnUsage')}</th>
                 <th className='px-5 py-4 font-medium'>{t('tokensColumnExpires')}</th>
+                <th className='px-5 py-4 font-medium'>{t('tokensColumnStatus')}</th>
                 <th className='px-5 py-4 font-medium'>{t('tokensColumnActions')}</th>
               </tr>
             </thead>
@@ -294,12 +360,48 @@ export default function Tokens() {
                 filtered.map((token) => (
                   <tr key={token.id} className='border-b border-slate-100 text-sm text-slate-700'>
                     <td className='px-5 py-4'>
-                      <div className='space-y-1'>
+                      <div className='space-y-2'>
                         <p className='font-medium text-slate-950'>{token.name}</p>
-                        {token.key ? <p className='font-mono text-xs text-slate-500'>{token.key}</p> : null}
+                        <div className='flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500'>
+                          {token.key ? <p className='font-mono'>{token.key}</p> : null}
+                          <p>{token.group}</p>
+                          <p>{token.accessMode}</p>
+                        </div>
                       </div>
                     </td>
-                    <td className='px-5 py-4'>{token.group}</td>
+                    <td className='px-5 py-4'>
+                      <div className='min-w-[220px] space-y-2'>
+                        <div className='flex items-center justify-between gap-4 text-sm'>
+                          <span className='text-slate-500'>{t('tokensUsageUsed')}</span>
+                          <span className='font-medium text-slate-950'>{token.usedQuotaText}</span>
+                        </div>
+                        {token.unlimited ? (
+                          <div className='text-sm text-slate-400'>{t('tokensUsageUnlimited')}</div>
+                        ) : (
+                          <>
+                            <div className='flex items-center justify-between gap-4 text-sm'>
+                              <span className='text-slate-500'>{t('tokensUsageRemaining')}</span>
+                              <span className='font-medium text-slate-700'>
+                                {token.remainQuotaText} / {token.totalQuotaText}
+                              </span>
+                            </div>
+                            <div className='h-2 rounded-full bg-slate-100'>
+                              <div
+                                className='h-2 rounded-full bg-sky-500'
+                                style={{
+                                  width: `${
+                                    token.totalQuota > 0
+                                      ? Math.min(100, (token.usedQuota / token.totalQuota) * 100)
+                                      : 0
+                                  }%`,
+                                }}
+                              />
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                    <td className='px-5 py-4 text-slate-500'>{token.expiresAtText}</td>
                     <td className='px-5 py-4'>
                       <span
                         className={
@@ -311,9 +413,6 @@ export default function Tokens() {
                         {token.statusText}
                       </span>
                     </td>
-                    <td className='px-5 py-4'>{token.quotaText}</td>
-                    <td className='px-5 py-4'>{token.accessMode}</td>
-                    <td className='px-5 py-4 text-slate-500'>{token.expiresAtText}</td>
                     <td className='px-5 py-4'>
                       <div className='flex flex-wrap gap-2'>
                         <button
@@ -345,7 +444,7 @@ export default function Tokens() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className='px-5 py-10 text-center text-sm text-slate-500'>
+                  <td colSpan={5} className='px-5 py-10 text-center text-sm text-slate-500'>
                     {t('tokensEmpty')}
                   </td>
                 </tr>
