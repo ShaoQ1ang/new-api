@@ -201,18 +201,21 @@ export default function Home() {
                 <span className='inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700'>
                   <span className='relative flex h-2 w-2'>
                     <span className='absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75' />
-                    <span className='relative inline-flex h-2 w-2 rounded-full bg-emerald-500' />
+                <span className='relative inline-flex h-2 w-2 rounded-full bg-emerald-500' />
                   </span>
                   {t('panelHealthy')}
                 </span>
               </div>
 
               <div className='space-y-4'>
-                {[
+                {([
                   { titleKey: 'panelOneTitle', descriptionKey: 'panelOneDescription' },
                   { titleKey: 'panelTwoTitle', descriptionKey: 'panelTwoDescription' },
                   { titleKey: 'panelThreeTitle', descriptionKey: 'panelThreeDescription' },
-                ].map((item) => (
+                ] as Array<{
+                  titleKey: MessageKey;
+                  descriptionKey: MessageKey;
+                }>).map((item) => (
                   <div
                     key={item.titleKey}
                     className='group rounded-[24px] border border-slate-200 bg-white p-5 transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-sm'
