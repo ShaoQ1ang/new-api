@@ -33,11 +33,45 @@ export async function fetchDashboardOverview() {
   const providerCount = new Set(
     items.map((item) => item.model_name).filter(Boolean),
   ).size;
+  const activeDays = new Set(
+    items
+      .map((item) => item.created_at)
+      .filter(Boolean)
+      .map((timestamp) => new Date(timestamp * 1000).toISOString().slice(0, 10)),
+  ).size;
+
+  const modelMap = new Map<
+    string,
+    {
+      requests: number;
+      quota: number;
+    }
+  >();
+
+  for (const item of items) {
+    const modelName = item.model_name || 'unknown';
+    const current = modelMap.get(modelName) || { requests: 0, quota: 0 };
+    current.requests += item.count || 0;
+    current.quota += item.quota || 0;
+    modelMap.set(modelName, current);
+  }
+
+  const topModels = Array.from(modelMap.entries())
+    .map(([name, value]) => ({
+      name,
+      requests: value.requests,
+      quota: value.quota,
+      share: totalRequests > 0 ? value.requests / totalRequests : 0,
+    }))
+    .sort((left, right) => right.requests - left.requests)
+    .slice(0, 4);
 
   return {
     items,
     totalRequests,
     totalQuota,
     providerCount,
+    activeDays,
+    topModels,
   };
 }
