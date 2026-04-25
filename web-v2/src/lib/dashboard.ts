@@ -1,4 +1,5 @@
 import { api } from './api';
+import { isUnauthorizedError } from './preview';
 
 type DashboardDataPoint = {
   created_at: number;
@@ -18,16 +19,32 @@ export async function fetchDashboardOverview() {
   const end = Math.floor(now.getTime() / 1000);
   const start = end - 7 * 24 * 60 * 60;
 
-  const response = await api.get<DashboardResponse>(
-    `/api/data/self/?start_timestamp=${start}&end_timestamp=${end}&default_time=7`,
-  );
-  const payload = response.data;
+  let items = [] as DashboardDataPoint[];
 
-  if (!payload.success) {
-    throw new Error(payload.message || 'Failed to load dashboard overview');
+  try {
+    const response = await api.get<DashboardResponse>(
+      `/api/data/self/?start_timestamp=${start}&end_timestamp=${end}&default_time=7`,
+    );
+    const payload = response.data;
+
+    if (!payload.success) {
+      throw new Error(payload.message || 'Failed to load dashboard overview');
+    }
+
+    items = payload.data || [];
+  } catch (error) {
+    if (!isUnauthorizedError(error)) {
+      throw error;
+    }
+
+    items = [
+      { created_at: end - 86400 * 3, count: 42, quota: 123400, model_name: 'gpt-4.1' },
+      { created_at: end - 86400 * 2, count: 31, quota: 82200, model_name: 'gpt-4.1-mini' },
+      { created_at: end - 86400 * 2, count: 18, quota: 54100, model_name: 'claude-3.7-sonnet' },
+      { created_at: end - 86400, count: 27, quota: 68100, model_name: 'gemini-2.5-pro' },
+      { created_at: end, count: 21, quota: 47400, model_name: 'gpt-4.1' },
+    ];
   }
-
-  const items = payload.data || [];
   const totalRequests = items.reduce((sum, item) => sum + (item.count || 0), 0);
   const totalQuota = items.reduce((sum, item) => sum + (item.quota || 0), 0);
   const providerCount = new Set(

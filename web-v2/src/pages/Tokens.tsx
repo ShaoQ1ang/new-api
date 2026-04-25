@@ -12,6 +12,7 @@ import {
   updateToken,
   updateTokenStatus,
   type TokenInput,
+  type TokenWorkspaceResponse,
 } from '../lib/tokens';
 import { useI18n } from '../i18n/I18nProvider';
 
@@ -144,9 +145,11 @@ function buildTokenInput(form: FormState, quotaPerUnit?: number): TokenInput {
 
 export default function Tokens() {
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
-  const tokens = useAsyncData(fetchTokens, []);
   const status = useStatus();
   const { t } = useI18n();
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const tokens = useAsyncData<TokenWorkspaceResponse>(() => fetchTokens(page, pageSize), [page, pageSize]);
   const [filter, setFilter] = useState<FilterMode>('all');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -162,6 +165,10 @@ export default function Tokens() {
     max: 0,
   });
 
+  const tokenItems = tokens.data?.items || [];
+  const totalItems = tokens.data?.total || 0;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+
   const quotaPerUnit = status.data?.quota_per_unit;
   const quotaDisplayType = status.data?.quota_display_type;
   const usdExchangeRate = status.data?.usd_exchange_rate;
@@ -170,7 +177,7 @@ export default function Tokens() {
 
   const rows = useMemo(
     () =>
-      (tokens.data || []).map((token) => {
+      tokenItems.map((token) => {
         const effectiveStatus = statusOverrides[token.id] ?? token.status ?? 1;
 
         return {
@@ -253,7 +260,7 @@ export default function Tokens() {
         };
       }),
     [
-      tokens.data,
+      tokenItems,
       t,
       quotaPerUnit,
       quotaDisplayType,
@@ -273,7 +280,7 @@ export default function Tokens() {
   const stats = [
     {
       label: t('tokensMetricTotal'),
-      value: String(rows.length),
+      value: String(totalItems),
       hint: '',
       icon: KeyRound,
     },
@@ -285,7 +292,7 @@ export default function Tokens() {
     },
     {
       label: t('tokensMetricUnlimited'),
-      value: String(rows.filter((item) => item.unlimited).length),
+      value: String(tokenItems.filter((item) => item.unlimited_quota).length),
       hint: '',
       icon: Gauge,
     },
@@ -359,7 +366,11 @@ export default function Tokens() {
     setActionError('');
     try {
       await deleteToken(id);
-      await tokens.reload();
+      if (tokenItems.length === 1 && page > 1) {
+        setPage((current) => current - 1);
+      } else {
+        await tokens.reload();
+      }
     } catch (error) {
       setActionError(error instanceof Error ? error.message : t('tokensActionError'));
     } finally {
@@ -428,15 +439,26 @@ export default function Tokens() {
     return () => window.removeEventListener('resize', updateScrollState);
   }, [rows.length]);
 
+  useEffect(() => {
+    setStatusOverrides({});
+  }, [page, pageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
   return (
     <div className='space-y-5'>
       <section className='rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm'>
-        <div className='flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between'>
+        <div className='space-y-4'>
           <div>
-            <h1 className='text-2xl font-semibold text-slate-950'>{t('tokensEyebrow')}</h1>
+            <h1 className='whitespace-nowrap text-2xl font-semibold text-slate-950'>{t('tokensEyebrow')}</h1>
           </div>
-          <div className='flex flex-wrap items-center gap-3'>
-            <div className='inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1'>
+          <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
+            <div className='w-[320px] max-w-full overflow-x-auto'>
+              <div className='grid min-w-[304px] grid-cols-3 rounded-xl border border-slate-200 bg-slate-50 p-1'>
               {(
                 [
                   ['all', t('tokensFilterAll')],
@@ -450,16 +472,21 @@ export default function Tokens() {
                   onClick={() => setFilter(value)}
                   className={
                     filter === value
-                      ? 'rounded-lg bg-white px-4 py-2 text-sm font-medium text-slate-950 shadow-sm'
-                      : 'rounded-lg px-4 py-2 text-sm text-slate-500'
+                      ? 'min-w-[96px] whitespace-nowrap rounded-lg bg-white px-4 py-2 text-sm font-medium text-slate-950 shadow-sm'
+                      : 'min-w-[96px] whitespace-nowrap rounded-lg px-4 py-2 text-sm text-slate-500'
                   }
                 >
                   {label}
                 </button>
               ))}
+              </div>
             </div>
 
-            <button type='button' onClick={openCreateForm} className='primary-button !px-4 !py-2.5'>
+            <button
+              type='button'
+              onClick={openCreateForm}
+              className='primary-button !w-[132px] !justify-center whitespace-nowrap !px-4 !py-2.5'
+            >
               <Plus className='h-4 w-4' />
               {t('tokensAdd')}
             </button>
@@ -488,7 +515,7 @@ export default function Tokens() {
       <StatePanel
         loading={tokens.loading}
         error={tokens.error}
-        empty={!tokens.loading && !tokens.error && rows.length === 0}
+        empty={!tokens.loading && !tokens.error && totalItems === 0}
         title={t('tokensStatusTitle')}
         description={t('tokensStatusDescription')}
       />
@@ -499,20 +526,20 @@ export default function Tokens() {
           onScroll={updateScrollState}
           className='no-scrollbar overflow-x-auto'
         >
-          <table className='min-w-[1600px]'>
+          <table className='table-fixed min-w-[1600px]'>
             <thead>
               <tr className='border-b border-slate-200 text-left text-xs uppercase tracking-[0.18em] text-slate-500'>
-                <th className='sticky left-0 z-10 w-[320px] border-r border-slate-200 bg-white px-5 py-4 font-medium shadow-[12px_0_24px_-18px_rgba(15,23,42,0.18)]'>
+                <th className='sticky left-0 z-10 w-[192px] whitespace-nowrap border-r border-slate-200 bg-white px-5 py-4 font-medium shadow-[12px_0_24px_-18px_rgba(15,23,42,0.18)]'>
                   {t('tokensColumnToken')}
                 </th>
-                <th className='w-[280px] px-5 py-4 font-medium'>{t('tokensColumnApiKey')}</th>
-                <th className='w-[120px] px-5 py-4 font-medium'>{t('tokensColumnStatus')}</th>
-                <th className='w-[360px] px-5 py-4 font-medium'>{t('tokensColumnUsage')}</th>
-                <th className='w-[150px] px-5 py-4 font-medium'>{t('tokensColumnExpires')}</th>
-                <th className='w-[140px] px-5 py-4 font-medium'>{t('tokensColumnGroup')}</th>
-                <th className='w-[170px] px-5 py-4 font-medium'>{t('tokensColumnLastUsed')}</th>
-                <th className='w-[170px] px-5 py-4 font-medium'>{t('tokensColumnCreated')}</th>
-                <th className='sticky right-0 z-10 border-l border-slate-200 bg-white px-5 py-4 font-medium shadow-[-12px_0_24px_-18px_rgba(15,23,42,0.22)]'>
+                <th className='w-[280px] whitespace-nowrap px-5 py-4 font-medium'>{t('tokensColumnApiKey')}</th>
+                <th className='w-[120px] whitespace-nowrap px-5 py-4 font-medium'>{t('tokensColumnStatus')}</th>
+                <th className='w-[360px] whitespace-nowrap px-5 py-4 font-medium'>{t('tokensColumnUsage')}</th>
+                <th className='w-[150px] whitespace-nowrap px-5 py-4 font-medium'>{t('tokensColumnExpires')}</th>
+                <th className='w-[140px] whitespace-nowrap px-5 py-4 font-medium'>{t('tokensColumnGroup')}</th>
+                <th className='w-[170px] whitespace-nowrap px-5 py-4 font-medium'>{t('tokensColumnLastUsed')}</th>
+                <th className='w-[170px] whitespace-nowrap px-5 py-4 font-medium'>{t('tokensColumnCreated')}</th>
+                <th className='sticky right-0 z-10 w-[260px] whitespace-nowrap border-l border-slate-200 bg-white px-5 py-4 font-medium shadow-[-12px_0_24px_-18px_rgba(15,23,42,0.22)]'>
                   {t('tokensColumnActions')}
                 </th>
               </tr>
@@ -521,14 +548,14 @@ export default function Tokens() {
               {filtered.length > 0 ? (
                 filtered.map((token) => (
                   <tr key={token.id} className='h-[118px] border-b border-slate-100 text-sm text-slate-700'>
-                    <td className='sticky left-0 z-10 w-[320px] border-r border-slate-100 bg-white px-5 py-4 align-middle shadow-[12px_0_24px_-18px_rgba(15,23,42,0.18)]'>
-                      <div className='space-y-1'>
-                        <p className='break-words font-medium text-slate-950'>{token.name}</p>
+                    <td className='sticky left-0 z-10 w-[192px] border-r border-slate-100 bg-white px-5 py-4 align-middle shadow-[12px_0_24px_-18px_rgba(15,23,42,0.18)]'>
+                      <div className='w-[152px] space-y-1 overflow-hidden'>
+                        <p className='truncate font-medium text-slate-950'>{token.name}</p>
                       </div>
                     </td>
                     <td className='w-[280px] px-5 py-4 align-middle'>
                       <div className='flex items-center gap-3'>
-                        <p className='rounded-xl bg-slate-50 px-3 py-2 font-mono text-xs text-sky-700'>
+                        <p className='w-[184px] truncate rounded-xl bg-slate-50 px-3 py-2 font-mono text-xs text-sky-700'>
                           {token.key || '--'}
                         </p>
                         <button
@@ -564,15 +591,15 @@ export default function Tokens() {
                     <td className='w-[360px] px-5 py-4 align-middle'>
                       <div className='flex min-h-[72px] flex-col justify-center space-y-2'>
                         <div className='flex items-baseline gap-3 text-sm'>
-                          <span className='text-slate-500'>{t('tokensUsageToday')}</span>
+                          <span className='w-[72px] whitespace-nowrap text-slate-500'>{t('tokensUsageToday')}</span>
                           <span className='font-semibold text-slate-950'>{token.todayQuotaText}</span>
                         </div>
                         <div className='flex items-baseline gap-3 text-sm'>
-                          <span className='text-slate-500'>{t('tokensUsageLast30d')}</span>
+                          <span className='w-[72px] whitespace-nowrap text-slate-500'>{t('tokensUsageLast30d')}</span>
                           <span className='font-medium text-slate-700'>{token.totalUsageQuotaText}</span>
                         </div>
                         <div className='flex items-baseline gap-3 text-sm'>
-                          <span className='text-slate-500'>{t('tokensUsageQuota')}</span>
+                          <span className='w-[72px] whitespace-nowrap text-slate-500'>{t('tokensUsageQuota')}</span>
                           <span className='whitespace-nowrap font-medium text-slate-700'>
                             {token.quotaLimitText}
                           </span>
@@ -606,12 +633,12 @@ export default function Tokens() {
                     <td className='whitespace-nowrap px-5 py-4 align-middle text-slate-500'>
                       {token.createdAtText}
                     </td>
-                    <td className='sticky right-0 z-10 border-l border-slate-100 bg-white px-5 py-4 align-middle shadow-[-12px_0_24px_-18px_rgba(15,23,42,0.22)]'>
-                      <div className='flex w-fit flex-nowrap gap-2'>
+                    <td className='sticky right-0 z-10 w-[260px] border-l border-slate-100 bg-white px-5 py-4 align-middle shadow-[-12px_0_24px_-18px_rgba(15,23,42,0.22)]'>
+                      <div className='flex w-[220px] flex-nowrap gap-2'>
                         <button
                           type='button'
                           onClick={() => openEditForm(token)}
-                          className='secondary-button !rounded-lg !px-3 !py-2'
+                          className='secondary-button !w-[72px] !justify-center !rounded-lg !px-3 !py-2'
                         >
                           {t('tokensEdit')}
                         </button>
@@ -627,7 +654,7 @@ export default function Tokens() {
                           type='button'
                           onClick={() => handleDelete(token.id)}
                           disabled={busyId === token.id}
-                          className='secondary-button !rounded-lg !border-rose-200 !px-3 !py-2 !text-rose-600 hover:!bg-rose-50'
+                          className='secondary-button !w-[72px] !justify-center !rounded-lg !border-rose-200 !px-3 !py-2 !text-rose-600 hover:!bg-rose-50'
                         >
                           {t('tokensDelete')}
                         </button>
@@ -661,6 +688,63 @@ export default function Tokens() {
             className='token-scrollbar w-full'
           />
         </div>
+        <div className='flex flex-col gap-3 border-t border-slate-200 bg-white px-4 py-4 xl:flex-row xl:items-center xl:justify-between'>
+          <div className='min-w-[160px] whitespace-nowrap text-sm text-slate-500'>
+            {t('tokensPaginationSummary')
+              .replace('{start}', totalItems === 0 ? '0' : String((page - 1) * pageSize + 1))
+              .replace('{end}', String(Math.min(page * pageSize, totalItems)))
+              .replace('{total}', String(totalItems))}
+          </div>
+          <div className='flex flex-wrap items-center gap-2 xl:flex-nowrap'>
+            <label className='whitespace-nowrap text-sm text-slate-500'>{t('tokensPaginationPerPage')}</label>
+            <select
+              value={pageSize}
+              onChange={(event) => {
+                setPageSize(Number(event.target.value));
+                setPage(1);
+              }}
+              className='input-shell !h-10 !w-[88px] !rounded-xl !px-3 !py-2 text-sm'
+            >
+              {[20, 50, 100].map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+            <button
+              type='button'
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={page <= 1}
+              className='secondary-button !w-[68px] !justify-center !rounded-xl !px-3 !py-2 disabled:opacity-40'
+            >
+              {t('tokensPaginationPrev')}
+            </button>
+            <div className='flex items-center gap-2'>
+              <select
+                value={page}
+                onChange={(event) => setPage(Number(event.target.value))}
+                className='input-shell !h-10 !w-[72px] !rounded-xl !px-3 !py-2 text-sm'
+              >
+                {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
+                  <option key={pageNumber} value={pageNumber}>
+                    {pageNumber}
+                  </option>
+                ))}
+              </select>
+              <div className='min-w-[32px] whitespace-nowrap text-center text-sm font-medium text-slate-700'>
+                / {totalPages}
+              </div>
+            </div>
+            <button
+              type='button'
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              disabled={page >= totalPages}
+              className='secondary-button !w-[68px] !justify-center !rounded-xl !px-3 !py-2 disabled:opacity-40'
+            >
+              {t('tokensPaginationNext')}
+            </button>
+          </div>
+        </div>
       </section>
 
       {isFormOpen ? (
@@ -693,7 +777,7 @@ export default function Tokens() {
               </div>
 
               <div className='space-y-2'>
-                <label className='text-sm font-medium text-slate-700'>
+                <label className='block min-h-[40px] text-sm font-medium leading-5 text-slate-700'>
                   {t('tokensFormQuota')} ({t('tokensFormQuotaHint')})
                 </label>
                 <div className='relative'>
@@ -718,7 +802,7 @@ export default function Tokens() {
 
               <div className='space-y-2 sm:col-span-2'>
                 <label className='text-sm font-medium text-slate-700'>{t('tokensFormExpires')}</label>
-                <div className='flex flex-wrap gap-2'>
+                <div className='grid grid-cols-2 gap-2 lg:grid-cols-5'>
                   {(
                     [
                       ['never', t('tokensFormNever')],
@@ -758,7 +842,7 @@ export default function Tokens() {
                           : 'rounded-xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-600'
                       }
                     >
-                      {label}
+                      <span className='whitespace-nowrap'>{label}</span>
                     </button>
                   ))}
                 </div>

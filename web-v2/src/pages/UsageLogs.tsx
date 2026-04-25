@@ -23,7 +23,8 @@ type ParsedOther = Record<string, unknown>;
 function parseOther(other?: string) {
   if (!other) return {};
   try {
-    return JSON.parse(other) as ParsedOther;
+    const parsed = JSON.parse(other) as ParsedOther | null;
+    return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
     return {};
   }
@@ -367,10 +368,10 @@ function getUserAgent(other: ParsedOther) {
   );
 }
 
-function getEndpoint(other: ParsedOther, t: (key: string) => string) {
+function getEndpoint(other: ParsedOther) {
   return typeof other.request_path === 'string' && other.request_path
     ? String(other.request_path)
-    : t('usageUnknownEndpoint');
+    : '--';
 }
 
 function getToneClass(tone: 'sky' | 'amber' | 'violet' | 'teal' | 'lime' | 'rose') {
@@ -623,10 +624,10 @@ export default function UsageLogs() {
         return {
           id: item.id,
           tokenName: item.token_name || 'default',
-          modelName: item.model_name || 'unknown',
+          modelName: item.model_name || '--',
           reasoningEffort: getReasoningEffort(other, translate),
           requestType,
-          endpoint: getEndpoint(other, translate),
+          endpoint: getEndpoint(other),
           billingMode: getBillingModeLabel(billingMode, translate),
           streamType: item.is_stream ? t('usageModeStream') : t('usageModeStandard'),
           inputTokens: Math.max(0, (item.prompt_tokens || 0) - cacheTokens),
@@ -1404,14 +1405,6 @@ export default function UsageLogs() {
                     </div>
                     <div className='border-t border-slate-700 pt-3 text-[13px]'>
                       <div className='flex items-center justify-between'>
-                        <span className='text-slate-300'>Service tier</span>
-                        <span className='font-medium text-sky-400'>Standard</span>
-                      </div>
-                      <div className='mt-2 flex items-center justify-between'>
-                        <span className='text-slate-300'>Rate</span>
-                        <span className='font-medium text-sky-400'>1.00x</span>
-                      </div>
-                      <div className='mt-2 flex items-center justify-between'>
                         <span className='text-slate-300'>Original</span>
                         <span className='font-medium text-white'>{formatUsd(row.spendUsd).replace('+', '')}</span>
                       </div>
