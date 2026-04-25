@@ -15,6 +15,34 @@ export default function AppLayout() {
   const { locale, setLocale, t } = useI18n();
   const systemName = status.data?.system_name || 'new-api';
 
+  const pageHeader = (() => {
+    if (location.pathname === '/console/usage') {
+      return {
+        title: t('usageEyebrow'),
+        description: t('usageDescription'),
+      };
+    }
+
+    if (location.pathname === '/console/tokens') {
+      return {
+        title: 'Tokens',
+        description: '',
+      };
+    }
+
+    if (location.pathname === '/console/channels') {
+      return {
+        title: 'Channels',
+        description: '',
+      };
+    }
+
+    return {
+      title: systemName,
+      description: '',
+    };
+  })();
+
   const navigation = [
     { name: 'Overview', href: '/console', icon: LayoutDashboard },
     { name: t('usageNav'), href: '/console/usage', icon: BarChart3 },
@@ -61,12 +89,17 @@ export default function AppLayout() {
 
         <div className='flex min-w-0 flex-1 flex-col'>
           <header className='border-b border-slate-200 bg-white'>
-            <div className='mx-auto flex max-w-6xl items-center justify-between px-5 py-4 lg:px-8'>
-              <div className='flex items-center gap-3'>
+            <div className='mx-auto flex max-w-6xl items-start justify-between px-5 py-4 lg:px-8'>
+              <div className='flex items-start gap-3'>
                 <button className='inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 xl:hidden'>
                   <Menu className='h-4 w-4' />
                 </button>
-                <p className='text-sm font-semibold text-slate-900'>{systemName}</p>
+                <div className='min-w-0 max-w-[720px]'>
+                  <p className='truncate text-[20px] font-semibold leading-[1.1] text-slate-950'>{pageHeader.title}</p>
+                  {pageHeader.description ? (
+                    <p className='mt-1 text-sm leading-6 text-slate-600'>{pageHeader.description}</p>
+                  ) : null}
+                </div>
               </div>
 
               <button

@@ -60,6 +60,11 @@ export type TokenWorkspaceRecord = TokenRecord & {
   preview?: boolean;
 };
 
+export type TokenWorkspaceResponse = {
+  items: TokenWorkspaceRecord[];
+  total: number;
+};
+
 function getRange(days: number) {
   const end = Math.floor(Date.now() / 1000);
   const start = end - days * 24 * 60 * 60;
@@ -87,9 +92,9 @@ async function fetchTokenUsageByWindow(days: number) {
   return usageMap;
 }
 
-export async function fetchTokens() {
+export async function fetchTokens(page = 1, pageSize = 20): Promise<TokenWorkspaceResponse> {
   try {
-    const response = await api.get<TokenResponse>('/api/token/?p=1&size=20');
+    const response = await api.get<TokenResponse>(`/api/token/?p=${page}&size=${pageSize}`);
     const payload = response.data;
 
     if (!payload.success) {
@@ -102,19 +107,22 @@ export async function fetchTokens() {
       fetchTokenUsageByWindow(30),
     ]);
 
-    return items.map((token) => ({
-      ...token,
-      today_quota: todayUsageMap.get(token.name || '') || 0,
-      total_quota: last30UsageMap.get(token.name || '') || 0,
-      preview: false,
-    }));
+    return {
+      items: items.map((token) => ({
+        ...token,
+        today_quota: todayUsageMap.get(token.name || '') || 0,
+        total_quota: last30UsageMap.get(token.name || '') || 0,
+        preview: false,
+      })),
+      total: payload.data?.total || items.length,
+    };
   } catch (error) {
     if (!isUnauthorizedError(error)) {
       throw error;
     }
 
     const now = Math.floor(Date.now() / 1000);
-    return [
+    const items = [
       {
         id: 1,
         key: 'sk-...A1B2',
@@ -147,6 +155,11 @@ export async function fetchTokens() {
         preview: true,
       },
     ];
+
+    return {
+      items: items.slice((page - 1) * pageSize, page * pageSize),
+      total: items.length,
+    };
   }
 }
 
