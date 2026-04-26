@@ -83,6 +83,10 @@ export async function fetchDashboardOverview() {
     .sort((left, right) => right.requests - left.requests)
     .slice(0, 4);
 
+  const recentItems = [...items]
+    .sort((left, right) => right.created_at - left.created_at)
+    .slice(0, 5);
+
   return {
     items,
     totalRequests,
@@ -90,5 +94,6 @@ export async function fetchDashboardOverview() {
     providerCount,
     activeDays,
     topModels,
+    recentItems,
   };
 }

@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
-import { ArrowRight, BarChart3, Coins, KeyRound, Layers3, TimerReset, Wallet } from 'lucide-react';
+import { ArrowRight, BarChart3, Clock3, Layers3, Wallet } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import MetricCard from '../components/ui/MetricCard';
 import StatePanel from '../components/ui/StatePanel';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { fetchDashboardOverview } from '../lib/dashboard';
@@ -12,9 +11,7 @@ type TrendPoint = {
   total: number;
 };
 
-function buildTrendPoints(
-  items: Array<{ created_at: number; count?: number }>,
-): TrendPoint[] {
+function buildTrendPoints(items: Array<{ created_at: number; count?: number }>): TrendPoint[] {
   const map = new Map<string, number>();
 
   for (const item of items) {
@@ -29,7 +26,7 @@ function buildTrendPoints(
 }
 
 function buildLinePath(points: TrendPoint[], width: number, height: number) {
-  if (points.length === 0) return '';
+  if (!points.length) return '';
   const maxValue = Math.max(...points.map((point) => point.total), 1);
   const stepX = points.length > 1 ? width / (points.length - 1) : width;
 
@@ -54,69 +51,105 @@ export default function Dashboard() {
 
   const items = overview.data?.items || [];
   const topModels = overview.data?.topModels || [];
+  const recentItems = overview.data?.recentItems || [];
   const trendPoints = useMemo(() => buildTrendPoints(items), [items]);
-  const trendPath = useMemo(() => buildLinePath(trendPoints, 320, 120), [trendPoints]);
+  const trendPath = useMemo(() => buildLinePath(trendPoints, 360, 112), [trendPoints]);
 
   const totalRequests = overview.data?.totalRequests || 0;
   const totalQuota = overview.data?.totalQuota || 0;
   const providerCount = overview.data?.providerCount || 0;
   const activeDays = overview.data?.activeDays || 0;
   const averageRequests = activeDays > 0 ? Math.round(totalRequests / activeDays) : 0;
-  const topModelShare = topModels[0] ? Math.round(topModels[0].share * 100) : 0;
 
   const stats = [
     {
+      label: t('dashboardMetricRequests'),
+      value: formatCompact(totalRequests),
+      hint: t('dashboardMetricRequestsHint'),
+      icon: BarChart3,
+    },
+    {
       label: t('dashboardMetricQuota'),
       value: formatCompact(totalQuota),
-      hint: 'Used quota',
+      hint: t('dashboardMetricQuotaHint'),
       icon: Wallet,
     },
     {
       label: t('dashboardMetricModels'),
       value: String(providerCount),
-      hint: 'Active models',
+      hint: t('dashboardMetricModelsHint'),
       icon: Layers3,
-    },
-    {
-      label: t('dashboardMetricRequests'),
-      value: formatCompact(totalRequests),
-      hint: 'Total requests',
-      icon: BarChart3,
     },
     {
       label: t('dashboardMetricDays'),
       value: String(activeDays),
-      hint: 'Active days',
-      icon: TimerReset,
-    },
-    {
-      label: 'Avg / day',
-      value: formatCompact(averageRequests),
-      hint: 'Request pace',
-      icon: Coins,
-    },
-    {
-      label: 'Top share',
-      value: `${topModelShare}%`,
-      hint: topModels[0]?.name || '—',
-      icon: KeyRound,
+      hint: t('dashboardMetricDaysHint'),
+      icon: Clock3,
     },
   ];
 
-  const recentItems = [...items]
-    .sort((left, right) => right.created_at - left.created_at)
-    .slice(0, 5);
-
   return (
     <div className='space-y-5'>
-      <section className='rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm'>
-        <h1 className='text-2xl font-semibold text-slate-950'>{t('dashboardEyebrow')}</h1>
-        <p className='mt-1 text-sm text-slate-500'>{t('dashboardDescription')}</p>
+      <section className='grid gap-4 xl:grid-cols-[1.15fr_0.85fr]'>
+        <article className='rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm'>
+          <p className='text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400'>{t('dashboardEyebrow')}</p>
+          <div className='mt-2 grid gap-3'>
+            <h1 className='min-h-[58px] max-w-[720px] text-[26px] font-semibold tracking-[-0.04em] text-slate-950'>
+              {t('dashboardTitle')}
+            </h1>
+            <p className='min-h-[44px] max-w-[680px] text-sm leading-6 text-slate-600'>{t('dashboardDescription')}</p>
+          </div>
+
+          <div className='mt-5 grid gap-3 md:grid-cols-3'>
+            <div className='grid min-h-[92px] grid-rows-[auto_1fr] rounded-[20px] border border-slate-200 bg-slate-50/80 px-4 py-4'>
+              <p className='text-xs font-semibold uppercase tracking-[0.16em] text-slate-400'>{t('dashboardTrafficWindow')}</p>
+              <p className='mt-2 self-end text-lg font-semibold text-slate-950'>{t('dashboardTrafficWindowValue')}</p>
+            </div>
+            <div className='grid min-h-[92px] grid-rows-[auto_1fr] rounded-[20px] border border-slate-200 bg-slate-50/80 px-4 py-4'>
+              <p className='text-xs font-semibold uppercase tracking-[0.16em] text-slate-400'>{t('dashboardAvgLabel')}</p>
+              <p className='mt-2 self-end text-lg font-semibold text-slate-950'>{formatCompact(averageRequests)}</p>
+            </div>
+            <div className='grid min-h-[92px] grid-rows-[auto_1fr] rounded-[20px] border border-slate-200 bg-slate-50/80 px-4 py-4'>
+              <p className='text-xs font-semibold uppercase tracking-[0.16em] text-slate-400'>{t('dashboardTopModelLabel')}</p>
+              <p className='mt-2 self-end truncate text-lg font-semibold text-slate-950'>{topModels[0]?.name || '--'}</p>
+            </div>
+          </div>
+        </article>
+
+        <article className='rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm'>
+          <p className='text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400'>{t('dashboardQuickEyebrow')}</p>
+          <h2 className='mt-2 min-h-[28px] text-xl font-semibold text-slate-950'>{t('dashboardQuickTitle')}</h2>
+
+          <div className='mt-5 grid gap-3 sm:grid-cols-2'>
+            {[
+              { label: t('dashboardQuickPlayground'), href: '/console/playground' },
+              { label: t('dashboardQuickUsage'), href: '/console/usage' },
+              { label: t('dashboardQuickTasks'), href: '/console/tasklog' },
+              { label: t('dashboardQuickTokens'), href: '/console/tokens' },
+            ].map((item) => (
+              <Link
+                key={item.href}
+                to={item.href}
+                className='flex min-h-[64px] items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100'
+              >
+                <span className='leading-5'>{item.label}</span>
+                <ArrowRight className='h-4 w-4 text-slate-400' />
+              </Link>
+            ))}
+          </div>
+        </article>
       </section>
 
-      <section className='grid gap-4 md:grid-cols-2 xl:grid-cols-3'>
+      <section className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
         {stats.map((item) => (
-          <MetricCard key={item.label} {...item} />
+          <article key={item.label} className='grid min-h-[144px] grid-rows-[auto_auto_1fr] rounded-[28px] border border-slate-200 bg-white px-5 py-5 shadow-sm'>
+            <div className='flex items-center justify-between gap-4'>
+              <p className='text-xs font-semibold uppercase tracking-[0.16em] text-slate-400'>{item.label}</p>
+              <item.icon className='h-4 w-4 text-slate-400' />
+            </div>
+            <p className='mt-3 text-[30px] font-semibold tracking-[-0.03em] text-slate-950'>{item.value}</p>
+            <p className='mt-2 text-sm leading-5 text-slate-500'>{item.hint}</p>
+          </article>
         ))}
       </section>
 
@@ -129,63 +162,26 @@ export default function Dashboard() {
       />
 
       <section className='grid gap-4 xl:grid-cols-[1fr_1fr]'>
-        <article className='rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm'>
-          <div className='flex items-center justify-between'>
-            <h2 className='text-lg font-semibold text-slate-950'>Model mix</h2>
-            <span className='text-sm text-slate-400'>{t('dashboardTrafficWindowValue')}</span>
-          </div>
-
-          <div className='mt-6 grid gap-6 lg:grid-cols-[220px_1fr] lg:items-center'>
-            <div className='flex items-center justify-center'>
-              <div className='relative h-44 w-44 rounded-full bg-[conic-gradient(#4f7cff_0_58%,#7ad3ff_58%_82%,#9b8cff_82%_100%)] p-5'>
-                <div className='flex h-full w-full items-center justify-center rounded-full bg-white text-center'>
-                  <div>
-                    <p className='text-xs uppercase tracking-[0.18em] text-slate-400'>Models</p>
-                    <p className='mt-2 text-3xl font-semibold text-slate-950'>{providerCount}</p>
-                  </div>
-                </div>
-              </div>
+        <article className='rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm'>
+          <div className='flex items-center justify-between gap-4'>
+            <div className='min-h-[56px]'>
+              <p className='text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400'>{t('dashboardTrafficEyebrow')}</p>
+              <h2 className='mt-2 text-xl font-semibold text-slate-950'>{t('dashboardTrafficTitle')}</h2>
             </div>
-
-            <div className='space-y-3'>
-              {topModels.length > 0 ? (
-                topModels.map((model) => (
-                  <div key={model.name} className='flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3'>
-                    <div>
-                      <p className='font-medium text-slate-950'>{model.name}</p>
-                      <p className='text-sm text-slate-500'>{formatCompact(model.requests)} requests</p>
-                    </div>
-                    <p className='text-sm font-medium text-slate-500'>
-                      {Math.round(model.share * 100)}%
-                    </p>
-                  </div>
-                ))
-              ) : (
-                <div className='rounded-2xl bg-slate-50 px-4 py-6 text-sm text-slate-500'>
-                  {t('dashboardTopModelsEmpty')}
-                </div>
-              )}
-            </div>
-          </div>
-        </article>
-
-        <article className='rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm'>
-          <div className='flex items-center justify-between'>
-            <h2 className='text-lg font-semibold text-slate-950'>Request trend</h2>
-            <span className='text-sm text-slate-400'>{trendPoints.length} points</span>
+            <p className='min-w-[104px] whitespace-nowrap text-right text-sm text-slate-500'>{t('dashboardTrafficWindowValue')}</p>
           </div>
 
-          <div className='mt-6'>
-            <svg viewBox='0 0 320 140' className='h-[180px] w-full'>
-              <path d='M 0 120 L 320 120' stroke='#e2e8f0' strokeWidth='1' fill='none' />
-              <path d='M 0 80 L 320 80' stroke='#eef2f7' strokeWidth='1' fill='none' />
-              <path d='M 0 40 L 320 40' stroke='#eef2f7' strokeWidth='1' fill='none' />
+          <div className='mt-5 overflow-hidden rounded-[22px] border border-slate-200 bg-slate-50/70 p-4'>
+            <svg viewBox='0 0 360 132' className='h-[176px] w-full'>
+              <path d='M 0 112 L 360 112' stroke='#e2e8f0' strokeWidth='1' fill='none' />
+              <path d='M 0 76 L 360 76' stroke='#eef2f7' strokeWidth='1' fill='none' />
+              <path d='M 0 40 L 360 40' stroke='#eef2f7' strokeWidth='1' fill='none' />
               {trendPath ? (
                 <path
                   d={trendPath}
                   transform='translate(0 10)'
                   fill='none'
-                  stroke='#4f7cff'
+                  stroke='#0f172a'
                   strokeWidth='3'
                   strokeLinecap='round'
                   strokeLinejoin='round'
@@ -193,12 +189,13 @@ export default function Dashboard() {
               ) : null}
               {trendPoints.map((point, index) => {
                 const maxValue = Math.max(...trendPoints.map((item) => item.total), 1);
-                const stepX = trendPoints.length > 1 ? 320 / (trendPoints.length - 1) : 320;
+                const stepX = trendPoints.length > 1 ? 360 / (trendPoints.length - 1) : 360;
                 const x = index * stepX;
-                const y = 130 - (point.total / maxValue) * 120;
-                return <circle key={point.label} cx={x} cy={y} r='4' fill='#4f7cff' />;
+                const y = 122 - (point.total / maxValue) * 112;
+                return <circle key={point.label} cx={x} cy={y} r='4' fill='#0f172a' />;
               })}
             </svg>
+
             <div className='mt-2 grid grid-cols-4 gap-2 text-xs text-slate-400'>
               {trendPoints.slice(0, 4).map((point) => (
                 <p key={point.label}>{point.label}</p>
@@ -206,21 +203,63 @@ export default function Dashboard() {
             </div>
           </div>
         </article>
+
+        <article className='rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm'>
+          <div className='flex items-center justify-between gap-4'>
+            <div className='min-h-[56px]'>
+              <p className='text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400'>{t('dashboardTopModelsEyebrow')}</p>
+              <h2 className='mt-2 text-xl font-semibold text-slate-950'>{t('dashboardTopModelsTitle')}</h2>
+            </div>
+            <p className='min-w-[48px] text-right text-sm text-slate-500'>{providerCount}</p>
+          </div>
+
+          <div className='mt-5 space-y-3'>
+            {topModels.length > 0 ? (
+              topModels.map((model) => (
+                <div key={model.name} className='flex min-h-[72px] items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3'>
+                  <div className='min-w-0'>
+                    <p className='truncate font-medium text-slate-950'>{model.name}</p>
+                    <p className='mt-1 text-sm text-slate-500'>
+                      {formatCompact(model.requests)} {t('dashboardTopModelsRequests')}
+                    </p>
+                  </div>
+                  <p className='shrink-0 text-sm font-medium text-slate-500'>{Math.round(model.share * 100)}%</p>
+                </div>
+              ))
+            ) : (
+              <div className='rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500'>
+                {t('dashboardTopModelsEmpty')}
+              </div>
+            )}
+          </div>
+        </article>
       </section>
 
-      <section className='grid gap-4 xl:grid-cols-[1.2fr_0.8fr]'>
-        <article className='rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm'>
-          <div className='flex items-center justify-between'>
-            <h2 className='text-lg font-semibold text-slate-950'>Recent usage</h2>
-            <span className='text-sm text-slate-400'>{t('dashboardTrafficWindowValue')}</span>
+      <section className='rounded-[30px] border border-slate-200 bg-white shadow-sm'>
+        <div className='flex items-center justify-between border-b border-slate-200 px-5 py-4'>
+          <div className='min-h-[56px]'>
+            <p className='text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400'>{t('dashboardRecentEyebrow')}</p>
+            <h2 className='mt-2 text-xl font-semibold text-slate-950'>{t('dashboardRecentTitle')}</h2>
           </div>
-          <div className='mt-4 space-y-3'>
-            {recentItems.length > 0 ? (
-              recentItems.map((item, index) => (
-                <div key={`${item.model_name}-${index}`} className='flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-4'>
-                  <div>
-                    <p className='font-medium text-slate-950'>{item.model_name || 'unknown'}</p>
-                    <p className='text-sm text-slate-500'>
+          <p className='min-w-[104px] whitespace-nowrap text-right text-sm text-slate-500'>{t('dashboardTrafficWindowValue')}</p>
+        </div>
+
+        <div className='overflow-x-auto'>
+          <table className='min-w-full table-fixed divide-y divide-slate-200'>
+            <thead className='bg-slate-50'>
+              <tr className='text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500'>
+                <th className='w-[40%] rounded-tl-[22px] px-5 py-4'>{t('dashboardRecentModel')}</th>
+                <th className='w-[26%] px-5 py-4'>{t('dashboardRecentTime')}</th>
+                <th className='w-[17%] px-5 py-4'>{t('dashboardRecentRequests')}</th>
+                <th className='w-[17%] rounded-tr-[22px] px-5 py-4'>{t('dashboardRecentQuota')}</th>
+              </tr>
+            </thead>
+            <tbody className='divide-y divide-slate-200 bg-white'>
+              {recentItems.length > 0 ? (
+                recentItems.map((item, index) => (
+                  <tr key={`${item.model_name}-${index}`} className='text-sm text-slate-600'>
+                    <td className='truncate px-5 py-4 font-medium text-slate-900'>{item.model_name || '--'}</td>
+                    <td className='px-5 py-4 whitespace-nowrap'>
                       {new Date(item.created_at * 1000).toLocaleString('en-US', {
                         month: '2-digit',
                         day: '2-digit',
@@ -228,41 +267,21 @@ export default function Dashboard() {
                         minute: '2-digit',
                         hour12: false,
                       })}
-                    </p>
-                  </div>
-                  <div className='text-right'>
-                    <p className='font-medium text-emerald-600'>{formatCompact(item.quota || 0)}</p>
-                    <p className='text-sm text-slate-500'>{formatCompact(item.count || 0)} requests</p>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className='rounded-2xl bg-slate-50 px-4 py-6 text-sm text-slate-500'>
-                No recent activity
-              </div>
-            )}
-          </div>
-        </article>
-
-        <article className='rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm'>
-          <h2 className='text-lg font-semibold text-slate-950'>Quick actions</h2>
-          <div className='mt-4 space-y-3'>
-            {[
-              { label: 'Open API keys', href: '/console/tokens' },
-              { label: 'View usage logs', href: '/console/usage' },
-              { label: 'Check channels', href: '/console/channels' },
-            ].map((item) => (
-              <Link
-                key={item.href}
-                to={item.href}
-                className='flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100'
-              >
-                {item.label}
-                <ArrowRight className='h-4 w-4 text-slate-400' />
-              </Link>
-            ))}
-          </div>
-        </article>
+                    </td>
+                    <td className='px-5 py-4'>{formatCompact(item.count || 0)}</td>
+                    <td className='px-5 py-4 font-medium text-slate-900'>{formatCompact(item.quota || 0)}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={4} className='px-5 py-8 text-center text-sm text-slate-500'>
+                    {t('dashboardTrafficEmpty')}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );
