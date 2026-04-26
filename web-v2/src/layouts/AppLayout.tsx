@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { BarChart3, CreditCard, Key, Layers, LayoutDashboard, Menu, Workflow } from 'lucide-react';
+import { BarChart3, CreditCard, Key, Layers, LayoutDashboard, Menu, Sparkles, Workflow } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { useStatus } from '../hooks/useStatus';
@@ -37,6 +37,13 @@ export default function AppLayout() {
       };
     }
 
+    if (location.pathname === '/console/playground') {
+      return {
+        title: t('playgroundNav'),
+        description: t('playgroundDescription'),
+      };
+    }
+
     if (location.pathname === '/console/channels') {
       return {
         title: 'Channels',
@@ -52,6 +59,7 @@ export default function AppLayout() {
 
   const navigation = [
     { name: 'Overview', href: '/console', icon: LayoutDashboard },
+    { name: t('playgroundNav'), href: '/console/playground', icon: Sparkles },
     { name: t('usageNav'), href: '/console/usage', icon: BarChart3 },
     { name: t('billingNav'), href: '/console/billing', icon: CreditCard },
     { name: 'Channels', href: '/console/channels', icon: Layers },
