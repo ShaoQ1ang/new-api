@@ -113,15 +113,15 @@ export default function AppLayout() {
 
         <div className='flex min-w-0 flex-1 flex-col'>
           <header className='border-b border-slate-200 bg-white'>
-            <div className='mx-auto flex min-h-[84px] max-w-6xl items-start justify-between px-5 py-4 lg:px-8'>
+            <div className='mx-auto flex min-h-[68px] max-w-6xl items-start justify-between px-5 py-3 lg:px-8'>
               <div className='flex items-start gap-3'>
                 <button className='inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 xl:hidden'>
                   <Menu className='h-4 w-4' />
                 </button>
                 <div className='min-w-0 max-w-[720px]'>
-                  <p className='min-h-[24px] text-[20px] font-semibold leading-[1.1] text-slate-950'>{pageHeader.title}</p>
+                  <p className='min-h-[22px] text-[18px] font-semibold leading-[1.1] text-slate-950'>{pageHeader.title}</p>
                   {pageHeader.description ? (
-                    <p className='mt-1 min-h-[24px] max-w-[680px] text-sm leading-6 text-slate-600'>{pageHeader.description}</p>
+                    <p className='mt-0.5 min-h-[20px] max-w-[680px] text-sm leading-5 text-slate-600'>{pageHeader.description}</p>
                   ) : null}
                 </div>
               </div>
@@ -129,7 +129,7 @@ export default function AppLayout() {
               <button
                 type='button'
                 onClick={() => setLocale(locale === 'en' ? 'zh' : 'en')}
-                className='h-10 w-[96px] rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50'
+                className='h-9 w-[92px] rounded-full border border-slate-200 bg-white px-4 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50'
               >
                 {t('localeLabel')}
               </button>
