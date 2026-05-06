@@ -3,6 +3,7 @@ import AppLayout from './layouts/AppLayout';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import Models from './pages/Models';
 import Tokens from './pages/Tokens';
 import UsageLogs from './pages/UsageLogs';
 import Billing from './pages/Billing';
@@ -16,6 +17,7 @@ export default function App() {
       <Route path='/login' element={<Login />} />
       <Route path='/console' element={<AppLayout />}>
         <Route index element={<Dashboard />} />
+        <Route path='models' element={<Models />} />
         <Route path='tokens' element={<Tokens />} />
         <Route path='usage' element={<UsageLogs />} />
         <Route path='tasklog' element={<TaskLogs />} />

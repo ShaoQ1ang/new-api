@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { CheckCircle2, CircleDashed, Clock3, ExternalLink, Film, PlayCircle, Search, X, XCircle } from 'lucide-react';
 import StatePanel from '../components/ui/StatePanel';
+import UnifiedPagination from '../components/ui/UnifiedPagination';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useI18n } from '../i18n/I18nProvider';
 import { fetchTaskLogs } from '../lib/taskLogs';
@@ -366,30 +367,20 @@ export default function TaskLogs() {
           description={t('taskEmptyDescription')}
         />
 
-        <div className='flex items-center justify-between border-t border-slate-200 px-5 py-4'>
-          <p className='min-w-[92px] text-sm text-slate-500'>{t('taskPaginationSummary').replace('{start}', String(startIndex)).replace('{end}', String(endIndex)).replace('{total}', String(total))}</p>
-          <div className='flex items-center gap-2'>
-            <button
-              type='button'
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page <= 1}
-              className='inline-flex h-10 min-w-[88px] items-center justify-center rounded-full border border-slate-200 px-4 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40'
-            >
-              {t('taskPaginationPrev')}
-            </button>
-            <span className='min-w-[72px] text-center text-sm font-medium text-slate-700'>
-              {page} / {totalPages}
-            </span>
-            <button
-              type='button'
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={page >= totalPages}
-              className='inline-flex h-10 min-w-[88px] items-center justify-center rounded-full border border-slate-200 px-4 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40'
-            >
-              {t('taskPaginationNext')}
-            </button>
-          </div>
-        </div>
+        <UnifiedPagination
+          page={page}
+          pageSize={pageSize}
+          totalItems={total}
+          totalPages={totalPages}
+          summaryTemplate={t('taskPaginationSummary')}
+          pageSizeLabel={t('taskPaginationPerPage')}
+          pageSizeOptions={[10, 20, 50, 100]}
+          onPageChange={setPage}
+          onPageSizeChange={(nextPageSize) => {
+            setPageSize(nextPageSize);
+            setPage(1);
+          }}
+        />
       </article>
 
       {previewRow ? (

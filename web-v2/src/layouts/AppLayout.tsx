@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { BarChart3, Clapperboard, CreditCard, Key, LayoutDashboard, Menu, Sparkles, Workflow } from 'lucide-react';
+import { BarChart3, Boxes, Clapperboard, CreditCard, Key, LayoutDashboard, Menu, Sparkles, Workflow } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { useStatus } from '../hooks/useStatus';
@@ -25,8 +25,15 @@ export default function AppLayout() {
 
     if (location.pathname === '/console/tokens') {
       return {
-        title: 'Tokens',
-        description: '',
+        title: t('tokensEyebrow'),
+        description: t('tokensDescription'),
+      };
+    }
+
+    if (location.pathname === '/console/models') {
+      return {
+        title: t('modelsNav'),
+        description: t('modelsDescription'),
       };
     }
 
@@ -59,11 +66,12 @@ export default function AppLayout() {
 
   const navigation = [
     { name: 'Overview', href: '/console', icon: LayoutDashboard },
+    { name: t('modelsNav'), href: '/console/models', icon: Boxes },
     { name: t('playgroundNav'), href: '/console/playground', icon: Sparkles },
     { name: t('usageNav'), href: '/console/usage', icon: BarChart3 },
     { name: t('taskNav'), href: '/console/tasklog', icon: Clapperboard },
     { name: t('billingNav'), href: '/console/billing', icon: CreditCard },
-    { name: 'Tokens', href: '/console/tokens', icon: Key },
+    { name: 'API Keys', href: '/console/tokens', icon: Key },
   ];
 
   return (

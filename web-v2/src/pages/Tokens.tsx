@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Copy, Gauge, KeyRound, Plus, ShieldCheck } from 'lucide-react';
 import MetricCard from '../components/ui/MetricCard';
 import StatePanel from '../components/ui/StatePanel';
+import UnifiedPagination from '../components/ui/UnifiedPagination';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useStatus } from '../hooks/useStatus';
 import {
@@ -688,63 +689,20 @@ export default function Tokens() {
             className='token-scrollbar w-full'
           />
         </div>
-        <div className='flex flex-col gap-3 border-t border-slate-200 bg-white px-4 py-4 xl:flex-row xl:items-center xl:justify-between'>
-          <div className='min-w-[160px] whitespace-nowrap text-sm text-slate-500'>
-            {t('tokensPaginationSummary')
-              .replace('{start}', totalItems === 0 ? '0' : String((page - 1) * pageSize + 1))
-              .replace('{end}', String(Math.min(page * pageSize, totalItems)))
-              .replace('{total}', String(totalItems))}
-          </div>
-          <div className='flex flex-wrap items-center gap-2 xl:flex-nowrap'>
-            <label className='whitespace-nowrap text-sm text-slate-500'>{t('tokensPaginationPerPage')}</label>
-            <select
-              value={pageSize}
-              onChange={(event) => {
-                setPageSize(Number(event.target.value));
-                setPage(1);
-              }}
-              className='input-shell !h-10 !w-[88px] !rounded-xl !px-3 !py-2 text-sm'
-            >
-              {[20, 50, 100].map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
-            <button
-              type='button'
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page <= 1}
-              className='secondary-button !w-[68px] !justify-center !rounded-xl !px-3 !py-2 disabled:opacity-40'
-            >
-              {t('tokensPaginationPrev')}
-            </button>
-            <div className='flex items-center gap-2'>
-              <select
-                value={page}
-                onChange={(event) => setPage(Number(event.target.value))}
-                className='input-shell !h-10 !w-[72px] !rounded-xl !px-3 !py-2 text-sm'
-              >
-                {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
-                  <option key={pageNumber} value={pageNumber}>
-                    {pageNumber}
-                  </option>
-                ))}
-              </select>
-              <div className='min-w-[32px] whitespace-nowrap text-center text-sm font-medium text-slate-700'>
-                / {totalPages}
-              </div>
-            </div>
-            <button
-              type='button'
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={page >= totalPages}
-              className='secondary-button !w-[68px] !justify-center !rounded-xl !px-3 !py-2 disabled:opacity-40'
-            >
-              {t('tokensPaginationNext')}
-            </button>
-          </div>
-        </div>
+        <UnifiedPagination
+          page={page}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          totalPages={totalPages}
+          summaryTemplate={t('tokensPaginationSummary')}
+          pageSizeLabel={t('tokensPaginationPerPage')}
+          pageSizeOptions={[20, 50, 100]}
+          onPageChange={setPage}
+          onPageSizeChange={(nextPageSize) => {
+            setPageSize(nextPageSize);
+            setPage(1);
+          }}
+        />
       </section>
 
       {isFormOpen ? (

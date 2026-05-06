@@ -17,6 +17,7 @@ import {
   fetchPlaygroundTokenKey,
   fetchPlaygroundTokens,
   fetchPlaygroundVideoTask,
+  type PricingModelRecord,
   sendPlaygroundChat,
   sendPlaygroundImage,
 } from '../lib/playground';
@@ -32,6 +33,47 @@ type Thread = {
   title: string;
   messages: Message[];
 };
+
+function isImageModel(model: PricingModelRecord) {
+  const endpoints = model.supported_endpoint_types || [];
+  const blob = `${model.model_name} ${model.description || ''} ${model.tags || ''}`.toLowerCase();
+  return endpoints.includes('image-generation') || endpoints.includes('images') || Boolean(model.image_ratio) || /(image|img|flux|sdxl|dall|seedream|jimeng|mj|midjourney|recraft)/.test(blob);
+}
+
+function isVideoModel(model: PricingModelRecord) {
+  const endpoints = model.supported_endpoint_types || [];
+  const blob = `${model.model_name} ${model.description || ''} ${model.tags || ''}`.toLowerCase();
+  return endpoints.includes('video-generation') || endpoints.includes('video') || /(video|vidu|kling|wan|seedance|hailuo|sora|veo)/.test(blob);
+}
+
+function isChatModel(model: PricingModelRecord) {
+  const endpoints = model.supported_endpoint_types || [];
+  if (isImageModel(model) || isVideoModel(model)) return false;
+  return endpoints.includes('openai') || endpoints.includes('responses') || endpoints.includes('anthropic') || endpoints.includes('gemini');
+}
+
+function buildChatMessages(messages: Message[], prompt: string, referenceImages: string[]) {
+  const history = messages
+    .filter((message) => message.kind === 'text')
+    .map((message) => ({
+      role: message.role,
+      content: message.content,
+    })) as Array<{ role: 'user' | 'assistant'; content: string }>;
+
+  return [
+    ...history,
+    {
+      role: 'user' as const,
+      content: [
+        { type: 'text' as const, text: prompt },
+        ...referenceImages.map((imageUrl) => ({
+          type: 'image_url' as const,
+          image_url: { url: imageUrl },
+        })),
+      ],
+    },
+  ];
+}
 
 export default function Playground() {
   const { t } = useI18n();
@@ -63,28 +105,50 @@ export default function Playground() {
   const tokens = useAsyncData(fetchPlaygroundTokens, []);
 
   const activeMessages = useMemo(() => threads[selectedThread]?.messages || [], [threads, selectedThread]);
+  const activeThread = threads[selectedThread];
 
   const modeModels = useMemo(() => {
     const all = models.data || [];
-    const lower = all.map((model) => ({ raw: model, lower: model.toLowerCase() }));
-    const imageFiltered = lower.filter(({ lower }) =>
-      /(image|img|flux|sdxl|dall|seedream|jimeng|mj|midjourney|gpt-image|recraft)/.test(lower),
-    );
-    const videoFiltered = lower.filter(({ lower }) =>
-      /(video|vidu|kling|wan|seedance|hailuo|jimeng|sora|veo)/.test(lower),
-    );
-
-    if (mode === 'images') return (imageFiltered.length ? imageFiltered : lower).map(({ raw }) => raw);
-    if (mode === 'video') return (videoFiltered.length ? videoFiltered : lower).map(({ raw }) => raw);
-    return all;
+    if (mode === 'images') return all.filter(isImageModel);
+    if (mode === 'video') return all.filter(isVideoModel);
+    return all.filter(isChatModel);
   }, [models.data, mode]);
+
+  const selectedModelMeta = useMemo(
+    () => modeModels.find((item) => item.model_name === selectedModel) || null,
+    [modeModels, selectedModel],
+  );
+
+  const modeCounts = useMemo(
+    () => ({
+      chat: (models.data || []).filter(isChatModel).length,
+      images: (models.data || []).filter(isImageModel).length,
+      video: (models.data || []).filter(isVideoModel).length,
+    }),
+    [models.data],
+  );
 
   useEffect(() => {
     if (!modeModels.length) return;
-    if (!selectedModel || !modeModels.includes(selectedModel)) {
-      setSelectedModel(modeModels[0]);
+    if (!selectedModel || !modeModels.some((item) => item.model_name === selectedModel)) {
+      setSelectedModel(modeModels[0].model_name);
     }
   }, [modeModels, selectedModel]);
+
+  useEffect(() => {
+    if (modeCounts[mode] > 0) return;
+    if (modeCounts.chat > 0) {
+      setMode('chat');
+      return;
+    }
+    if (modeCounts.images > 0) {
+      setMode('images');
+      return;
+    }
+    if (modeCounts.video > 0) {
+      setMode('video');
+    }
+  }, [mode, modeCounts]);
 
   useEffect(() => {
     if (mode === 'chat') return;
@@ -110,9 +174,9 @@ export default function Playground() {
   }, [threads, search]);
 
   const modes = [
-    { id: 'chat' as const, label: t('playgroundModeChat'), icon: Sparkles },
-    { id: 'images' as const, label: t('playgroundModeImages'), icon: Images },
-    { id: 'video' as const, label: t('playgroundModeVideo'), icon: Video },
+    { id: 'chat' as const, label: t('playgroundModeChat'), icon: Sparkles, count: modeCounts.chat },
+    { id: 'images' as const, label: t('playgroundModeImages'), icon: Images, count: modeCounts.images },
+    { id: 'video' as const, label: t('playgroundModeVideo'), icon: Video, count: modeCounts.video },
   ];
 
   function updateCurrentThread(updater: (thread: Thread) => Thread) {
@@ -157,8 +221,7 @@ export default function Playground() {
       if (mode === 'chat') {
         const reply = await sendPlaygroundChat({
           model: selectedModel,
-          prompt: value,
-          referenceImages,
+          messages: buildChatMessages(activeThread?.messages || [], value, referenceImages),
         });
         updateCurrentThread((thread) => ({
           ...thread,
@@ -384,8 +447,8 @@ export default function Playground() {
                         {models.loading ? <option>{t('playgroundLoadingModels')}</option> : null}
                         {!models.loading && !modeModels.length ? <option>{t('playgroundNoModels')}</option> : null}
                         {modeModels.map((model) => (
-                          <option key={model} value={model}>
-                            {model}
+                          <option key={model.model_name} value={model.model_name}>
+                            {model.model_name}
                           </option>
                         ))}
                       </select>
@@ -410,6 +473,18 @@ export default function Playground() {
                       </div>
                     ) : null}
                   </div>
+
+                  {selectedModelMeta ? (
+                    <div className='mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3'>
+                      <p className='text-sm font-medium text-slate-700'>{selectedModelMeta.model_name}</p>
+                      {selectedModelMeta.description ? (
+                        <p className='mt-1 text-sm leading-6 text-slate-500'>{selectedModelMeta.description}</p>
+                      ) : null}
+                      {selectedModelMeta.tags ? (
+                        <p className='mt-2 text-xs font-medium uppercase tracking-[0.16em] text-slate-400'>{selectedModelMeta.tags}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   <div className='mt-4'>
                     <p className='text-sm font-medium text-slate-600'>{t('playgroundReferenceImages')}</p>
@@ -446,19 +521,22 @@ export default function Playground() {
                     <div className='flex flex-wrap items-center gap-2'>
                       {modes.map((item) => {
                         const active = item.id === mode;
+                        const disabled = item.count === 0;
                         return (
                           <button
                             key={item.id}
                             type='button'
-                            onClick={() => setMode(item.id)}
+                            onClick={() => !disabled && setMode(item.id)}
+                            disabled={disabled}
                             className={
                               active
                                 ? 'inline-flex h-10 items-center gap-2 rounded-full bg-[#fbecfb] px-4 text-sm font-medium text-[#bf3ad1]'
-                                : 'inline-flex h-10 items-center gap-2 rounded-full px-3 text-sm text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900'
+                                : 'inline-flex h-10 items-center gap-2 rounded-full px-3 text-sm text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35'
                             }
                           >
                             <item.icon className='h-4 w-4' />
                             {item.label}
+                            <span className='text-xs'>{item.count}</span>
                           </button>
                         );
                       })}

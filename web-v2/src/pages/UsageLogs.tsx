@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CircleHelp, Clock3, DatabaseZap } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import StatePanel from '../components/ui/StatePanel';
+import UnifiedPagination from '../components/ui/UnifiedPagination';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useI18n } from '../i18n/I18nProvider';
 import { fetchUsageLogs } from '../lib/usageLogs';
@@ -1119,18 +1120,18 @@ export default function UsageLogs() {
                 rows.map((row) => (
                   <tr key={row.id} className='h-[84px] border-b border-slate-100 text-sm text-slate-700'>
                     <td className='sticky left-0 z-10 w-[168px] border-r border-slate-100 bg-white px-4 py-3 align-middle shadow-[12px_0_24px_-18px_rgba(15,23,42,0.18)]'>
-                      <div className='w-[132px] overflow-hidden'>
+                      <div className='w-[132px] overflow-hidden' title={row.tokenName}>
                         <p className='truncate font-medium text-slate-950'>{row.tokenName}</p>
                       </div>
                     </td>
                     <td className='px-4 py-3 align-middle'>
-                      <div className='w-[116px] overflow-hidden'>
+                      <div className='w-[116px] overflow-hidden' title={row.modelName}>
                         <p className='truncate font-medium text-slate-950'>{row.modelName}</p>
                       </div>
                     </td>
                     <td className='px-4 py-3 align-middle text-slate-600'>{row.reasoningEffort}</td>
                     <td className='px-4 py-3 align-middle text-slate-600'>
-                      <div className='w-[124px] overflow-hidden'>
+                      <div className='w-[124px] overflow-hidden' title={row.endpoint}>
                         <p className='truncate'>{row.endpoint}</p>
                       </div>
                     </td>
@@ -1218,7 +1219,7 @@ export default function UsageLogs() {
                       )}
                     </td>
                     <td className='px-4 py-3 align-middle'>
-                      <div className='w-[148px] space-y-1 overflow-hidden'>
+                      <div className='w-[148px] space-y-1 overflow-hidden' title={row.details.join('\n')}>
                         {row.details.map((line) => (
                           <p key={`${row.id}-${line}`} className='truncate text-xs text-slate-500'>
                             {line}
@@ -1229,7 +1230,7 @@ export default function UsageLogs() {
                     <td className='whitespace-nowrap px-4 py-3 align-middle text-slate-500'>{row.time}</td>
                     {hasUserAgentColumn ? (
                       <td className='px-4 py-3 align-middle'>
-                        <div className='w-[260px] overflow-hidden text-slate-500'>
+                        <div className='w-[260px] overflow-hidden text-slate-500' title={row.userAgent || '--'}>
                           <p className='line-clamp-2 break-all'>{row.userAgent || '--'}</p>
                         </div>
                       </td>
@@ -1247,78 +1248,20 @@ export default function UsageLogs() {
           </div>
         ) : null}
 
-        <div className='flex flex-col gap-3 border-t border-slate-200 bg-white px-4 py-3 xl:flex-row xl:items-center xl:justify-between'>
-          <div className='min-w-[220px] whitespace-nowrap text-sm text-slate-500'>
-            {paginationSummary}
-          </div>
-
-          <div className='flex items-center gap-2'>
-            <label className='whitespace-nowrap text-sm text-slate-500'>{t('usagePaginationPerPage')}</label>
-            <select
-              value={pageSize}
-              onChange={(event) => {
-                setPageSize(Number(event.target.value));
-                setPage(1);
-              }}
-              className='input-shell !h-10 !w-[72px] !rounded-xl !px-3 !py-2 text-sm'
-            >
-              {[20, 50, 100].map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className='flex flex-wrap items-center gap-0 overflow-hidden rounded-xl border border-slate-200'>
-            <button
-              type='button'
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page === 1}
-              className='inline-flex h-10 w-10 items-center justify-center border-r border-slate-200 bg-white text-sm text-slate-600 disabled:opacity-40'
-            >
-              ‹
-            </button>
-            {Array.from({ length: totalPages }, (_, index) => index + 1)
-              .filter((pageNumber) => {
-                if (totalPages <= 6) return true;
-                return pageNumber === 1 || pageNumber === totalPages || Math.abs(pageNumber - page) <= 1;
-              })
-              .map((pageNumber, index, visiblePages) => {
-                const previous = visiblePages[index - 1];
-                const needsDots = previous && pageNumber - previous > 1;
-
-                return (
-                  <div key={pageNumber} className='contents'>
-                    {needsDots ? (
-                      <div className='inline-flex h-10 w-10 items-center justify-center border-r border-slate-200 bg-white text-sm text-slate-500'>
-                        ...
-                      </div>
-                    ) : null}
-                    <button
-                      type='button'
-                      onClick={() => setPage(pageNumber)}
-                      className={
-                        page === pageNumber
-                          ? 'inline-flex h-10 w-10 items-center justify-center border-r border-slate-200 bg-emerald-50 text-sm font-medium text-emerald-700'
-                          : 'inline-flex h-10 w-10 items-center justify-center border-r border-slate-200 bg-white text-sm text-slate-600'
-                      }
-                    >
-                      {pageNumber}
-                    </button>
-                  </div>
-                );
-              })}
-            <button
-              type='button'
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={page === totalPages}
-              className='inline-flex h-10 w-10 items-center justify-center bg-white text-sm text-slate-600 disabled:opacity-40'
-            >
-              ›
-            </button>
-          </div>
-        </div>
+        <UnifiedPagination
+          page={page}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          totalPages={totalPages}
+          summaryTemplate={paginationSummary}
+          pageSizeLabel={t('usagePaginationPerPage')}
+          pageSizeOptions={[20, 50, 100]}
+          onPageChange={setPage}
+          onPageSizeChange={(nextPageSize) => {
+            setPageSize(nextPageSize);
+            setPage(1);
+          }}
+        />
       </section>
       {popover && typeof document !== 'undefined'
         ? createPortal(
