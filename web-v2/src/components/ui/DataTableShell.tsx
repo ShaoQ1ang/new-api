@@ -1,88 +1,134 @@
-import { MoreHorizontal, Search } from 'lucide-react';
+import type { ComponentPropsWithoutRef, ReactNode, Ref } from 'react';
 
-type Column = {
-  key: string;
-  label: string;
+type RootProps = {
+  children: ReactNode;
+  className?: string;
 };
 
-type DataTableShellProps = {
-  title: string;
-  description: string;
-  actionLabel: string;
-  columns: Column[];
-  rows: Array<Record<string, string>>;
+type HeaderProps = {
+  eyebrow?: ReactNode;
+  title?: ReactNode;
+  actions?: ReactNode;
+  className?: string;
 };
 
-export default function DataTableShell({
-  title,
-  description,
-  actionLabel,
-  columns,
-  rows,
-}: DataTableShellProps) {
+type ViewportProps = {
+  children: ReactNode;
+  className?: string;
+  scrollRef?: Ref<HTMLDivElement>;
+  onScroll?: ComponentPropsWithoutRef<'div'>['onScroll'];
+};
+
+type TableProps = ComponentPropsWithoutRef<'table'>;
+
+type EmptyRowProps = {
+  colSpan: number;
+  children: ReactNode;
+  className?: string;
+};
+
+type ScrollbarProps = {
+  max: number;
+  value: number;
+  onChange: (value: number) => void;
+  className?: string;
+};
+
+type FooterProps = {
+  children: ReactNode;
+  className?: string;
+};
+
+function Root({ children, className }: RootProps) {
   return (
-    <section className='space-y-6'>
-      <div className='flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'>
-        <div>
-          <p className='eyebrow'>Operations</p>
-          <h1 className='page-title'>{title}</h1>
-          <p className='page-description'>{description}</p>
-        </div>
-        <button className='primary-button'>{actionLabel}</button>
-      </div>
-
-      <div className='panel-card overflow-hidden'>
-        <div className='flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between'>
-          <div className='inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-500'>
-            <Search className='h-4 w-4' />
-            Search, filter, and operate
-          </div>
-          <div className='flex gap-2 text-sm text-slate-500'>
-            <span className='rounded-full bg-slate-100 px-3 py-1'>All</span>
-            <span className='rounded-full bg-slate-100 px-3 py-1'>Active</span>
-            <span className='rounded-full bg-slate-100 px-3 py-1'>Draft</span>
-          </div>
-        </div>
-        <div className='overflow-x-auto'>
-          <table className='min-w-full'>
-            <thead>
-              <tr className='border-b border-slate-200 bg-slate-50/80 text-left text-xs uppercase tracking-[0.2em] text-slate-500'>
-                {columns.map((column) => (
-                  <th key={column.key} className='px-5 py-4 font-medium'>
-                    {column.label}
-                  </th>
-                ))}
-                <th className='px-5 py-4' />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, rowIndex) => (
-                <tr
-                  key={`${rowIndex}-${row[columns[0].key]}`}
-                  className='border-b border-slate-100 text-sm text-slate-700 transition-colors hover:bg-slate-50/80'
-                >
-                  {columns.map((column) => (
-                    <td key={column.key} className='px-5 py-4'>
-                      {column.key === 'status' ? (
-                        <span className='inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700'>
-                          {row[column.key]}
-                        </span>
-                      ) : (
-                        row[column.key]
-                      )}
-                    </td>
-                  ))}
-                  <td className='px-5 py-4 text-right'>
-                    <button className='rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700'>
-                      <MoreHorizontal className='h-4 w-4' />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+    <section
+      className={`overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm ${className || ''}`.trim()}
+    >
+      {children}
     </section>
   );
 }
+
+function Header({ eyebrow, title, actions, className }: HeaderProps) {
+  return (
+    <div
+      className={`flex items-center justify-between border-b border-slate-200 px-5 py-4 ${className || ''}`.trim()}
+    >
+      <div className='min-h-[56px] max-w-[320px]'>
+        {eyebrow ? (
+          <p className='text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400'>
+            {eyebrow}
+          </p>
+        ) : null}
+        {title ? (
+          <h2 className={`${eyebrow ? 'mt-2' : ''} min-h-[28px] text-xl font-semibold text-slate-950`.trim()}>
+            {title}
+          </h2>
+        ) : null}
+      </div>
+      {actions ? <div className='flex items-center gap-3'>{actions}</div> : null}
+    </div>
+  );
+}
+
+function Viewport({ children, className, scrollRef, onScroll }: ViewportProps) {
+  return (
+    <div
+      ref={scrollRef}
+      onScroll={onScroll}
+      className={`no-scrollbar overflow-x-auto ${className || ''}`.trim()}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Table({ children, className, ...props }: TableProps) {
+  return (
+    <table className={className} {...props}>
+      {children}
+    </table>
+  );
+}
+
+function EmptyRow({ colSpan, children, className }: EmptyRowProps) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className={`px-5 py-10 text-center text-sm text-slate-500 ${className || ''}`.trim()}>
+        {children}
+      </td>
+    </tr>
+  );
+}
+
+function Scrollbar({ max, value, onChange, className }: ScrollbarProps) {
+  if (max <= 0) return null;
+
+  return (
+    <div className={`border-t border-slate-200 bg-slate-50/70 px-4 py-3 ${className || ''}`.trim()}>
+      <input
+        type='range'
+        min={0}
+        max={Math.max(1, max)}
+        value={Math.min(value, Math.max(1, max))}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className='token-scrollbar w-full'
+      />
+    </div>
+  );
+}
+
+function Footer({ children, className }: FooterProps) {
+  return <div className={className}>{children}</div>;
+}
+
+const DataTableShell = Object.assign(Root, {
+  Header,
+  Viewport,
+  Table,
+  EmptyRow,
+  Scrollbar,
+  Footer,
+});
+
+export default DataTableShell;

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Copy, Gauge, KeyRound, Plus, ShieldCheck } from 'lucide-react';
+import DataTableShell from '../components/ui/DataTableShell';
 import MetricCard from '../components/ui/MetricCard';
-import StatePanel from '../components/ui/StatePanel';
 import UnifiedPagination from '../components/ui/UnifiedPagination';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useStatus } from '../hooks/useStatus';
@@ -513,21 +513,9 @@ export default function Tokens() {
         ))}
       </section>
 
-      <StatePanel
-        loading={tokens.loading}
-        error={tokens.error}
-        empty={!tokens.loading && !tokens.error && totalItems === 0}
-        title={t('tokensStatusTitle')}
-        description={t('tokensStatusDescription')}
-      />
-
-      <section className='overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm'>
-        <div
-          ref={tableScrollRef}
-          onScroll={updateScrollState}
-          className='no-scrollbar overflow-x-auto'
-        >
-          <table className='table-fixed min-w-[1600px]'>
+      <DataTableShell>
+        <DataTableShell.Viewport scrollRef={tableScrollRef} onScroll={updateScrollState}>
+          <DataTableShell.Table className='table-fixed min-w-[1600px]'>
             <thead>
               <tr className='border-b border-slate-200 text-left text-xs uppercase tracking-[0.18em] text-slate-500'>
                 <th className='sticky left-0 z-10 w-[192px] whitespace-nowrap border-r border-slate-200 bg-white px-5 py-4 font-medium shadow-[12px_0_24px_-18px_rgba(15,23,42,0.18)]'>
@@ -664,46 +652,38 @@ export default function Tokens() {
                   </tr>
                 ))
               ) : (
-                <tr>
-                  <td colSpan={9} className='px-5 py-10 text-center text-sm text-slate-500'>
-                    {t('tokensEmpty')}
-                  </td>
-                </tr>
+                <DataTableShell.EmptyRow colSpan={9}>{t('tokensEmpty')}</DataTableShell.EmptyRow>
               )}
             </tbody>
-          </table>
-        </div>
-        <div className='border-t border-slate-200 bg-slate-50/70 px-4 py-3'>
-          <input
-            type='range'
-            min={0}
-            max={Math.max(1, scrollState.max)}
-            value={Math.min(scrollState.left, Math.max(1, scrollState.max))}
-            onChange={(event) => {
-              const next = Number(event.target.value);
-              if (tableScrollRef.current) {
-                tableScrollRef.current.scrollLeft = next;
-              }
-              setScrollState((current) => ({ ...current, left: next }));
-            }}
-            className='token-scrollbar w-full'
-          />
-        </div>
-        <UnifiedPagination
-          page={page}
-          pageSize={pageSize}
-          totalItems={totalItems}
-          totalPages={totalPages}
-          summaryTemplate={t('tokensPaginationSummary')}
-          pageSizeLabel={t('tokensPaginationPerPage')}
-          pageSizeOptions={[20, 50, 100]}
-          onPageChange={setPage}
-          onPageSizeChange={(nextPageSize) => {
-            setPageSize(nextPageSize);
-            setPage(1);
+          </DataTableShell.Table>
+        </DataTableShell.Viewport>
+        <DataTableShell.Scrollbar
+          max={scrollState.max}
+          value={scrollState.left}
+          onChange={(next) => {
+            if (tableScrollRef.current) {
+              tableScrollRef.current.scrollLeft = next;
+            }
+            setScrollState((current) => ({ ...current, left: next }));
           }}
         />
-      </section>
+        <DataTableShell.Footer>
+          <UnifiedPagination
+            page={page}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            totalPages={totalPages}
+            summaryTemplate={t('tokensPaginationSummary')}
+            pageSizeLabel={t('tokensPaginationPerPage')}
+            pageSizeOptions={[20, 50, 100]}
+            onPageChange={setPage}
+            onPageSizeChange={(nextPageSize) => {
+              setPageSize(nextPageSize);
+              setPage(1);
+            }}
+          />
+        </DataTableShell.Footer>
+      </DataTableShell>
 
       {isFormOpen ? (
         <div className='fixed inset-0 z-50 grid place-items-center bg-slate-950/30 p-4'>

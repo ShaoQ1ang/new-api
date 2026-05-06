@@ -237,8 +237,7 @@ export const messages = {
     channelsStatusInactive: 'inactive',
     tokensEyebrow: 'API Keys',
     tokensTitle: 'Manage customer API keys with clearer quota and lifecycle visibility.',
-    tokensDescription:
-      'This workspace reads from `/api/token` and reframes API key management as a product-grade access control surface.',
+    tokensDescription: 'Manage API keys and their lifecycle here.',
     tokensMetricTotal: 'Total API keys',
     tokensMetricTotalHint: 'Number of masked API key records returned by the current backend list endpoint.',
     tokensMetricActive: 'Active API keys',
@@ -776,8 +775,7 @@ export const messages = {
     channelsStatusInactive: '停用',
     tokensEyebrow: 'API Keys',
     tokensTitle: '用更清晰的额度与生命周期视角管理客户 API Keys。',
-    tokensDescription:
-      '这个工作区读取 `/api/token`，并把 API Key 管理重构成更像产品化访问控制面的界面。',
+    tokensDescription: '在一个地方管理 API Keys 的创建、轮换和状态。',
     tokensMetricTotal: 'API Keys 总数',
     tokensMetricTotalHint: '当前后端列表接口返回的已脱敏 API Key 记录数。',
     tokensMetricActive: '启用 API Keys',
