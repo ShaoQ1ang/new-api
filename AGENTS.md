@@ -131,6 +131,15 @@ For request structs that are parsed from client JSON and then re-marshaled to up
   - field explicitly set to zero/false => non-`nil` pointer => must still be sent upstream.
 - Avoid using non-pointer scalars with `omitempty` for optional request parameters, because zero values (`0`, `0.0`, `false`) will be silently dropped during marshal.
 
+### Local Debug Note: Temporary CORS Changes For `web-v2`
+
+- The current local debugging setup may run `web-v2` on `http://127.0.0.1:3001` while the Go backend runs on `http://127.0.0.1:3000`.
+- In that setup, browser requests are cross-origin (`3001 -> 3000`), so temporary CORS changes may exist in:
+  - [`middleware/cors.go`](/Users/niuyouguo/go/src/new-api/middleware/cors.go)
+  - [`router/api-router.go`](/Users/niuyouguo/go/src/new-api/router/api-router.go)
+- These CORS changes are local debug plumbing, not product behavior. Treat them as temporary unless the user explicitly asks to keep cross-origin local development as a supported workflow.
+- Before finalizing or shipping related work, prefer restoring a same-origin dev path (proxy/reverse-proxy) and removing temporary cross-origin adjustments if they are no longer needed.
+
 ### Rule 7: web-v2 i18n Layout Stability — Do Not Let Copy Length Change Layout
 
 For the greenfield `web-v2` frontend, all new pages and page refactors MUST be designed so that switching between English and Chinese does not materially change layout, alignment, or perceived visual hierarchy.

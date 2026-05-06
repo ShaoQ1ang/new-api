@@ -1,14 +1,6 @@
 services:
   web-v2:
-    build:
-      context: .
-      args:
-        HTTP_PROXY: ${HTTP_PROXY-}
-        HTTPS_PROXY: ${HTTPS_PROXY-}
-        ALL_PROXY: ${ALL_PROXY-}
-        http_proxy: ${http_proxy-}
-        https_proxy: ${https_proxy-}
-        all_proxy: ${all_proxy-}
+    image: web-v2-web-v2
     container_name: new-api-web-v2
     restart: unless-stopped
     ports:
@@ -16,5 +8,17 @@ services:
     environment:
       VITE_API_BASE_URL: ""
       VITE_API_PROXY_TARGET: "http://${HOST_IP:-host.docker.internal}:3000"
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      ALL_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
+      all_proxy: ""
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - ./:/app
+      - web-v2-node-modules:/app/node_modules
+
+volumes:
+  web-v2-node-modules:

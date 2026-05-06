@@ -16,6 +16,12 @@ type TokenKeyResponse = {
   };
 };
 
+type PricingResponse = {
+  success?: boolean;
+  message?: string;
+  data?: PricingModelRecord[];
+};
+
 export type PlaygroundTokenRecord = {
   id: number;
   name?: string;
@@ -23,10 +29,14 @@ export type PlaygroundTokenRecord = {
   key?: string;
 };
 
-type UserModelsResponse = {
-  success?: boolean;
-  message?: string;
-  data?: string[];
+export type PricingModelRecord = {
+  model_name: string;
+  description?: string;
+  tags?: string;
+  supported_endpoint_types?: string[];
+  image_ratio?: number | null;
+  audio_ratio?: number | null;
+  completion_ratio?: number;
 };
 
 type ChatCompletionResponse = {
@@ -164,7 +174,7 @@ function createVideoCompatiblePayload(params: {
 }
 
 export async function fetchPlaygroundModels() {
-  const response = await api.get<UserModelsResponse>('/api/user/models');
+  const response = await api.get<PricingResponse>('/api/pricing');
   if (response.data.success === false) {
     throw new Error(response.data.message || 'Failed to load models');
   }
@@ -191,24 +201,20 @@ export async function fetchPlaygroundTokenKey(id: number) {
 
 export async function sendPlaygroundChat(params: {
   model: string;
-  prompt: string;
-  referenceImages: string[];
+  messages: Array<{
+    role: 'user' | 'assistant' | 'system';
+    content:
+      | string
+      | Array<
+          | { type: 'text'; text: string }
+          | { type: 'image_url'; image_url: { url: string } }
+        >;
+  }>;
 }) {
   const response = await api.post<ChatCompletionResponse>('/pg/chat/completions', {
     model: params.model,
     stream: false,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: params.prompt },
-          ...params.referenceImages.map((imageUrl) => ({
-            type: 'image_url',
-            image_url: { url: imageUrl },
-          })),
-        ],
-      },
-    ],
+    messages: params.messages,
   });
 
   if (response.data.error?.message) {

@@ -1,16 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, CreditCard, Loader2, Receipt, Wallet } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
+import UnifiedPagination from '../components/ui/UnifiedPagination';
 import { useI18n } from '../i18n/I18nProvider';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { createEpayTopUp, createStripeTopUp, fetchBillingInfo, fetchTopUpHistory, type BillingChannel, type TopUpRecord } from '../lib/billing';
-
-function formatPaginationSummary(template: string, start: number, end: number, total: number) {
-  return template
-    .replace('{start}', String(start))
-    .replace('{end}', String(end))
-    .replace('{total}', String(total));
-}
 
 function formatTimestamp(timestamp: number) {
   if (!timestamp) return '--';
@@ -113,12 +107,7 @@ export default function Billing() {
   const rows = history.data?.items || [];
   const total = history.data?.total || 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const paginationSummary = formatPaginationSummary(
-    translate('billingPaginationSummary'),
-    total === 0 ? 0 : (page - 1) * pageSize + 1,
-    Math.min(page * pageSize, total),
-    total,
-  );
+  const paginationSummary = translate('billingPaginationSummary');
 
   const metrics = useMemo(() => {
     const successCount = rows.filter((item) => item.status === 'success').length;
@@ -407,76 +396,20 @@ export default function Billing() {
           ) : null}
 
           {rows.length ? (
-            <div className='flex flex-col gap-3 border-t border-slate-200 bg-white px-4 py-3 xl:flex-row xl:items-center xl:justify-between'>
-              <div className='min-w-[220px] whitespace-nowrap text-sm text-slate-500'>{paginationSummary}</div>
-
-              <div className='flex items-center gap-2'>
-                <label className='whitespace-nowrap text-sm text-slate-500'>{t('billingPaginationPerPage')}</label>
-                <select
-                  value={String(pageSize)}
-                  onChange={(event) => {
-                    setPageSize(Number(event.target.value));
-                    setPage(1);
-                  }}
-                  className='input-shell !h-10 !w-[72px] !rounded-xl !px-3 !py-2 text-sm'
-                >
-                  {[10, 20, 50, 100].map((size) => (
-                    <option key={size} value={size}>
-                      {size}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className='flex flex-wrap items-center gap-0 overflow-hidden rounded-xl border border-slate-200'>
-                <button
-                  type='button'
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
-                  disabled={page === 1}
-                  className='inline-flex h-10 w-10 items-center justify-center border-r border-slate-200 bg-white text-sm text-slate-600 disabled:opacity-40'
-                >
-                  ‹
-                </button>
-                {Array.from({ length: totalPages }, (_, index) => index + 1)
-                  .filter((pageNumber) => {
-                    if (totalPages <= 6) return true;
-                    return pageNumber === 1 || pageNumber === totalPages || Math.abs(pageNumber - page) <= 1;
-                  })
-                  .map((pageNumber, index, visiblePages) => {
-                    const previous = visiblePages[index - 1];
-                    const needsDots = previous && pageNumber - previous > 1;
-
-                    return (
-                      <div key={pageNumber} className='contents'>
-                        {needsDots ? (
-                          <div className='inline-flex h-10 w-10 items-center justify-center border-r border-slate-200 bg-white text-sm text-slate-500'>
-                            ...
-                          </div>
-                        ) : null}
-                        <button
-                          type='button'
-                          onClick={() => setPage(pageNumber)}
-                          className={
-                            page === pageNumber
-                              ? 'inline-flex h-10 w-10 items-center justify-center border-r border-slate-200 bg-emerald-50 text-sm font-medium text-emerald-700'
-                              : 'inline-flex h-10 w-10 items-center justify-center border-r border-slate-200 bg-white text-sm text-slate-600'
-                          }
-                        >
-                          {pageNumber}
-                        </button>
-                      </div>
-                    );
-                  })}
-                  <button
-                    type='button'
-                    onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-                    disabled={page === totalPages}
-                    className='inline-flex h-10 w-10 items-center justify-center bg-white text-sm text-slate-600 disabled:opacity-40'
-                  >
-                    ›
-                  </button>
-              </div>
-            </div>
+            <UnifiedPagination
+              page={page}
+              pageSize={pageSize}
+              totalItems={total}
+              totalPages={totalPages}
+              summaryTemplate={paginationSummary}
+              pageSizeLabel={t('billingPaginationPerPage')}
+              pageSizeOptions={[10, 20, 50, 100]}
+              onPageChange={setPage}
+              onPageSizeChange={(nextPageSize) => {
+                setPageSize(nextPageSize);
+                setPage(1);
+              }}
+            />
           ) : null}
         </article>
       </section>
