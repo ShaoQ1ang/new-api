@@ -51,6 +51,7 @@ const routerMap = {
   models: '/console/models',
   deployment: '/console/deployment',
   playground: '/console/playground',
+  onlineExperience: '/console/online-experience',
   personal: '/console/personal',
 };
 
@@ -227,6 +228,11 @@ const SiderBar = ({
         text: t('操练场'),
         itemKey: 'playground',
         to: '/playground',
+      },
+      {
+        text: t('在线体验'),
+        itemKey: 'onlineExperience',
+        to: '/online-experience',
       },
       {
         text: t('聊天'),
