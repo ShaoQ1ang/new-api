@@ -144,7 +144,7 @@ const PlaygroundComposer = ({
               dropdownStyle={{ maxWidth: 420 }}
               position='top'
             />
-            {!isImageMode && (
+            {isVideoMode && (
               <div className='reference-images'>
                 <Typography.Text className='reference-label'>
                   {t('参考图片')}

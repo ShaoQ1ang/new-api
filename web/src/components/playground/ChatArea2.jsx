@@ -100,7 +100,7 @@ const ChatArea = ({
           onStopGenerator={onStopGenerator}
           onClear={onClearMessages}
           className='new-playground-chat'
-          placeholder={t('Send a message or type "/" to choose a skill')}
+          placeholder={t('发送消息')}
         />
       </div>
     </section>
