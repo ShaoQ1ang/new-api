@@ -110,7 +110,7 @@ export const DEFAULT_CONFIG = {
     seed: null,
     stream: true,
     imageEnabled: false,
-    imageUrls: [''],
+    imageUrls: [],
     imageCount: 1,
     imageSize: '1024x1024',
     imageQuality: 'auto',

@@ -321,7 +321,9 @@ export const useApiRequest = (
         isStreaming: true, // 新增：标记流式状态
       }));
       setActiveDebugTab(DEBUG_TABS.REQUEST);
-
+      console.log('payload2', payload);
+      window.alert(payload);
+      return;
       const source = new SSE(API_ENDPOINTS.CHAT_COMPLETIONS, {
         headers: {
           'Content-Type': 'application/json',

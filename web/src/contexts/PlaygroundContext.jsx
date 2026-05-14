@@ -26,13 +26,19 @@ const PlaygroundContext = createContext(null);
 
 /**
  * Hook to access Playground context
- * @returns {Object} Context value with onPasteImage, imageUrls, and imageEnabled
+ * @returns {Object} Context value with image handlers, imageUrls, and imageEnabled
  */
 export const usePlayground = () => {
   const context = useContext(PlaygroundContext);
   if (!context) {
     return {
       onPasteImage: () => {
+        console.warn('PlaygroundContext not provided');
+      },
+      onSelectImageFile: () => {
+        console.warn('PlaygroundContext not provided');
+      },
+      onRemoveImage: () => {
         console.warn('PlaygroundContext not provided');
       },
       imageUrls: [],

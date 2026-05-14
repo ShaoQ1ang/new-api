@@ -1566,9 +1566,60 @@ const Playground = () => {
     [inputs.imageEnabled, inputs.imageUrls, handleInputChange],
   );
 
+  const handleSelectImageFile = useCallback(
+    (file) => {
+      if (!file) {
+        return;
+      }
+
+      if (!inputs.imageEnabled) {
+        handleInputChange('imageEnabled', true);
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64Data = event.target?.result;
+        if (typeof base64Data !== 'string' || base64Data === '') {
+          Toast.error({
+            content: t('选择图片失败'),
+            duration: 2,
+          });
+          return;
+        }
+
+        const newUrls = [...(inputs.imageUrls || []), base64Data];
+        handleInputChange('imageUrls', newUrls);
+        Toast.success({
+          content: t('图片已添加'),
+          duration: 2,
+        });
+      };
+      reader.onerror = () => {
+        Toast.error({
+          content: t('选择图片失败'),
+          duration: 2,
+        });
+      };
+      reader.readAsDataURL(file);
+    },
+    [handleInputChange, inputs.imageEnabled, inputs.imageUrls, t],
+  );
+
+  const handleRemoveImage = useCallback(
+    (indexToRemove) => {
+      const nextUrls = (inputs.imageUrls || []).filter(
+        (_, index) => index !== indexToRemove,
+      );
+      handleInputChange('imageUrls', nextUrls);
+    },
+    [handleInputChange, inputs.imageUrls],
+  );
+
   // Playground Context 值
   const playgroundContextValue = {
     onPasteImage: handlePasteImage,
+    onSelectImageFile: handleSelectImageFile,
+    onRemoveImage: handleRemoveImage,
     imageUrls: inputs.imageUrls || [],
     imageEnabled: inputs.imageEnabled || false,
   };

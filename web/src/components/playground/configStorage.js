@@ -214,8 +214,13 @@ const setStorageItemSafely = (key, value, fallbackValue, errorLabel) => {
  */
 export const saveConfig = (config) => {
   try {
+    const sanitizedInputs = {
+      ...(config?.inputs || {}),
+      imageUrls: DEFAULT_CONFIG.inputs.imageUrls,
+    };
     const configToSave = {
       ...config,
+      inputs: sanitizedInputs,
       timestamp: new Date().toISOString(),
     };
     localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(configToSave));
@@ -258,6 +263,7 @@ export const loadConfig = () => {
         inputs: {
           ...DEFAULT_CONFIG.inputs,
           ...parsedConfig.inputs,
+          imageUrls: DEFAULT_CONFIG.inputs.imageUrls,
           max_tokens: Number.isNaN(parsedMaxTokens)
             ? parsedConfig?.inputs?.max_tokens
             : parsedMaxTokens,
