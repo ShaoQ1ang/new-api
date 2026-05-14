@@ -34,6 +34,7 @@ import {
   Video,
   Sparkles,
   Info,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   TASK_ACTION_FIRST_TAIL_GENERATE,
@@ -415,11 +416,15 @@ const renderInlineProgress = (progress, record) => {
   );
 };
 
-const renderExpiredLinkTag = ({ t, tooltip }) => (
+const renderExpiredLinkTag = ({ tooltip }) => (
   <Tooltip content={tooltip} position='top' showArrow>
-    <Tag className='task-detail-expired' shape='circle' prefixIcon={<Clock size={14} />}>
-      {t('链接过期')}
-    </Tag>
+    <div
+      className='task-detail-expired flex w-full items-center justify-center text-red-500'
+      role='img'
+      aria-label={tooltip}
+    >
+      <AlertTriangle size={15} />
+    </div>
   </Tooltip>
 );
 
@@ -771,7 +776,6 @@ export const getTaskLogsColumns = ({
         const isExpiredResultUrl = hasResultUrl && isResultLinkExpired(resultUrl);
         if (isSuccess && isVideoTask && isExpiredResultUrl) {
           return renderExpiredLinkTag({
-            t,
             tooltip: t('任务结果链接已过期'),
           });
         }
