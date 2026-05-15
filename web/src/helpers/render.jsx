@@ -710,7 +710,7 @@ export const modelColorMap = {
   'gpt-5.5': '#2ef7a3',
   'MiniMax-M2.7': 'rgb(255,182,193)', // 浅粉红
   'kimi-k2.5': 'rgb(255,174,185)', // 浅粉红色（略有区别）
-  'doubao-seedance-2-0-26018': 'rgb(255,130,171)', // 强粉色
+  'doubao-seedance-2-0-260128': 'rgb(255,130,171)', // 强粉色
   'gpt-image-2': 'rgb(255,160,122)', // 浅珊瑚色（与Babbage相同，表示同一类功能）
 };
 
