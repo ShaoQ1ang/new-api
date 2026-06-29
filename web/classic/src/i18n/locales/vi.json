@@ -4662,6 +4662,20 @@
     "已审核通过的短信签名": "Chữ ký SMS đã được phê duyệt",
     "短信模板 Code": "Mã mẫu SMS",
     "Endpoint": "Endpoint",
-    "保存阿里云短信设置": "Lưu cài đặt Alibaba Cloud SMS"
+    "保存阿里云短信设置": "Lưu cài đặt Alibaba Cloud SMS",
+    "模型广场管理": "Quản lý quảng trường mô hình",
+    "对话模型管理": "Quản lý mô hình trò chuyện",
+    "获取对话模型列表失败": "Không thể tải danh sách mô hình trò chuyện",
+    "添加对话模型": "Thêm mô hình trò chuyện",
+    "编辑对话模型": "Chỉnh sửa mô hình trò chuyện",
+    "删除对话模型": "Xóa mô hình trò chuyện",
+    "对话模型已创建": "Đã tạo mô hình trò chuyện",
+    "对话模型已更新": "Đã cập nhật mô hình trò chuyện",
+    "对话模型已删除": "Đã xóa mô hình trò chuyện",
+    "搜索对话模型": "Tìm kiếm mô hình trò chuyện",
+    "全部可用性": "Tất cả khả dụng",
+    "不可用": "Không khả dụng",
+    "展示名称": "Tên hiển thị",
+    "确认删除 {{name}}？": "Xóa {{name}}?"
   }
 }
