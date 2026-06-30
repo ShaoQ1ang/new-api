@@ -13,6 +13,10 @@
       "name": "用户登陆注册"
     },
     {
+      "name": "短信登录",
+      "description": "发送短信验证码、手机号验证码登录"
+    },
+    {
       "name": "OAuth"
     },
     {
@@ -49,10 +53,26 @@
       "name": "任务"
     },
     {
+      "name": "技能广场",
+      "description": "公开浏览与下载技能"
+    },
+    {
+      "name": "技能广场管理",
+      "description": "管理员维护技能、标签、上传资源与发布状态"
+    },
+    {
       "name": "供应商"
     },
     {
       "name": "模型管理"
+    },
+    {
+      "name": "对话模型",
+      "description": "用户侧对话模型下拉列表"
+    },
+    {
+      "name": "对话模型管理",
+      "description": "管理员维护对话模型列表"
     },
     {
       "name": "系统设置"
@@ -605,6 +625,239 @@
             "Combination1243": []
           }
         ]
+      }
+    },
+    "/api/sms/verification": {
+      "post": {
+        "tags": [
+          "短信登录"
+        ],
+        "summary": "发送短信验证码",
+        "description": "无需登录。用于向中国大陆手机号发送 6 位数字短信验证码。\n\n前置条件：系统配置 SmsLoginEnabled=true，且阿里云短信参数已配置。若开启 Turnstile，需要在 query 中传 turnstile token。\n\n手机号会规范化为 +86 格式保存；支持 13812345678、+8613812345678、8613812345678、008613812345678 等输入，空格、横线和括号会被忽略。\n\n安全策略：同一手机号 60 秒冷却，24 小时最多 10 次。为防止手机号枚举，当手机号不存在且注册关闭、或手机号属于禁用用户时，接口仍可能返回 success=true，但不会真实发送短信。",
+        "operationId": "sendSmsVerification",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Turnstile"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendSmsVerificationRequest"
+              },
+              "examples": {
+                "mainlandPhone": {
+                  "summary": "中国大陆手机号",
+                  "value": {
+                    "phone": "13812345678"
+                  }
+                },
+                "withCountryCode": {
+                  "summary": "带 +86 国家码",
+                  "value": {
+                    "phone": "+8613812345678"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "接口调用完成。业务成功或失败都可能返回 200，请以 success 判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/SmsVerificationSuccessResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ApiErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "success": {
+                    "summary": "发送成功或为防枚举而静默成功",
+                    "value": {
+                      "success": true,
+                      "message": ""
+                    }
+                  },
+                  "disabled": {
+                    "summary": "短信登录未启用",
+                    "value": {
+                      "success": false,
+                      "message": "短信登录未启用"
+                    }
+                  },
+                  "invalidPhone": {
+                    "summary": "手机号格式不正确",
+                    "value": {
+                      "success": false,
+                      "message": "手机号格式不正确"
+                    }
+                  },
+                  "sendFailed": {
+                    "summary": "发送失败、冷却中、每日次数超限或短信服务异常",
+                    "value": {
+                      "success": false,
+                      "message": "验证码发送失败，请稍后重试"
+                    }
+                  },
+                  "turnstileMissing": {
+                    "summary": "Turnstile 已开启但未传 token",
+                    "value": {
+                      "success": false,
+                      "message": "Turnstile token 为空"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "触发全局 API 限流或关键接口限流，通常无响应体。"
+          },
+          "500": {
+            "description": "限流中间件内部错误等异常场景，可能无响应体。"
+          }
+        }
+      }
+    },
+    "/api/user/phone/login": {
+      "post": {
+        "tags": [
+          "短信登录"
+        ],
+        "summary": "手机号短信验证码登录",
+        "description": "无需登录。使用手机号和 6 位短信验证码登录。\n\n验证码校验成功后会立即消费，不能重复使用。若手机号对应用户不存在，且全站注册 RegisterEnabled=true，会自动创建普通用户；若注册关闭，则登录失败。\n\n若用户启用了 2FA，本接口只建立待验证会话并返回 data.require_2fa=true，客户端随后调用 /api/user/login/2fa 完成二次验证。普通登录成功时会写入登录 session cookie。",
+        "operationId": "smsLogin",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Turnstile"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SmsLoginRequest"
+              },
+              "examples": {
+                "login": {
+                  "summary": "验证码登录",
+                  "value": {
+                    "phone": "13812345678",
+                    "code": "123456"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "接口调用完成。业务成功、需要 2FA 或业务失败都可能返回 200，请以 success 和 data.require_2fa 判断。",
+            "headers": {
+              "Set-Cookie": {
+                "description": "登录成功或进入 2FA 待验证状态时写入 session cookie。",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/LoginSuccessResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Login2FARequiredResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ApiErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "success": {
+                    "summary": "登录成功",
+                    "value": {
+                      "success": true,
+                      "message": "",
+                      "data": {
+                        "id": 1,
+                        "username": "u5678abcd",
+                        "display_name": "u5678abcd",
+                        "role": 1,
+                        "status": 1,
+                        "group": "default"
+                      }
+                    }
+                  },
+                  "require2FA": {
+                    "summary": "需要继续完成二次验证",
+                    "value": {
+                      "success": true,
+                      "message": "请输入两步验证码",
+                      "data": {
+                        "require_2fa": true
+                      }
+                    }
+                  },
+                  "invalidParams": {
+                    "summary": "参数错误，例如验证码不是 6 位数字",
+                    "value": {
+                      "success": false,
+                      "message": "无效的参数"
+                    }
+                  },
+                  "invalidCode": {
+                    "summary": "验证码错误或已过期",
+                    "value": {
+                      "success": false,
+                      "message": "验证码错误或已过期"
+                    }
+                  },
+                  "disabled": {
+                    "summary": "短信登录未启用",
+                    "value": {
+                      "success": false,
+                      "message": "短信登录未启用"
+                    }
+                  },
+                  "userDisabled": {
+                    "summary": "用户已被禁用",
+                    "value": {
+                      "success": false,
+                      "message": "该用户已被禁用"
+                    }
+                  },
+                  "registerDisabled": {
+                    "summary": "手机号不存在且注册关闭",
+                    "value": {
+                      "success": false,
+                      "message": "管理员关闭了新用户注册"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "触发全局 API 限流或关键接口限流，通常无响应体。"
+          },
+          "500": {
+            "description": "限流中间件内部错误等异常场景，可能无响应体。"
+          }
+        }
       }
     },
     "/api/user/login/2fa": {
@@ -4368,6 +4621,922 @@
         ]
       }
     },
+    "/api/skill-hub/skills": {
+      "get": {
+        "summary": "获取技能广场技能列表",
+        "deprecated": false,
+        "description": "🔓 无需鉴权；仅返回已发布技能",
+        "tags": [
+          "技能广场"
+        ],
+        "parameters": [
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "搜索关键字，匹配技能 ID、名称、描述或标签；最多 128 个字符，%、_、! 按普通字符处理",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "p",
+            "in": "query",
+            "description": "页码",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "每页数量",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubListApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skill-hub/tags": {
+      "get": {
+        "summary": "获取技能广场标签列表",
+        "deprecated": false,
+        "description": "🔓 无需鉴权；仅返回已发布技能正在使用的标签。公开读取不会触发标签同步写入",
+        "tags": [
+          "技能广场"
+        ],
+        "parameters": [
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "搜索关键字，匹配标签名称；最多 128 个字符，%、_、! 按普通字符处理",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "p",
+            "in": "query",
+            "description": "页码",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "每页数量，最大 100",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubTagListApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skill-hub/tags/skills": {
+      "get": {
+        "summary": "按标签获取技能广场技能列表",
+        "deprecated": false,
+        "description": "🔓 无需鉴权；按一个或多个标签 ID 返回已发布技能；未传 tag_ids 时返回全部已发布技能",
+        "tags": [
+          "技能广场"
+        ],
+        "parameters": [
+          {
+            "name": "tag_ids",
+            "in": "query",
+            "description": "标签 ID，多个 ID 使用英文逗号分隔，例如 1,2；不传或传空字符串时返回全部；最多 50 个 ID",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "可选搜索关键字，匹配技能 ID、名称、描述或标签；最多 128 个字符，%、_、! 按普通字符处理",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "p",
+            "in": "query",
+            "description": "页码",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "每页数量",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubListApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skill-hub/skills/{id}": {
+      "get": {
+        "summary": "获取技能广场技能详情",
+        "deprecated": false,
+        "description": "🔓 无需鉴权；仅可获取已发布技能",
+        "tags": [
+          "技能广场"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "技能 ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubSkillApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skill-hub/skills/{id}/download": {
+      "get": {
+        "summary": "下载技能包",
+        "deprecated": false,
+        "description": "🔓 无需鉴权；成功时 302 跳转到技能包源地址或签名下载地址",
+        "tags": [
+          "技能广场"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "技能 ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "失败时返回统一 JSON 错误结构",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "302": {
+            "description": "跳转到技能包下载地址",
+            "headers": {
+              "Location": {
+                "description": "技能包下载地址",
+                "schema": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/skill-hub/upload": {
+      "post": {
+        "summary": "上传技能包",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）；仅支持 zip 文件，最大 50MB",
+        "tags": [
+          "技能广场管理"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "skill_id"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "zip 技能包文件"
+                  },
+                  "skill_id": {
+                    "type": "string",
+                    "description": "技能 ID"
+                  },
+                  "version": {
+                    "type": "string",
+                    "description": "技能版本"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubUploadApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionAuth": [],
+            "NewApiUser": []
+          },
+          {
+            "AccessToken": [],
+            "NewApiUser": []
+          }
+        ]
+      }
+    },
+    "/api/admin/skill-hub/upload-icon": {
+      "post": {
+        "summary": "上传技能图标",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）；支持 png、jpg、jpeg、webp，最大 1MB",
+        "tags": [
+          "技能广场管理"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "skill_id"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "技能图标文件"
+                  },
+                  "skill_id": {
+                    "type": "string",
+                    "description": "技能 ID"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubUploadApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionAuth": [],
+            "NewApiUser": []
+          },
+          {
+            "AccessToken": [],
+            "NewApiUser": []
+          }
+        ]
+      }
+    },
+    "/api/admin/skill-hub/tags": {
+      "get": {
+        "summary": "管理员获取标签列表",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）；返回标签库并统计每个标签被 Skill 使用的数量；会在查询前同步一次 Skill 标签关联",
+        "tags": [
+          "技能广场管理"
+        ],
+        "parameters": [
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "搜索关键字，匹配标签名称；最多 128 个字符，%、_、! 按普通字符处理",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "p",
+            "in": "query",
+            "description": "页码",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "每页数量，最大 100",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubTagListApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionAuth": [],
+            "NewApiUser": []
+          },
+          {
+            "AccessToken": [],
+            "NewApiUser": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "管理员创建标签",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）；标签名称不可重复，不能包含斜杠",
+        "tags": [
+          "技能广场管理"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillHubTagRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubTagApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionAuth": [],
+            "NewApiUser": []
+          },
+          {
+            "AccessToken": [],
+            "NewApiUser": []
+          }
+        ]
+      }
+    },
+    "/api/admin/skill-hub/tags/skills": {
+      "get": {
+        "summary": "管理员按标签获取技能列表",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）；按一个或多个标签 ID 返回全部状态技能；未传 tag_ids 时返回全部技能",
+        "tags": [
+          "技能广场管理"
+        ],
+        "parameters": [
+          {
+            "name": "tag_ids",
+            "in": "query",
+            "description": "标签 ID，多个 ID 使用英文逗号分隔，例如 1,2；不传或传空字符串时返回全部；最多 50 个 ID",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "可选搜索关键字，匹配技能 ID、名称、描述或标签；最多 128 个字符，%、_、! 按普通字符处理",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "p",
+            "in": "query",
+            "description": "页码",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "每页数量",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubListApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionAuth": [],
+            "NewApiUser": []
+          },
+          {
+            "AccessToken": [],
+            "NewApiUser": []
+          }
+        ]
+      }
+    },
+    "/api/admin/skill-hub/tags/{name}": {
+      "delete": {
+        "summary": "管理员删除标签",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）；只能删除未被任何 Skill 使用的标签",
+        "tags": [
+          "技能广场管理"
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "标签名称",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubEmptyApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionAuth": [],
+            "NewApiUser": []
+          },
+          {
+            "AccessToken": [],
+            "NewApiUser": []
+          }
+        ]
+      }
+    },
+    "/api/admin/skill-hub/skills": {
+      "get": {
+        "summary": "管理员获取技能列表",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）；返回全部状态技能",
+        "tags": [
+          "技能广场管理"
+        ],
+        "parameters": [
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "搜索关键字，匹配技能 ID、名称、描述或标签；最多 128 个字符，%、_、! 按普通字符处理",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "p",
+            "in": "query",
+            "description": "页码",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "每页数量",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubListApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionAuth": [],
+            "NewApiUser": []
+          },
+          {
+            "AccessToken": [],
+            "NewApiUser": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "管理员创建技能",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）",
+        "tags": [
+          "技能广场管理"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillHubSkillRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubSkillApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionAuth": [],
+            "NewApiUser": []
+          },
+          {
+            "AccessToken": [],
+            "NewApiUser": []
+          }
+        ]
+      }
+    },
+    "/api/admin/skill-hub/skills/{id}": {
+      "get": {
+        "summary": "管理员获取技能详情",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）",
+        "tags": [
+          "技能广场管理"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "技能 ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubSkillApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionAuth": [],
+            "NewApiUser": []
+          },
+          {
+            "AccessToken": [],
+            "NewApiUser": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "管理员更新技能",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）",
+        "tags": [
+          "技能广场管理"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "当前技能 ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillHubSkillRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubSkillApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionAuth": [],
+            "NewApiUser": []
+          },
+          {
+            "AccessToken": [],
+            "NewApiUser": []
+          }
+        ]
+      },
+      "delete": {
+        "summary": "管理员删除技能",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）",
+        "tags": [
+          "技能广场管理"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "技能 ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubEmptyApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionAuth": [],
+            "NewApiUser": []
+          },
+          {
+            "AccessToken": [],
+            "NewApiUser": []
+          }
+        ]
+      }
+    },
+    "/api/admin/skill-hub/skills/{id}/publish": {
+      "post": {
+        "summary": "管理员发布技能",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）",
+        "tags": [
+          "技能广场管理"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "技能 ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubSkillApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionAuth": [],
+            "NewApiUser": []
+          },
+          {
+            "AccessToken": [],
+            "NewApiUser": []
+          }
+        ]
+      }
+    },
+    "/api/admin/skill-hub/skills/{id}/unpublish": {
+      "post": {
+        "summary": "管理员下架技能",
+        "deprecated": false,
+        "description": "👨‍💼 需要管理员权限（Admin）",
+        "tags": [
+          "技能广场管理"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "技能 ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "headers": {},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubSkillApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionAuth": [],
+            "NewApiUser": []
+          },
+          {
+            "AccessToken": [],
+            "NewApiUser": []
+          }
+        ]
+      }
+    },
     "/api/vendors/": {
       "get": {
         "summary": "获取所有供应商",
@@ -4795,6 +5964,260 @@
         ]
       }
     },
+    "/api/user/chat-models": {
+      "get": {
+        "summary": "获取当前用户可选对话模型",
+        "description": "需要用户登录。后端根据当前登录用户分组计算可用模型，不接受 group 查询参数。Auto 会作为普通模型行返回，name 固定为 Auto，model 为实际调用模型名。",
+        "tags": [
+          "对话模型"
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserChatModelsResponse"
+                },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "total": 2,
+                    "models": [
+                      {
+                        "model": "gpt-4o-mini",
+                        "name": "Auto",
+                        "price": 0.15
+                      },
+                      {
+                        "model": "gpt-4o",
+                        "name": "GPT-4o",
+                        "price": 5
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat-models/": {
+      "get": {
+        "summary": "分页获取对话模型配置",
+        "description": "需要管理员权限。available 表示该模型当前是否仍存在于模型广场 pricing 中且属于对话端点。",
+        "tags": [
+          "对话模型管理"
+        ],
+        "parameters": [
+          {
+            "name": "p",
+            "in": "query",
+            "description": "页码，默认 1",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "每页数量，最大 100",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "搜索模型名或展示名",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "enabled",
+            "in": "query",
+            "description": "按显示开关过滤",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "available",
+            "in": "query",
+            "description": "按当前模型广场可用状态过滤",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminChatModelListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "创建对话模型配置",
+        "description": "需要管理员权限。model 必须是当前模型广场 pricing 中可用于对话端点的模型。若 is_auto 为 true，后端会在事务内清除其他 Auto 并设置当前项为 Auto。",
+        "tags": [
+          "对话模型管理"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateChatModelRequest"
+              },
+              "example": {
+                "model": "gpt-4o-mini",
+                "name": "GPT-4o mini",
+                "enabled": true,
+                "is_auto": true,
+                "sort": 10
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminChatModelItemResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat-models/candidates": {
+      "get": {
+        "summary": "获取可添加的对话模型候选",
+        "description": "需要管理员权限。候选来自模型广场 pricing，只返回对话端点模型，并标记是否已经配置到对话模型列表。",
+        "tags": [
+          "对话模型管理"
+        ],
+        "parameters": [
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "按模型名搜索候选",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatModelCandidatesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat-models/{id}": {
+      "patch": {
+        "summary": "编辑对话模型配置",
+        "description": "需要管理员权限。所有字段均可选，不传表示不修改。若 is_auto 为 true，后端会在事务内保证最多一个 Auto。",
+        "tags": [
+          "对话模型管理"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateChatModelRequest"
+              },
+              "example": {
+                "name": "Fast default model",
+                "enabled": true,
+                "is_auto": true,
+                "sort": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminChatModelItemResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "删除对话模型配置",
+        "description": "需要管理员权限。删除 Auto 项后用户侧不再返回 Auto。",
+        "tags": [
+          "对话模型管理"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiSuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/option/": {
       "get": {
         "summary": "获取系统选项",
@@ -5117,6 +6540,817 @@
             "type": "integer"
           },
           "redeemed_time": {
+            "type": "integer"
+          }
+        }
+      },
+      "SendSmsVerificationRequest": {
+        "type": "object",
+        "required": [
+          "phone"
+        ],
+        "properties": {
+          "phone": {
+            "type": "string",
+            "description": "中国大陆手机号。后端会规范化为 +86 格式。",
+            "example": "13812345678"
+          }
+        }
+      },
+      "SmsLoginRequest": {
+        "type": "object",
+        "required": [
+          "phone",
+          "code"
+        ],
+        "properties": {
+          "phone": {
+            "type": "string",
+            "description": "中国大陆手机号。必须与发码时手机号对应。",
+            "example": "13812345678"
+          },
+          "code": {
+            "type": "string",
+            "description": "6 位数字短信验证码。",
+            "pattern": "^[0-9]{6}$",
+            "example": "123456"
+          }
+        }
+      },
+      "SmsVerificationSuccessResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "message"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": ""
+          }
+        }
+      },
+      "LoginSuccessResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": ""
+          },
+          "data": {
+            "$ref": "#/components/schemas/LoginUserData"
+          }
+        }
+      },
+      "Login2FARequiredResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "data"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "description": "提示用户需要完成 2FA。",
+            "example": "请输入两步验证码"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "require_2fa"
+            ],
+            "properties": {
+              "require_2fa": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "example": true
+              }
+            }
+          }
+        }
+      },
+      "LoginUserData": {
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "role",
+          "status",
+          "group"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32",
+            "description": "用户 ID。",
+            "example": 1
+          },
+          "username": {
+            "type": "string",
+            "description": "用户名。",
+            "example": "u5678abcd"
+          },
+          "display_name": {
+            "type": "string",
+            "description": "显示名称。",
+            "example": "u5678abcd"
+          },
+          "role": {
+            "type": "integer",
+            "format": "int32",
+            "description": "用户角色。普通用户通常为 1。",
+            "example": 1
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "description": "用户状态。启用为 1，禁用为 2。",
+            "example": 1
+          },
+          "group": {
+            "type": "string",
+            "description": "用户分组。",
+            "example": "default"
+          }
+        }
+      },
+      "ApiErrorResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "message"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "description": "业务错误消息，可能受后端 i18n 影响。",
+            "example": "无效的参数"
+          }
+        }
+      },
+      "SkillHubSource": {
+        "type": "object",
+        "required": [
+          "type",
+          "url"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "技能来源类型，目前仅支持 zip",
+            "enum": [
+              "zip"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "description": "技能包下载地址",
+            "format": "uri"
+          },
+          "ref": {
+            "type": "string",
+            "description": "OSS 对象键；公开接口不会返回该字段"
+          },
+          "checksum": {
+            "type": "string",
+            "description": "技能包校验和，例如 sha256:<hex>"
+          }
+        }
+      },
+      "SkillHubSkill": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "技能 ID，只允许字母、数字、点、下划线和短横线，最长 128"
+          },
+          "name": {
+            "type": "string",
+            "description": "技能名称"
+          },
+          "description": {
+            "type": "string",
+            "description": "技能描述"
+          },
+          "version": {
+            "type": "string",
+            "description": "技能版本"
+          },
+          "icon": {
+            "type": "string",
+            "description": "图标 URL",
+            "format": "uri"
+          },
+          "tags": {
+            "type": "array",
+            "description": "标签",
+            "items": {
+              "type": "string"
+            }
+          },
+          "verified": {
+            "type": "boolean",
+            "description": "是否认证"
+          },
+          "published": {
+            "type": "boolean",
+            "description": "是否已发布；公开接口不返回有效值"
+          },
+          "status": {
+            "type": "integer",
+            "description": "发布状态：0 草稿，1 已发布；公开接口不返回有效值",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "sort": {
+            "type": "integer",
+            "description": "排序权重，越大越靠前；公开接口不返回有效值"
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "更新时间",
+            "format": "date-time"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SkillHubSource"
+          }
+        }
+      },
+      "SkillHubListData": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillHubSkill"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "总数"
+          }
+        }
+      },
+      "SkillHubTag": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "标签内部 ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "标签名称，最多 32 个字符，不能包含 / 或 \\",
+            "maxLength": 32
+          },
+          "sort": {
+            "type": "integer",
+            "description": "排序权重，越大越靠前；仅管理端返回"
+          },
+          "usageCount": {
+            "type": "integer",
+            "format": "int64",
+            "description": "当前被 Skill 使用的数量"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "创建时间；仅管理端返回",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "更新时间；仅管理端返回",
+            "format": "date-time"
+          }
+        }
+      },
+      "SkillHubTagListData": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillHubTag"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "总数"
+          }
+        }
+      },
+      "SkillHubTagRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "标签名称，最多 32 个字符，不能包含 / 或 \\",
+            "maxLength": 32
+          },
+          "sort": {
+            "type": "integer",
+            "description": "排序权重，越大越靠前"
+          }
+        }
+      },
+      "SkillHubSkillRequest": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "version",
+          "source"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "技能 ID，只允许字母、数字、点、下划线和短横线，最长 128"
+          },
+          "name": {
+            "type": "string",
+            "description": "技能名称"
+          },
+          "description": {
+            "type": "string",
+            "description": "技能描述"
+          },
+          "version": {
+            "type": "string",
+            "description": "技能版本"
+          },
+          "icon": {
+            "type": "string",
+            "description": "图标 URL",
+            "format": "uri"
+          },
+          "tags": {
+            "type": "array",
+            "description": "标签",
+            "items": {
+              "type": "string"
+            }
+          },
+          "verified": {
+            "type": "boolean",
+            "description": "是否认证"
+          },
+          "published": {
+            "type": "boolean",
+            "description": "是否发布；未传 status 时使用该字段决定状态"
+          },
+          "status": {
+            "type": "integer",
+            "description": "发布状态：0 草稿，1 已发布；优先级高于 published",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "sort": {
+            "type": "integer",
+            "description": "排序权重，越大越靠前"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SkillHubSource"
+          }
+        }
+      },
+      "SkillHubUploadResult": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "可访问 URL；zip 上传时返回技能下载接口地址，图标上传时返回图标公网地址",
+            "format": "uri"
+          },
+          "object": {
+            "type": "string",
+            "description": "OSS 对象键"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "文件大小，单位字节"
+          },
+          "checksum": {
+            "type": "string",
+            "description": "文件校验和，例如 sha256:<hex>"
+          }
+        }
+      },
+      "SkillHubListApiResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SkillHubListData"
+          }
+        }
+      },
+      "SkillHubSkillApiResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SkillHubSkill"
+          }
+        }
+      },
+      "SkillHubTagListApiResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SkillHubTagListData"
+          }
+        }
+      },
+      "SkillHubTagApiResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SkillHubTag"
+          }
+        }
+      },
+      "SkillHubUploadApiResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SkillHubUploadResult"
+          }
+        }
+      },
+      "SkillHubEmptyApiResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "nullable": true
+          }
+        }
+      },
+      "ApiSuccessResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": ""
+          },
+          "data": {
+            "nullable": true
+          }
+        },
+        "required": [
+          "success"
+        ]
+      },
+      "UserChatModelsResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/UserChatModelsData"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ]
+      },
+      "UserChatModelsData": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "description": "返回模型总数，包含 Auto"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserChatModelItem"
+            }
+          }
+        },
+        "required": [
+          "total",
+          "models"
+        ]
+      },
+      "UserChatModelItem": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "实际调用时使用的模型名"
+          },
+          "name": {
+            "type": "string",
+            "description": "前端展示名；Auto 行固定为 Auto"
+          },
+          "price": {
+            "type": "number",
+            "format": "double",
+            "description": "总估算价格，参考模型广场 token 输入价并套用当前用户可用分组最低倍率"
+          }
+        },
+        "required": [
+          "model",
+          "name",
+          "price"
+        ]
+      },
+      "AdminChatModelListResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AdminChatModelItem"
+                }
+              },
+              "total": {
+                "type": "integer"
+              },
+              "page": {
+                "type": "integer"
+              },
+              "page_size": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "items",
+              "total",
+              "page",
+              "page_size"
+            ]
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ]
+      },
+      "AdminChatModelItemResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AdminChatModelItem"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ]
+      },
+      "AdminChatModelItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "model": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "is_auto": {
+            "type": "boolean"
+          },
+          "sort": {
+            "type": "integer"
+          },
+          "price": {
+            "type": "number",
+            "format": "double"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "created_time": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_time": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "id",
+          "model",
+          "name",
+          "enabled",
+          "is_auto",
+          "sort",
+          "price",
+          "available",
+          "created_time",
+          "updated_time"
+        ]
+      },
+      "ChatModelCandidatesResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ChatModelCandidate"
+                }
+              },
+              "total": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "items",
+              "total"
+            ]
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ]
+      },
+      "ChatModelCandidate": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "format": "double"
+          },
+          "configured": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "model",
+          "name",
+          "price",
+          "configured"
+        ]
+      },
+      "CreateChatModelRequest": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "is_auto": {
+            "type": "boolean",
+            "default": false
+          },
+          "sort": {
+            "type": "integer",
+            "default": 0
+          }
+        },
+        "required": [
+          "model"
+        ]
+      },
+      "UpdateChatModelRequest": {
+        "type": "object",
+        "description": "字段均为可选；不传表示不修改。",
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "is_auto": {
+            "type": "boolean"
+          },
+          "sort": {
             "type": "integer"
           }
         }
@@ -7803,6 +10037,36 @@
           }
         ],
         "type": "combination"
+      },
+      "SessionAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "session",
+        "description": "Session 认证，通过登录接口获取"
+      },
+      "AccessToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization",
+        "description": "Access Token 认证，格式：Bearer {access_token}"
+      },
+      "NewApiUser": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "New-Api-User",
+        "description": "用户 ID 请求头，使用 Session 或 Access Token 认证时提供"
+      }
+    },
+    "parameters": {
+      "Turnstile": {
+        "name": "turnstile",
+        "in": "query",
+        "description": "Cloudflare Turnstile token。仅当系统开启 TurnstileCheckEnabled 时必填；未开启时可不传。",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "example": "0.xxxxx"
       }
     }
   },
