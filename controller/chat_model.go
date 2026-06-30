@@ -194,6 +194,70 @@ func CreateChatModel(c *gin.Context) {
 	common.ApiSuccess(c, buildAdminChatModelItem(option, pricingMap))
 }
 
+func BatchCreateChatModels(c *gin.Context) {
+	var req dto.BatchCreateChatModelsRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if len(req.Models) == 0 {
+		common.ApiErrorMsg(c, "妯″瀷鍒楄〃涓嶈兘涓虹┖")
+		return
+	}
+
+	pricingMap := getChatPricingMap(model.GetPricing())
+	configured, err := model.GetChatModelOptionModelMap()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	seen := make(map[string]bool, len(req.Models))
+	created := make([]dto.AdminChatModelItem, 0, len(req.Models))
+	skipped := make([]string, 0)
+	for _, rawName := range req.Models {
+		modelName, err := normalizeChatModelName(rawName)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if seen[modelName] {
+			skipped = append(skipped, modelName)
+			continue
+		}
+		seen[modelName] = true
+		if _, ok := pricingMap[modelName]; !ok {
+			skipped = append(skipped, modelName)
+			continue
+		}
+		if _, ok := configured[modelName]; ok {
+			skipped = append(skipped, modelName)
+			continue
+		}
+
+		option := model.ChatModelOption{
+			ModelName:   modelName,
+			DisplayName: modelName,
+			Enabled:     false,
+			IsAuto:      false,
+			Sort:        0,
+		}
+		if err := model.CreateChatModelOption(&option); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		configured[modelName] = option
+		created = append(created, buildAdminChatModelItem(option, pricingMap))
+	}
+
+	common.ApiSuccess(c, dto.BatchCreateChatModelsResponse{
+		Created:      created,
+		Skipped:      skipped,
+		CreatedCount: len(created),
+		SkippedCount: len(skipped),
+	})
+}
+
 func UpdateChatModel(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil || id <= 0 {

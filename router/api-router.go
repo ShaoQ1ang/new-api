@@ -405,6 +405,7 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			chatModelsRoute.GET("/", controller.ListChatModels)
 			chatModelsRoute.GET("/candidates", controller.ListChatModelCandidates)
+			chatModelsRoute.POST("/batch", controller.BatchCreateChatModels)
 			chatModelsRoute.POST("/", controller.CreateChatModel)
 			chatModelsRoute.PATCH("/:id", controller.UpdateChatModel)
 			chatModelsRoute.DELETE("/:id", controller.DeleteChatModel)

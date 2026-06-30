@@ -18,11 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Edit, Plus, Trash2 } from 'lucide-react'
+import { CheckSquare, Edit, Plus, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Combobox } from '@/components/ui/combobox'
 import {
   Dialog,
@@ -40,6 +41,7 @@ import {
 } from '@/components/ui/empty'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Select,
   SelectContent,
@@ -59,6 +61,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
+  batchCreateChatModels,
   createChatModel,
   deleteChatModel,
   listChatModelCandidates,
@@ -105,6 +108,9 @@ export function ChatModelsTable() {
   const [availableFilter, setAvailableFilter] = useState('all')
   const [formOpen, setFormOpen] = useState(false)
   const [form, setForm] = useState<ChatModelFormState>(emptyForm)
+  const [batchOpen, setBatchOpen] = useState(false)
+  const [batchKeyword, setBatchKeyword] = useState('')
+  const [selectedBatchModels, setSelectedBatchModels] = useState<string[]>([])
   const [deleteTarget, setDeleteTarget] = useState<ChatModelOption | null>(null)
 
   const listParams = useMemo(
@@ -148,6 +154,18 @@ export function ChatModelsTable() {
       })),
     [candidates, t]
   )
+  const batchCandidates = useMemo(() => {
+    const normalizedKeyword = batchKeyword.trim().toLowerCase()
+    return candidates.filter((candidate) => {
+      if (candidate.configured) return false
+      if (!normalizedKeyword) return true
+      return candidate.model.toLowerCase().includes(normalizedKeyword)
+    })
+  }, [batchKeyword, candidates])
+  const selectedBatchSet = useMemo(
+    () => new Set(selectedBatchModels),
+    [selectedBatchModels]
+  )
 
   const invalidateChatModels = () =>
     queryClient.invalidateQueries({ queryKey: chatModelsQueryKeys.all })
@@ -161,6 +179,31 @@ export function ChatModelsTable() {
       }
       toast.success(t('Chat model created'))
       setFormOpen(false)
+      void invalidateChatModels()
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : t('Request failed'))
+    },
+  })
+
+  const batchCreateMutation = useMutation({
+    mutationFn: batchCreateChatModels,
+    onSuccess: (response) => {
+      if (!response.success) {
+        toast.error(response.message || t('Failed to batch add chat models'))
+        return
+      }
+      const created = response.data?.created_count ?? 0
+      const skipped = response.data?.skipped_count ?? 0
+      toast.success(
+        t('Batch added {{created}} chat model(s), skipped {{skipped}}', {
+          created,
+          skipped,
+        })
+      )
+      setBatchOpen(false)
+      setSelectedBatchModels([])
+      setBatchKeyword('')
       void invalidateChatModels()
     },
     onError: (error) => {
@@ -211,6 +254,12 @@ export function ChatModelsTable() {
     setFormOpen(true)
   }
 
+  const openBatchDialog = () => {
+    setSelectedBatchModels([])
+    setBatchKeyword('')
+    setBatchOpen(true)
+  }
+
   const openEditDialog = (item: ChatModelOption) => {
     setForm({
       id: item.id,
@@ -252,7 +301,50 @@ export function ChatModelsTable() {
     updateMutation.mutate({ id: item.id, payload })
   }
 
+  const toggleBatchModel = (modelName: string, checked: boolean) => {
+    setSelectedBatchModels((current) => {
+      if (checked) {
+        return current.includes(modelName) ? current : [...current, modelName]
+      }
+      return current.filter((item) => item !== modelName)
+    })
+  }
+
+  const selectFilteredBatchModels = () => {
+    const filteredModels = batchCandidates.map((candidate) => candidate.model)
+    setSelectedBatchModels((current) => [
+      ...current,
+      ...filteredModels.filter((modelName) => !current.includes(modelName)),
+    ])
+  }
+
+  const selectAllBatchModels = () => {
+    setSelectedBatchModels(
+      candidates
+        .filter((candidate) => !candidate.configured)
+        .map((candidate) => candidate.model)
+    )
+  }
+
+  const clearFilteredBatchModels = () => {
+    const filteredModels = new Set(
+      batchCandidates.map((candidate) => candidate.model)
+    )
+    setSelectedBatchModels((current) =>
+      current.filter((modelName) => !filteredModels.has(modelName))
+    )
+  }
+
+  const handleBatchSubmit = () => {
+    if (selectedBatchModels.length === 0) {
+      toast.error(t('Please select at least one model'))
+      return
+    }
+    batchCreateMutation.mutate({ models: selectedBatchModels })
+  }
+
   const isSubmitting = createMutation.isPending || updateMutation.isPending
+  const isBatchSubmitting = batchCreateMutation.isPending
 
   return (
     <div className='flex flex-col gap-4'>
@@ -304,10 +396,16 @@ export function ChatModelsTable() {
             </SelectContent>
           </Select>
         </div>
-        <Button onClick={openCreateDialog} size='sm'>
-          <Plus className='h-4 w-4' />
-          {t('Add Chat Model')}
-        </Button>
+        <div className='flex items-center gap-2'>
+          <Button onClick={openBatchDialog} variant='outline' size='sm'>
+            <CheckSquare className='h-4 w-4' />
+            {t('Batch Add')}
+          </Button>
+          <Button onClick={openCreateDialog} size='sm'>
+            <Plus className='h-4 w-4' />
+            {t('Add Chat Model')}
+          </Button>
+        </div>
       </div>
 
       <div className='rounded-lg border'>
@@ -521,6 +619,111 @@ export function ChatModelsTable() {
             <Button onClick={handleSubmit} disabled={isSubmitting}>
               {isSubmitting && <Spinner data-icon='inline-start' />}
               {form.id ? t('Save changes') : t('Create')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
+        <DialogContent className='sm:max-w-2xl'>
+          <DialogHeader>
+            <DialogTitle>{t('Batch Add Chat Models')}</DialogTitle>
+          </DialogHeader>
+          <div className='flex flex-col gap-4'>
+            <div className='text-muted-foreground text-sm'>
+              {t('Selected chat models will be added disabled.')}
+            </div>
+            <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+              <Input
+                value={batchKeyword}
+                onChange={(event) => setBatchKeyword(event.target.value)}
+                placeholder={t('Search available models...')}
+                className='sm:max-w-xs'
+              />
+              <div className='flex items-center gap-2'>
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='sm'
+                  onClick={selectAllBatchModels}
+                  disabled={candidates.every(
+                    (candidate) => candidate.configured
+                  )}
+                >
+                  {t('Select all')}
+                </Button>
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='sm'
+                  onClick={selectFilteredBatchModels}
+                  disabled={batchCandidates.length === 0}
+                >
+                  {t('Select filtered')}
+                </Button>
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='sm'
+                  onClick={clearFilteredBatchModels}
+                  disabled={batchCandidates.length === 0}
+                >
+                  {t('Clear filtered')}
+                </Button>
+              </div>
+            </div>
+            <ScrollArea className='bg-muted/40 h-80 rounded-md p-1'>
+              {batchCandidates.length === 0 ? (
+                <Empty className='border-0'>
+                  <EmptyHeader>
+                    <EmptyTitle>{t('No available models')}</EmptyTitle>
+                    <EmptyDescription>
+                      {t('All available chat models are already configured.')}
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              ) : (
+                <div className='flex flex-col'>
+                  {batchCandidates.map((candidate) => {
+                    const checked = selectedBatchSet.has(candidate.model)
+                    return (
+                      <label
+                        key={candidate.model}
+                        className='hover:bg-background flex cursor-pointer items-center gap-3 rounded-md px-3 py-2'
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(value) =>
+                            toggleBatchModel(candidate.model, value === true)
+                          }
+                        />
+                        <span className='min-w-0 flex-1'>
+                          <span className='block truncate font-mono text-xs'>
+                            {candidate.model}
+                          </span>
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+            </ScrollArea>
+            <div className='text-muted-foreground text-sm'>
+              {t('{{count}} model(s) selected', {
+                count: selectedBatchModels.length,
+              })}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant='outline' onClick={() => setBatchOpen(false)}>
+              {t('Cancel')}
+            </Button>
+            <Button
+              onClick={handleBatchSubmit}
+              disabled={isBatchSubmitting || selectedBatchModels.length === 0}
+            >
+              {isBatchSubmitting && <Spinner data-icon='inline-start' />}
+              {t('Add Disabled')}
             </Button>
           </DialogFooter>
         </DialogContent>

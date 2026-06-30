@@ -26,6 +26,11 @@ type adminChatModelPayload struct {
 	Data    dto.AdminChatModelItem `json:"data"`
 }
 
+type batchAdminChatModelsPayload struct {
+	Success bool                              `json:"success"`
+	Data    dto.BatchCreateChatModelsResponse `json:"data"`
+}
+
 func seedChatModelChannel(t *testing.T, channelID int, group string, modelName string) {
 	t.Helper()
 
@@ -142,4 +147,35 @@ func TestUpdateChatModelSetsSingleAutoWithOptionalFields(t *testing.T) {
 	require.True(t, options[1].IsAuto)
 	require.Equal(t, "gpt-4o-mini", options[0].ModelName)
 	require.Equal(t, "gpt-3.5-turbo", options[1].ModelName)
+}
+
+func TestBatchCreateChatModelsAddsDisabledOptions(t *testing.T) {
+	ratio_setting.InitRatioSettings()
+	setupModelListControllerTestDB(t)
+
+	seedChatModelChannel(t, 1, "default", "gpt-4o-mini")
+	seedChatModelChannel(t, 2, "default", "gpt-3.5-turbo")
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/chat-models/batch", strings.NewReader(`{"models":["gpt-4o-mini","gpt-3.5-turbo","gpt-4o-mini"]}`))
+
+	BatchCreateChatModels(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var payload batchAdminChatModelsPayload
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.True(t, payload.Success)
+	require.Equal(t, 2, payload.Data.CreatedCount)
+	require.Equal(t, 1, payload.Data.SkippedCount)
+
+	var options []model.ChatModelOption
+	require.NoError(t, model.DB.Order("id ASC").Find(&options).Error)
+	require.Len(t, options, 2)
+	for _, option := range options {
+		require.False(t, option.Enabled)
+		require.False(t, option.IsAuto)
+		require.Nil(t, option.AutoKey)
+		require.Equal(t, option.ModelName, option.DisplayName)
+	}
 }

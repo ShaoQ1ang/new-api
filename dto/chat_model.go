@@ -39,6 +39,17 @@ type CreateChatModelRequest struct {
 	Sort    *int   `json:"sort"`
 }
 
+type BatchCreateChatModelsRequest struct {
+	Models []string `json:"models"`
+}
+
+type BatchCreateChatModelsResponse struct {
+	Created      []AdminChatModelItem `json:"created"`
+	Skipped      []string             `json:"skipped"`
+	CreatedCount int                  `json:"created_count"`
+	SkippedCount int                  `json:"skipped_count"`
+}
+
 type UpdateChatModelRequest struct {
 	Model   *string `json:"model"`
 	Name    *string `json:"name"`

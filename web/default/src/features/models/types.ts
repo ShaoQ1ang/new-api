@@ -360,6 +360,17 @@ export interface ListChatModelCandidatesResponse {
   }
 }
 
+export interface BatchCreateChatModelsResponse {
+  success: boolean
+  message?: string
+  data?: {
+    created?: ChatModelOption[]
+    skipped?: string[]
+    created_count?: number
+    skipped_count?: number
+  }
+}
+
 export interface UpsertChatModelPayload {
   model?: string
   name?: string

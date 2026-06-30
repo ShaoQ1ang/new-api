@@ -4271,6 +4271,19 @@
     "全部可用性": "All availability",
     "不可用": "Unavailable",
     "展示名称": "Display Name",
-    "确认删除 {{name}}？": "Delete {{name}}?"
+    "确认删除 {{name}}？": "Delete {{name}}?",
+    "批量添加": "Batch Add",
+    "全选": "Select all",
+    "批量添加对话模型": "Batch Add Chat Models",
+    "添加为禁用": "Add Disabled",
+    "选中的对话模型会以禁用状态添加。": "Selected chat models will be added disabled.",
+    "搜索可用模型": "Search available models",
+    "选择过滤结果": "Select filtered",
+    "清空过滤结果": "Clear filtered",
+    "所有可用对话模型都已配置。": "All available chat models are already configured.",
+    "已选择 {{count}} 个模型": "{{count}} model(s) selected",
+    "请至少选择一个模型": "Please select at least one model",
+    "批量添加对话模型失败": "Failed to batch add chat models",
+    "批量添加 {{created}} 个对话模型，跳过 {{skipped}} 个": "Batch added {{created}} chat model(s), skipped {{skipped}}"
   }
 }

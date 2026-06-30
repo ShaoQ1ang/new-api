@@ -38,6 +38,7 @@ import type {
   ListChatModelsParams,
   ListChatModelsResponse,
   ListChatModelCandidatesResponse,
+  BatchCreateChatModelsResponse,
   ChatModelOption,
   UpsertChatModelPayload,
 } from './types'
@@ -137,6 +138,13 @@ export async function createChatModel(
   data: UpsertChatModelPayload & { model: string }
 ): Promise<{ success: boolean; message?: string; data?: ChatModelOption }> {
   const res = await api.post('/api/chat-models/', data)
+  return res.data
+}
+
+export async function batchCreateChatModels(data: {
+  models: string[]
+}): Promise<BatchCreateChatModelsResponse> {
+  const res = await api.post('/api/chat-models/batch', data)
   return res.data
 }
 

@@ -21,6 +21,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Card,
+  Checkbox,
   Form,
   Input,
   Modal,
@@ -77,6 +78,10 @@ const ChatModelsTable = () => {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [candidates, setCandidates] = useState([]);
+  const [batchVisible, setBatchVisible] = useState(false);
+  const [batchKeyword, setBatchKeyword] = useState('');
+  const [selectedBatchModels, setSelectedBatchModels] = useState([]);
+  const [batchSaving, setBatchSaving] = useState(false);
 
   const loadModels = async (nextPage = page, overrides = {}) => {
     setLoading(true);
@@ -146,11 +151,32 @@ const ChatModelsTable = () => {
       })),
     [candidates, t],
   );
+  const batchCandidates = useMemo(() => {
+    const normalizedKeyword = batchKeyword.trim().toLowerCase();
+    return candidates.filter((candidate) => {
+      if (candidate.configured) return false;
+      if (!normalizedKeyword) return true;
+      return String(candidate.model || '')
+        .toLowerCase()
+        .includes(normalizedKeyword);
+    });
+  }, [batchKeyword, candidates]);
+  const selectedBatchModelSet = useMemo(
+    () => new Set(selectedBatchModels),
+    [selectedBatchModels],
+  );
 
   const openCreate = () => {
     setEditing(null);
     setForm(emptyForm);
     setModalVisible(true);
+    loadCandidates();
+  };
+
+  const openBatchCreate = () => {
+    setSelectedBatchModels([]);
+    setBatchKeyword('');
+    setBatchVisible(true);
     loadCandidates();
   };
 
@@ -222,6 +248,74 @@ const ChatModelsTable = () => {
       await loadCandidates();
     } catch (error) {
       showError(error.response?.data?.message || t('更新失败'));
+    }
+  };
+
+  const toggleBatchModel = (modelName, checked) => {
+    setSelectedBatchModels((current) => {
+      if (checked) {
+        return current.includes(modelName) ? current : [...current, modelName];
+      }
+      return current.filter((item) => item !== modelName);
+    });
+  };
+
+  const selectFilteredBatchModels = () => {
+    const filteredModels = batchCandidates.map((candidate) => candidate.model);
+    setSelectedBatchModels((current) => [
+      ...current,
+      ...filteredModels.filter((modelName) => !current.includes(modelName)),
+    ]);
+  };
+
+  const selectAllBatchModels = () => {
+    setSelectedBatchModels(
+      candidates
+        .filter((candidate) => !candidate.configured)
+        .map((candidate) => candidate.model),
+    );
+  };
+
+  const clearFilteredBatchModels = () => {
+    const filteredModels = new Set(
+      batchCandidates.map((candidate) => candidate.model),
+    );
+    setSelectedBatchModels((current) =>
+      current.filter((modelName) => !filteredModels.has(modelName)),
+    );
+  };
+
+  const submitBatch = async () => {
+    if (selectedBatchModels.length === 0) {
+      showError(t('请至少选择一个模型'));
+      return;
+    }
+
+    setBatchSaving(true);
+    try {
+      const res = await API.post('/api/chat-models/batch', {
+        models: selectedBatchModels,
+      });
+      const { success, message, data } = res.data || {};
+      if (!success) {
+        showError(message || t('批量添加对话模型失败'));
+        return;
+      }
+      showSuccess(
+        t('批量添加 {{created}} 个对话模型，跳过 {{skipped}} 个', {
+          created: data?.created_count || 0,
+          skipped: data?.skipped_count || 0,
+        }),
+      );
+      setBatchVisible(false);
+      setSelectedBatchModels([]);
+      setBatchKeyword('');
+      await loadModels(1);
+      await loadCandidates();
+    } catch (error) {
+      showError(error.response?.data?.message || t('批量添加对话模型失败'));
+    } finally {
+      setBatchSaving(false);
     }
   };
 
@@ -378,6 +472,9 @@ const ChatModelsTable = () => {
               >
                 {t('刷新')}
               </Button>
+              <Button icon={<IconPlus />} onClick={openBatchCreate}>
+                {t('批量添加')}
+              </Button>
               <Button theme='solid' icon={<IconPlus />} onClick={openCreate}>
                 {t('添加对话模型')}
               </Button>
@@ -452,6 +549,87 @@ const ChatModelsTable = () => {
             onChange={(checked) => updateForm('is_auto', checked)}
           />
         </Form>
+      </Modal>
+
+      <Modal
+        visible={batchVisible}
+        title={t('批量添加对话模型')}
+        onCancel={() => setBatchVisible(false)}
+        onOk={submitBatch}
+        confirmLoading={batchSaving}
+        okText={t('添加为禁用')}
+        cancelText={t('取消')}
+        okButtonProps={{ disabled: selectedBatchModels.length === 0 }}
+        width={720}
+      >
+        <div className='flex flex-col gap-3'>
+          <Text type='tertiary'>{t('选中的对话模型会以禁用状态添加。')}</Text>
+          <div className='flex flex-col md:flex-row justify-between gap-2'>
+            <Input
+              prefix={<IconSearch />}
+              value={batchKeyword}
+              placeholder={t('搜索可用模型')}
+              onChange={(value) => setBatchKeyword(value)}
+              style={{ width: 240 }}
+            />
+            <Space>
+              <Button
+                onClick={selectAllBatchModels}
+                disabled={candidates.every((candidate) => candidate.configured)}
+              >
+                {t('全选')}
+              </Button>
+              <Button
+                onClick={selectFilteredBatchModels}
+                disabled={batchCandidates.length === 0}
+              >
+                {t('选择过滤结果')}
+              </Button>
+              <Button
+                onClick={clearFilteredBatchModels}
+                disabled={batchCandidates.length === 0}
+              >
+                {t('清空过滤结果')}
+              </Button>
+            </Space>
+          </div>
+          <div
+            className='overflow-auto rounded-md bg-gray-50/70 p-1'
+            style={{ maxHeight: 360 }}
+          >
+            {batchCandidates.length === 0 ? (
+              <div className='py-12 text-center'>
+                <Text type='tertiary'>
+                  {t('所有可用对话模型都已配置。')}
+                </Text>
+              </div>
+            ) : (
+              batchCandidates.map((candidate) => (
+                <label
+                  key={candidate.model}
+                  className='flex items-center gap-3 rounded-md px-3 py-2 cursor-pointer hover:bg-white'
+                >
+                  <Checkbox
+                    checked={selectedBatchModelSet.has(candidate.model)}
+                    onChange={(event) =>
+                      toggleBatchModel(candidate.model, event.target.checked)
+                    }
+                  />
+                  <div className='min-w-0 flex-1'>
+                    <div className='truncate font-mono text-xs'>
+                      {candidate.model}
+                    </div>
+                  </div>
+                </label>
+              ))
+            )}
+          </div>
+          <Text type='tertiary'>
+            {t('已选择 {{count}} 个模型', {
+              count: selectedBatchModels.length,
+            })}
+          </Text>
+        </div>
       </Modal>
     </>
   );
