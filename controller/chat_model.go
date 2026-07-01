@@ -47,9 +47,9 @@ func GetUserChatModels(c *gin.Context) {
 			Price: estimateChatModelPrice(pricing, groupRatio),
 		}
 		if option.IsAuto {
-			item.Name = "Auto"
-			autoItems = append(autoItems, item)
-			continue
+			autoItem := item
+			autoItem.Name = "Auto"
+			autoItems = append(autoItems, autoItem)
 		}
 		items = append(items, item)
 	}

@@ -94,11 +94,14 @@ func TestGetUserChatModelsReturnsAutoAndFiltersUnavailableModels(t *testing.T) {
 	var payload userChatModelsPayload
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
 	require.True(t, payload.Success)
-	require.Equal(t, 1, payload.Data.Total)
-	require.Len(t, payload.Data.Models, 1)
+	require.Equal(t, 2, payload.Data.Total)
+	require.Len(t, payload.Data.Models, 2)
 	require.Equal(t, "gpt-4o-mini", payload.Data.Models[0].Model)
 	require.Equal(t, "Auto", payload.Data.Models[0].Name)
 	require.Equal(t, 0.15, payload.Data.Models[0].Price)
+	require.Equal(t, "gpt-4o-mini", payload.Data.Models[1].Model)
+	require.Equal(t, "GPT-4o mini", payload.Data.Models[1].Name)
+	require.Equal(t, 0.15, payload.Data.Models[1].Price)
 }
 
 func TestUpdateChatModelSetsSingleAutoWithOptionalFields(t *testing.T) {

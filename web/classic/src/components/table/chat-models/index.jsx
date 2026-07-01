@@ -260,6 +260,9 @@ const ChatModelsTable = () => {
     });
   };
 
+  const getCheckboxChecked = (event) =>
+    Boolean(event?.target?.checked ?? event?.checked ?? event);
+
   const selectFilteredBatchModels = () => {
     const filteredModels = batchCandidates.map((candidate) => candidate.model);
     setSelectedBatchModels((current) => [
@@ -599,29 +602,47 @@ const ChatModelsTable = () => {
           >
             {batchCandidates.length === 0 ? (
               <div className='py-12 text-center'>
-                <Text type='tertiary'>
-                  {t('所有可用对话模型都已配置。')}
-                </Text>
+                <Text type='tertiary'>{t('所有可用对话模型都已配置。')}</Text>
               </div>
             ) : (
-              batchCandidates.map((candidate) => (
-                <label
-                  key={candidate.model}
-                  className='flex items-center gap-3 rounded-md px-3 py-2 cursor-pointer hover:bg-white'
-                >
-                  <Checkbox
-                    checked={selectedBatchModelSet.has(candidate.model)}
-                    onChange={(event) =>
-                      toggleBatchModel(candidate.model, event.target.checked)
-                    }
-                  />
-                  <div className='min-w-0 flex-1'>
-                    <div className='truncate font-mono text-xs'>
-                      {candidate.model}
+              batchCandidates.map((candidate) => {
+                const checked = selectedBatchModelSet.has(candidate.model);
+                return (
+                  <div
+                    key={candidate.model}
+                    role='checkbox'
+                    aria-checked={checked}
+                    tabIndex={0}
+                    className='flex items-center gap-3 rounded-md px-3 py-2 cursor-pointer hover:bg-white'
+                    onClick={() => toggleBatchModel(candidate.model, !checked)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return;
+                      event.preventDefault();
+                      toggleBatchModel(candidate.model, !checked);
+                    }}
+                  >
+                    <span
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onChange={(event) =>
+                          toggleBatchModel(
+                            candidate.model,
+                            getCheckboxChecked(event),
+                          )
+                        }
+                      />
+                    </span>
+                    <div className='min-w-0 flex-1'>
+                      <div className='truncate font-mono text-xs'>
+                        {candidate.model}
+                      </div>
                     </div>
                   </div>
-                </label>
-              ))
+                );
+              })
             )}
           </div>
           <Text type='tertiary'>
