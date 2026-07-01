@@ -27139,7 +27139,15 @@
                   "required": true,
                   "use": {
                     "id": "v3AEQ5QbT_wRDhwY-fQsK",
-                    "configs": {}
+                    "configs": {
+                      "1523305": {
+                        "authConfigs": {
+                          "x-apifox": {
+                            "value": "{{new_api_user_id}}"
+                          }
+                        }
+                      }
+                    }
                   },
                   "scopes": {
                     "6bLB6YE1CQISlDK0iuFFt": {}
