@@ -179,3 +179,36 @@ func TestBatchCreateChatModelsAddsDisabledOptions(t *testing.T) {
 		require.Equal(t, option.ModelName, option.DisplayName)
 	}
 }
+
+func TestBatchCreateChatModelsRejectsTooManyModels(t *testing.T) {
+	setupModelListControllerTestDB(t)
+
+	var body strings.Builder
+	body.WriteString(`{"models":[`)
+	for i := 0; i <= maxBatchCreateChatModels; i++ {
+		if i > 0 {
+			body.WriteByte(',')
+		}
+		body.WriteString(`"gpt-4o-mini"`)
+	}
+	body.WriteString(`]}`)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/chat-models/batch", strings.NewReader(body.String()))
+
+	BatchCreateChatModels(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var payload struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.False(t, payload.Success)
+	require.Equal(t, "模型数量不能超过 "+strconv.Itoa(maxBatchCreateChatModels)+" 个", payload.Message)
+
+	var count int64
+	require.NoError(t, model.DB.Model(&model.ChatModelOption{}).Count(&count).Error)
+	require.Zero(t, count)
+}

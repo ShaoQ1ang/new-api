@@ -19,6 +19,8 @@ import (
 	"gorm.io/gorm"
 )
 
+const maxBatchCreateChatModels = 1000
+
 func GetUserChatModels(c *gin.Context) {
 	pricingMap, groupRatio, _, err := getUserChatPricingScope(c)
 	if err != nil {
@@ -201,7 +203,11 @@ func BatchCreateChatModels(c *gin.Context) {
 		return
 	}
 	if len(req.Models) == 0 {
-		common.ApiErrorMsg(c, "妯″瀷鍒楄〃涓嶈兘涓虹┖")
+		common.ApiErrorMsg(c, "模型列表不能为空")
+		return
+	}
+	if len(req.Models) > maxBatchCreateChatModels {
+		common.ApiErrorMsg(c, "模型数量不能超过 "+strconv.Itoa(maxBatchCreateChatModels)+" 个")
 		return
 	}
 
@@ -213,7 +219,7 @@ func BatchCreateChatModels(c *gin.Context) {
 	}
 
 	seen := make(map[string]bool, len(req.Models))
-	created := make([]dto.AdminChatModelItem, 0, len(req.Models))
+	pending := make([]string, 0, len(req.Models))
 	skipped := make([]string, 0)
 	for _, rawName := range req.Models {
 		modelName, err := normalizeChatModelName(rawName)
@@ -234,20 +240,35 @@ func BatchCreateChatModels(c *gin.Context) {
 			skipped = append(skipped, modelName)
 			continue
 		}
+		pending = append(pending, modelName)
+		configured[modelName] = model.ChatModelOption{}
+	}
 
-		option := model.ChatModelOption{
-			ModelName:   modelName,
-			DisplayName: modelName,
-			Enabled:     false,
-			IsAuto:      false,
-			Sort:        0,
-		}
-		if err := model.CreateChatModelOption(&option); err != nil {
+	created := make([]dto.AdminChatModelItem, 0, len(pending))
+	if len(pending) > 0 {
+		err = model.DB.Transaction(func(tx *gorm.DB) error {
+			now := common.GetTimestamp()
+			for _, modelName := range pending {
+				option := model.ChatModelOption{
+					ModelName:   modelName,
+					DisplayName: modelName,
+					Enabled:     false,
+					IsAuto:      false,
+					Sort:        0,
+					CreatedTime: now,
+					UpdatedTime: now,
+				}
+				if err := tx.Create(&option).Error; err != nil {
+					return err
+				}
+				created = append(created, buildAdminChatModelItem(option, pricingMap))
+			}
+			return nil
+		})
+		if err != nil {
 			common.ApiError(c, err)
 			return
 		}
-		configured[modelName] = option
-		created = append(created, buildAdminChatModelItem(option, pricingMap))
 	}
 
 	common.ApiSuccess(c, dto.BatchCreateChatModelsResponse{
