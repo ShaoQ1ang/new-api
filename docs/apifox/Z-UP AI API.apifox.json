@@ -2751,8 +2751,8 @@
                 "method": "get",
                 "path": "/api/user/self/groups",
                 "parameters": {
-                  "path": [],
                   "query": [],
+                  "path": [],
                   "cookie": [],
                   "header": []
                 },
@@ -2778,18 +2778,30 @@
                   "use": {
                     "id": "dpzCQxGKGbXu8BbO5YRbR",
                     "configs": {
-                      "1531752": {}
+                      "1523305": {
+                        "authConfigs": {
+                          "x-apifox": {
+                            "value": "{{new_api_user_id}}"
+                          }
+                        }
+                      }
                     }
                   },
                   "scopes": {
                     "E99ERM7uk-604anmyEbu2": {}
                   }
                 },
-                "commonParameters": {},
+                "commonParameters": {
+                  "query": [],
+                  "body": [],
+                  "cookie": [],
+                  "header": []
+                },
                 "responses": [
                   {
                     "id": "121989568",
                     "code": "200",
+                    "name": "",
                     "headers": [],
                     "jsonSchema": {
                       "type": "object",
@@ -2799,6 +2811,7 @@
                     "itemSchema": {},
                     "description": "成功",
                     "contentType": "noContent",
+                    "mediaType": "",
                     "oasExtensions": ""
                   }
                 ],
@@ -2806,9 +2819,10 @@
                 "requestBody": {
                   "type": "none",
                   "parameters": [],
-                  "oasExtensions": "",
                   "required": false,
-                  "additionalContentTypes": []
+                  "mediaType": "",
+                  "examples": [],
+                  "oasExtensions": ""
                 },
                 "description": "🔐 需要登录（User权限）",
                 "tags": [
@@ -2881,8 +2895,8 @@
                 "method": "get",
                 "path": "/api/user/self",
                 "parameters": {
-                  "path": [],
                   "query": [],
+                  "path": [],
                   "cookie": [],
                   "header": []
                 },
@@ -2908,18 +2922,30 @@
                   "use": {
                     "id": "v3AEQ5QbT_wRDhwY-fQsK",
                     "configs": {
-                      "1531752": {}
+                      "1523305": {
+                        "authConfigs": {
+                          "x-apifox": {
+                            "value": "{{new_api_user_id}}"
+                          }
+                        }
+                      }
                     }
                   },
                   "scopes": {
                     "6bLB6YE1CQISlDK0iuFFt": {}
                   }
                 },
-                "commonParameters": {},
+                "commonParameters": {
+                  "query": [],
+                  "body": [],
+                  "cookie": [],
+                  "header": []
+                },
                 "responses": [
                   {
                     "id": "154005505",
                     "code": "200",
+                    "name": "",
                     "headers": [],
                     "jsonSchema": {
                       "type": "object",
@@ -2929,6 +2955,7 @@
                     "itemSchema": {},
                     "description": "成功",
                     "contentType": "noContent",
+                    "mediaType": "",
                     "oasExtensions": ""
                   }
                 ],
@@ -2936,9 +2963,10 @@
                 "requestBody": {
                   "type": "none",
                   "parameters": [],
-                  "oasExtensions": "",
                   "required": false,
-                  "additionalContentTypes": []
+                  "mediaType": "",
+                  "examples": [],
+                  "oasExtensions": ""
                 },
                 "description": "🔐 需要登录（User权限）",
                 "tags": [
@@ -21564,7 +21592,7 @@
                     "data": "const body = pm.response.json();\r\nif (body?.success && body?.data?.id) {\r\n  pm.environment.set('new_api_user_id', String(body.data.id));\r\n}",
                     "defaultEnable": true,
                     "enable": true,
-                    "id": "9VILosEPu1Q3PU7rYd9X7xpcr5HOfJkm"
+                    "id": "uMy0PJN30gCK5TMCHf04CMsK8hPk4kwk"
                   }
                 ],
                 "inheritPostProcessors": {},
@@ -22020,7 +22048,7 @@
                     "data": "const body = pm.response.json();\r\nif (body?.success && body?.data?.id) {\r\n  pm.environment.set('new_api_user_id', String(body.data.id));\r\n}",
                     "defaultEnable": true,
                     "enable": true,
-                    "id": "zJzSo3cKTOBLdSMYGnI2RzV9A0NfIffE"
+                    "id": "0DY3N7kJ25Fy3fKJxJetFPWI3CFuizJ2"
                   }
                 ],
                 "inheritPostProcessors": {},
@@ -26941,8 +26969,8 @@
                 "method": "get",
                 "path": "/api/subscription/plans",
                 "parameters": {
-                  "query": [],
                   "path": [],
+                  "query": [],
                   "cookie": [],
                   "header": []
                 },
@@ -26967,15 +26995,7 @@
                   "required": true,
                   "use": {
                     "id": "v3AEQ5QbT_wRDhwY-fQsK",
-                    "configs": {
-                      "1523305": {
-                        "authConfigs": {
-                          "x-apifox": {
-                            "value": "{{new_api_user_id}}"
-                          }
-                        }
-                      }
-                    }
+                    "configs": {}
                   },
                   "scopes": {
                     "6bLB6YE1CQISlDK0iuFFt": {}
@@ -27016,10 +27036,11 @@
                 "requestBody": {
                   "type": "none",
                   "parameters": [],
-                  "required": false,
-                  "mediaType": "",
                   "examples": [],
-                  "oasExtensions": ""
+                  "mediaType": "",
+                  "oasExtensions": "",
+                  "required": false,
+                  "additionalContentTypes": []
                 },
                 "description": "需要用户登录。返回已启用且可对用户展示的订阅套餐列表；未确认支付合规时返回空列表。",
                 "tags": [
@@ -27092,8 +27113,8 @@
                 "method": "get",
                 "path": "/api/subscription/self",
                 "parameters": {
-                  "query": [],
                   "path": [],
+                  "query": [],
                   "cookie": [],
                   "header": []
                 },
@@ -27118,15 +27139,7 @@
                   "required": true,
                   "use": {
                     "id": "v3AEQ5QbT_wRDhwY-fQsK",
-                    "configs": {
-                      "1523305": {
-                        "authConfigs": {
-                          "x-apifox": {
-                            "value": "{{new_api_user_id}}"
-                          }
-                        }
-                      }
-                    }
+                    "configs": {}
                   },
                   "scopes": {
                     "6bLB6YE1CQISlDK0iuFFt": {}
@@ -27167,10 +27180,11 @@
                 "requestBody": {
                   "type": "none",
                   "parameters": [],
-                  "required": false,
-                  "mediaType": "",
                   "examples": [],
-                  "oasExtensions": ""
+                  "mediaType": "",
+                  "oasExtensions": "",
+                  "required": false,
+                  "additionalContentTypes": []
                 },
                 "description": "需要用户登录。返回当前用户扣费偏好、有效订阅以及全部订阅记录，可用于展示订阅用量。",
                 "tags": [
@@ -32366,78 +32380,6 @@
       "name": "根目录",
       "items": [
         {
-          "id": 1531742,
-          "name": "Combination",
-          "moduleId": 8068398,
-          "authType": "combination",
-          "oasAuthType": "http",
-          "authConfigs": {
-            "group": [
-              {
-                "id": 1523303
-              },
-              {
-                "id": 1523305
-              }
-            ]
-          },
-          "guidanceConfigs": {}
-        },
-        {
-          "id": 1531743,
-          "name": "Combination1",
-          "moduleId": 8068398,
-          "authType": "combination",
-          "oasAuthType": "http",
-          "authConfigs": {
-            "group": [
-              {
-                "id": 1523304
-              },
-              {
-                "id": 1523305
-              }
-            ]
-          },
-          "guidanceConfigs": {}
-        },
-        {
-          "id": 1531744,
-          "name": "Combination",
-          "moduleId": 8068398,
-          "authType": "combination",
-          "oasAuthType": "http",
-          "authConfigs": {
-            "group": [
-              {
-                "id": 1523303
-              },
-              {
-                "id": 1523305
-              }
-            ]
-          },
-          "guidanceConfigs": {}
-        },
-        {
-          "id": 1531745,
-          "name": "Combination1",
-          "moduleId": 8068398,
-          "authType": "combination",
-          "oasAuthType": "http",
-          "authConfigs": {
-            "group": [
-              {
-                "id": 1523304
-              },
-              {
-                "id": 1523305
-              }
-            ]
-          },
-          "guidanceConfigs": {}
-        },
-        {
           "id": 1531746,
           "name": "Combination",
           "moduleId": 8068398,
@@ -37365,6 +37307,78 @@
         },
         {
           "id": 1531741,
+          "name": "Combination1",
+          "moduleId": 8068398,
+          "authType": "combination",
+          "oasAuthType": "http",
+          "authConfigs": {
+            "group": [
+              {
+                "id": 1523304
+              },
+              {
+                "id": 1523305
+              }
+            ]
+          },
+          "guidanceConfigs": {}
+        },
+        {
+          "id": 1531742,
+          "name": "Combination",
+          "moduleId": 8068398,
+          "authType": "combination",
+          "oasAuthType": "http",
+          "authConfigs": {
+            "group": [
+              {
+                "id": 1523303
+              },
+              {
+                "id": 1523305
+              }
+            ]
+          },
+          "guidanceConfigs": {}
+        },
+        {
+          "id": 1531743,
+          "name": "Combination1",
+          "moduleId": 8068398,
+          "authType": "combination",
+          "oasAuthType": "http",
+          "authConfigs": {
+            "group": [
+              {
+                "id": 1523304
+              },
+              {
+                "id": 1523305
+              }
+            ]
+          },
+          "guidanceConfigs": {}
+        },
+        {
+          "id": 1531744,
+          "name": "Combination",
+          "moduleId": 8068398,
+          "authType": "combination",
+          "oasAuthType": "http",
+          "authConfigs": {
+            "group": [
+              {
+                "id": 1523303
+              },
+              {
+                "id": 1523305
+              }
+            ]
+          },
+          "guidanceConfigs": {}
+        },
+        {
+          "id": 1531745,
           "name": "Combination1",
           "moduleId": 8068398,
           "authType": "combination",
