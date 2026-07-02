@@ -120,6 +120,10 @@ func GetClientReleaseLatestYAML(c *gin.Context) {
 		c.String(http.StatusNotFound, "client release not found")
 		return
 	}
+	if strings.TrimSpace(latest.SHA512) == "" {
+		c.String(http.StatusInternalServerError, "client release sha512 is required")
+		return
+	}
 	assetPath := fmt.Sprintf(
 		"download/%d/%s",
 		latest.Id,

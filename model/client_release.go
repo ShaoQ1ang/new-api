@@ -96,10 +96,10 @@ func ValidateClientRelease(r *ClientRelease) error {
 	if err := ValidateClientReleaseVersion(r.Version); err != nil {
 		return err
 	}
-	if !isAllowedClientReleasePlatform(r.Platform) {
+	if !IsAllowedClientReleasePlatform(r.Platform) {
 		return errors.New("client release platform must be windows, darwin, or linux")
 	}
-	if !isAllowedClientReleaseArch(r.Arch) {
+	if !IsAllowedClientReleaseArch(r.Arch) {
 		return errors.New("client release arch must be x64, arm64, ia32, or universal")
 	}
 	if !IsAllowedClientReleaseChannel(r.Channel) {
@@ -123,6 +123,9 @@ func ValidateClientRelease(r *ClientRelease) error {
 	case ClientReleaseStatusDraft, ClientReleaseStatusPublished:
 	default:
 		return errors.New("client release status is invalid")
+	}
+	if r.Status == ClientReleaseStatusPublished && r.SHA512 == "" {
+		return errors.New("client release sha512 is required before publishing")
 	}
 	return nil
 }
@@ -183,7 +186,7 @@ func IsAllowedClientReleaseChannel(value string) bool {
 	}
 }
 
-func isAllowedClientReleasePlatform(value string) bool {
+func IsAllowedClientReleasePlatform(value string) bool {
 	switch NormalizeClientReleasePlatform(value) {
 	case "windows", "darwin", "linux":
 		return true
@@ -203,8 +206,8 @@ func clientReleasePlatformAliases(platform string) []string {
 	return []string{platform}
 }
 
-func isAllowedClientReleaseArch(value string) bool {
-	switch value {
+func IsAllowedClientReleaseArch(value string) bool {
+	switch NormalizeClientReleaseArch(value) {
 	case "x64", "arm64", "ia32", "universal":
 		return true
 	default:
@@ -273,7 +276,7 @@ func GetLatestClientRelease(platform string, arch string, channel string) (*Clie
 	platform = NormalizeClientReleasePlatform(platform)
 	arch = NormalizeClientReleaseArch(arch)
 	channel = NormalizeClientReleaseChannel(channel)
-	if !isAllowedClientReleasePlatform(platform) || !isAllowedClientReleaseArch(arch) {
+	if !IsAllowedClientReleasePlatform(platform) || !IsAllowedClientReleaseArch(arch) {
 		return nil, errors.New("client release platform or arch is invalid")
 	}
 	if !IsAllowedClientReleaseChannel(channel) {

@@ -142,6 +142,12 @@ func normalizeClientReleaseUploadInput(input *ClientReleaseUploadInput) error {
 	input.Platform = model.NormalizeClientReleasePlatform(input.Platform)
 	input.Arch = model.NormalizeClientReleaseArch(input.Arch)
 	input.Channel = model.NormalizeClientReleaseChannel(input.Channel)
+	if !model.IsAllowedClientReleasePlatform(input.Platform) {
+		return errors.New("client release platform must be windows, darwin, or linux")
+	}
+	if !model.IsAllowedClientReleaseArch(input.Arch) {
+		return errors.New("client release arch must be x64, arm64, ia32, or universal")
+	}
 	if !model.IsAllowedClientReleaseChannel(input.Channel) {
 		return errors.New("client release channel must be stable or beta")
 	}

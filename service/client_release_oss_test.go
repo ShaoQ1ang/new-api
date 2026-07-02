@@ -29,3 +29,25 @@ func TestClientReleaseGeneratedFileNameKeepsAppImageExtension(t *testing.T) {
 		t.Fatalf("clientReleaseGeneratedFileName() = %q, want %q", got, want)
 	}
 }
+
+func TestNormalizeClientReleaseUploadInputRejectsInvalidTarget(t *testing.T) {
+	input := ClientReleaseUploadInput{
+		Version:  "1.2.3",
+		Platform: "android",
+		Arch:     "x64",
+		Channel:  "stable",
+	}
+	if err := normalizeClientReleaseUploadInput(&input); err == nil {
+		t.Fatal("normalizeClientReleaseUploadInput() returned nil error for invalid platform")
+	}
+
+	input = ClientReleaseUploadInput{
+		Version:  "1.2.3",
+		Platform: "windows",
+		Arch:     "mips",
+		Channel:  "stable",
+	}
+	if err := normalizeClientReleaseUploadInput(&input); err == nil {
+		t.Fatal("normalizeClientReleaseUploadInput() returned nil error for invalid arch")
+	}
+}

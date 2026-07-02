@@ -35,6 +35,18 @@ func TestClientReleaseTargetNormalization(t *testing.T) {
 	if got := NormalizeClientReleasePlatform("win32"); got != "windows" {
 		t.Fatalf("NormalizeClientReleasePlatform() = %q, want %q", got, "windows")
 	}
+	if !IsAllowedClientReleasePlatform("win32") {
+		t.Fatal("IsAllowedClientReleasePlatform(\"win32\") = false, want true")
+	}
+	if !IsAllowedClientReleaseArch("amd64") {
+		t.Fatal("IsAllowedClientReleaseArch(\"amd64\") = false, want true")
+	}
+	if IsAllowedClientReleasePlatform("android") {
+		t.Fatal("IsAllowedClientReleasePlatform(\"android\") = true, want false")
+	}
+	if IsAllowedClientReleaseArch("mips") {
+		t.Fatal("IsAllowedClientReleaseArch(\"mips\") = true, want false")
+	}
 }
 
 func TestClientReleaseVersionValidation(t *testing.T) {
@@ -66,5 +78,27 @@ func TestClientReleaseChannelValidation(t *testing.T) {
 	}
 	if IsAllowedClientReleaseChannel("dev") {
 		t.Fatal("IsAllowedClientReleaseChannel(\"dev\") = true, want false")
+	}
+}
+
+func TestValidateClientReleaseRequiresSHA512BeforePublishing(t *testing.T) {
+	release := &ClientRelease{
+		Version:   "1.2.3",
+		Platform:  "windows",
+		Arch:      "x64",
+		Channel:   "stable",
+		FileName:  "Z-UP-Setup-1.2.3-windows-x64-stable.exe",
+		ObjectKey: "client-releases/stable/windows/x64/1.2.3/test.exe",
+		Size:      1024,
+		Status:    ClientReleaseStatusPublished,
+	}
+
+	if err := ValidateClientRelease(release); err == nil {
+		t.Fatal("ValidateClientRelease() returned nil error for published release without sha512")
+	}
+
+	release.SHA512 = "base64-sha512"
+	if err := ValidateClientRelease(release); err != nil {
+		t.Fatalf("ValidateClientRelease() returned error with sha512: %v", err)
 	}
 }

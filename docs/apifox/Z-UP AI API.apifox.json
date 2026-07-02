@@ -36082,7 +36082,7 @@
                       "name": "platform",
                       "required": true,
                       "enable": true,
-                      "description": "目标平台，Windows 使用 windows",
+                      "description": "目标平台，Windows 使用 windows；上传前会校验并归一化，非法值不会写入 OSS",
                       "example": "windows",
                       "type": "string",
                       "schema": {
@@ -36092,7 +36092,7 @@
                           "darwin",
                           "linux"
                         ],
-                        "description": "目标平台，Windows 使用 windows"
+                        "description": "目标平台，Windows 使用 windows；上传前会校验并归一化，非法值不会写入 OSS"
                       },
                       "omitGeneratedExample": false
                     },
@@ -36101,7 +36101,7 @@
                       "name": "arch",
                       "required": true,
                       "enable": true,
-                      "description": "目标架构",
+                      "description": "目标架构；上传前会校验并归一化，非法值不会写入 OSS",
                       "example": "x64",
                       "type": "string",
                       "schema": {
@@ -36112,7 +36112,7 @@
                           "ia32",
                           "universal"
                         ],
-                        "description": "目标架构"
+                        "description": "目标架构；上传前会校验并归一化，非法值不会写入 OSS"
                       },
                       "omitGeneratedExample": false
                     },
@@ -36121,7 +36121,7 @@
                       "name": "channel",
                       "required": true,
                       "enable": true,
-                      "description": "目标通道，仅 stable 或 beta",
+                      "description": "目标通道，仅 stable 或 beta；上传前会校验，非法值不会写入 OSS",
                       "example": "stable",
                       "type": "string",
                       "schema": {
@@ -36130,7 +36130,7 @@
                           "stable",
                           "beta"
                         ],
-                        "description": "目标通道，仅 stable 或 beta"
+                        "description": "目标通道，仅 stable 或 beta；上传前会校验，非法值不会写入 OSS"
                       },
                       "omitGeneratedExample": false
                     }
@@ -36139,7 +36139,7 @@
                   "required": true,
                   "additionalContentTypes": []
                 },
-                "description": "需要管理员权限；multipart 上传安装包到私有 OSS。上传时后端强制生成文件名 Z-UP-Setup-{version}-{platform}-{arch}-{channel}.{ext}，不允许手动编辑上传名。默认最大 500MB，可通过 CLIENT_RELEASE_OSS_MAX_BYTES 调整。",
+                "description": "需要管理员权限；multipart 上传安装包到私有 OSS。上传时后端先校验 version/platform/arch/channel 和文件扩展名，再强制生成文件名 Z-UP-Setup-{version}-{platform}-{arch}-{channel}.{ext}，不允许手动编辑上传名。默认最大 500MB，可通过 CLIENT_RELEASE_OSS_MAX_BYTES 调整。",
                 "tags": [
                   "客户端管理"
                 ],
@@ -36946,7 +36946,7 @@
                   "required": false,
                   "additionalContentTypes": []
                 },
-                "description": "需要管理员权限；将版本状态改为已发布。公开列表、latest 接口和 latest.yml 只会读取已发布版本。",
+                "description": "需要管理员权限；将版本状态改为已发布。发布前必须已有 sha512，否则 latest.yml 无法供 electron-updater 校验。公开列表、latest 接口和 latest.yml 只会读取已发布版本。",
                 "tags": [
                   "客户端管理"
                 ],
@@ -51029,7 +51029,7 @@
                 },
                 "sha512": {
                   "type": "string",
-                  "description": "SHA512 base64 校验值，供 electron-updater latest.yml 使用",
+                  "description": "SHA512 base64 校验值，供 electron-updater latest.yml 使用；已发布版本必须存在",
                   "examples": [
                     "base64-sha512-value"
                   ]
@@ -51219,7 +51219,7 @@
           "name": "ClientReleaseRequest",
           "displayName": "",
           "id": "#/definitions/289952104",
-          "description": "创建或更新客户端版本记录的请求体",
+          "description": "创建或更新客户端版本记录的请求体。草稿可先保存，已发布版本必须带 sha512。",
           "schema": {
             "jsonSchema": {
               "type": "object",
@@ -51299,7 +51299,7 @@
                 },
                 "sha512": {
                   "type": "string",
-                  "description": "上传接口返回的 sha512",
+                  "description": "上传接口返回的 sha512；已发布版本必须存在",
                   "examples": [
                     "base64-sha512-value"
                   ]
