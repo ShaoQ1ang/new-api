@@ -17,6 +17,7 @@ CLIENT_RELEASE_OSS_MAX_BYTES=524288000
 ```
 
 - `CLIENT_RELEASE_OSS_PREFIX` 为空时默认 `client-releases`。
+- 直传对象会先写入 `CLIENT_RELEASE_OSS_PREFIX/_tmp/`；保存版本记录时后端再通过 OSS `CopyObject` 转入正式目录。
 - `CLIENT_RELEASE_OSS_SIGNED_URL_EXPIRES_SECONDS` 为空时默认 `600` 秒，最大不超过 `86400` 秒。
 - `CLIENT_RELEASE_OSS_UPLOAD_URL_EXPIRES_SECONDS` 为空时默认 `3600` 秒，最大不超过 `86400` 秒；这是后台直传 OSS 的 PUT signed URL 与上传票据有效期。
 - `CLIENT_RELEASE_OSS_UPLOAD_TICKET_SECRET` 可选；为空时使用 OSS AccessKeySecret 对上传票据签名。
@@ -25,16 +26,16 @@ CLIENT_RELEASE_OSS_MAX_BYTES=524288000
 
 ## 上传与发布
 
-- 管理后台使用 OSS 直传：先调用 New API 初始化上传，拿到短时 PUT signed URL 后由浏览器直接上传到 OSS，再调用 New API 完成确认。
+- 管理后台使用 OSS 直传：先调用 New API 初始化上传，拿到短时 PUT signed URL 后由浏览器直接上传到 `CLIENT_RELEASE_OSS_PREFIX/_tmp/`，再调用 New API 完成确认。
 - 初始化接口会先校验 `version / platform / arch / channel`、文件扩展名和文件大小，非法目标不会生成 signed URL。
 - 文件名由后端强制生成：`Z-UP-Setup-{version}-{platform}-{arch}-{channel}.{ext}`，前端不允许编辑上传名。
 - 支持扩展名：`exe`、`msi`、`dmg`、`pkg`、`zip`、`AppImage`、`deb`、`rpm`、`yml`、`yaml`。
 - 上传完成确认时，后端会从 OSS 校验对象大小并重新计算 `sha256` 和 `sha512`；已发布版本必须带 `sha512`，否则 `electron-updater` 不能校验 `latest.yml`。
-- 初始化、PUT 和完成确认不会写数据库；只有保存客户端版本记录后，新上传对象才会成为正式安装包资产。
+- 初始化、PUT 和完成确认不会写数据库；只有保存客户端版本记录后，后端才会把 `_tmp/` 对象复制到正式目录并写入数据库。
 - 如果上传后没有保存，前端会在替换上传、切换记录、新建草稿或离开页面时 best-effort 调用 `POST /api/admin/client-releases/direct-upload/discard` 删除刚上传的 OSS 对象。
-- 如果编辑已有版本并上传新的安装包，保存成功后后端会 best-effort 删除被替换的旧安装包 OSS 对象。
+- 如果编辑已有版本并上传新的安装包，保存成功后后端会 best-effort 删除 `_tmp/` 对象和被替换的旧安装包 OSS 对象。
 - 删除客户端版本记录成功后，后端会 best-effort 删除关联的安装包 OSS 对象。
-- 浏览器崩溃、断网或直接关闭标签页时，前端无法保证一定发出 discard。生产环境建议给客户端安装包上传前缀配置 OSS 生命周期或定期巡检，清理长期未被数据库引用的对象。
+- 浏览器崩溃、断网或直接关闭标签页时，前端无法保证一定发出 discard。生产环境应给 `CLIENT_RELEASE_OSS_PREFIX/_tmp/` 配置 OSS 生命周期规则，例如最后修改时间 3 天后删除；正式对象不在 `_tmp/` 下，不会被该规则清理。
 - OSS Bucket 需要配置 CORS，允许管理后台域名执行 `PUT` 和 `OPTIONS`，允许 `Content-Type` 请求头，并暴露 `ETag`。
 
 ## 版本选择
@@ -57,7 +58,7 @@ CLIENT_RELEASE_OSS_MAX_BYTES=524288000
 - 管理接口都挂在 `/api/admin/client-releases` 下，并要求 `AdminAuth`；公开接口只提供已发布版本的读取、`latest.yml` 和下载跳转。
 - OSS Bucket 应保持私有。客户端只访问 New API，New API 再为已发布版本生成短时 signed URL；不要把 OSS Bucket 改成公开读。
 - 直传初始化会限制文件大小，默认最大 `500MB`；文件扩展名、`version / platform / arch / channel` 会在生成 signed URL 前校验。
-- signed URL 只允许上传到后端生成的单个 OSS Object，前端不会拿到 OSS AccessKey；完成确认必须携带后端签发的短时上传票据。
+- signed URL 只允许上传到后端生成的单个 `_tmp/` OSS Object，前端不会拿到 OSS AccessKey；完成确认必须携带后端签发的短时上传票据。
 - 上传后的文件名由后端强制生成：`Z-UP-Setup-{version}-{platform}-{arch}-{channel}.{ext}`，避免用户可控文件名进入下载路径。
 - 公开响应不会返回 `objectKey / status / published` 等后台字段；公开下载会再次检查版本状态，草稿版本不会签名下载。
 - 发布版本必须带 `sha512`，否则 `latest.yml` 不可用；客户端安装阶段由 `electron-updater` 按 `sha512` 校验安装包。
@@ -68,7 +69,9 @@ CLIENT_RELEASE_OSS_MAX_BYTES=524288000
 
 - 同一 `version / platform / arch / channel` 由数据库唯一索引兜底；前端的“同版本覆盖”确认只是交互提示，最终仍以后端唯一约束为准。
 - 两个管理员同时创建同一目标版本时，只会有一个写入成功；另一个请求会收到唯一索引冲突，需要刷新列表后决定是否覆盖。
-- 上传到 OSS 的 object key 带时间戳和规范化目标路径，避免并发上传同名文件时直接覆盖 OSS 对象。
+- 上传到 OSS 的临时 object key 带随机 ID，避免并发上传同名文件时直接覆盖 OSS 对象。
+- 保存版本记录时，后端在写数据库前把 `_tmp/` 对象复制到带时间戳的正式 object key；数据库保存失败会 best-effort 删除刚复制出的正式对象。
+- 更新已有版本时，后端会在数据库事务中锁定当前记录并读取真正被本次更新覆盖的旧 object key，再执行旧对象清理，降低并发保存留下正式目录孤儿对象的风险。
 - 初始化上传和完成确认没有写数据库；管理员仍需保存版本记录才会创建或更新发布元数据。
 - 发布、取消发布和更新记录没有额外应用层锁；同一条记录的并发编辑采用数据库最后一次写入生效。运营上应避免多人同时编辑同一版本。
 - `latest` 和 `latest.yml` 总是读取同一目标下 `id` 最大的已发布记录；如果下载过程中又发布了新记录，已开始的下载仍按当次 `latest.yml` 中的 `id` 获取安装包。

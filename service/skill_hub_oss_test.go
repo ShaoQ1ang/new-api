@@ -3,6 +3,8 @@ package service
 import (
 	"strings"
 	"testing"
+
+	"github.com/QuantumNous/new-api/model"
 )
 
 func TestSkillHubOSSConfigObjectKey(t *testing.T) {
@@ -99,5 +101,68 @@ func TestSkillHubUploadTicketRoundTrip(t *testing.T) {
 	}
 	if _, _, err := parseSkillHubUploadTicket(value + "x"); err == nil {
 		t.Fatal("parseSkillHubUploadTicket() returned nil error for tampered ticket")
+	}
+}
+
+func TestSkillHubTempObjectKey(t *testing.T) {
+	cfg := skillHubOSSConfig{Prefix: "skill-hub/skills"}
+	key, err := cfg.tempObjectKey("packages", "demo.skill", "demo.zip")
+	if err != nil {
+		t.Fatalf("tempObjectKey() error = %v", err)
+	}
+	if !strings.HasPrefix(key, "skill-hub/skills/_tmp/packages/demo.skill/") || !strings.HasSuffix(key, "/demo.zip") {
+		t.Fatalf("temp zip object key = %q", key)
+	}
+	if !cfg.isTempObjectKey(key) {
+		t.Fatalf("isTempObjectKey(%q) = false, want true", key)
+	}
+	final := cfg.objectKey("demo.skill", "1.0.0", "demo.zip")
+	if cfg.isTempObjectKey(final) {
+		t.Fatalf("final zip object key %q must not be temporary", final)
+	}
+}
+
+func TestSkillHubIconTempObjectKey(t *testing.T) {
+	cfg := skillHubIconOSSConfig{
+		skillHubOSSConfig: skillHubOSSConfig{Prefix: "skill-hub/icons"},
+	}
+	key, err := cfg.tempObjectKey("icons", "demo.skill", "icon.png")
+	if err != nil {
+		t.Fatalf("tempObjectKey() error = %v", err)
+	}
+	if !strings.HasPrefix(key, "skill-hub/icons/_tmp/icons/demo.skill/") || !strings.HasSuffix(key, "/icon.png") {
+		t.Fatalf("temp icon object key = %q", key)
+	}
+	if !cfg.isTempObjectKey(key) {
+		t.Fatalf("isTempObjectKey(%q) = false, want true", key)
+	}
+	final := cfg.iconObjectKey("demo.skill", "icon.png", ".png")
+	if cfg.isTempObjectKey(final) {
+		t.Fatalf("final icon object key %q must not be temporary", final)
+	}
+}
+
+func TestPromoteSkillHubObjectsSkipsFinalManagedObjectsWithoutOSSConfig(t *testing.T) {
+	skill := &model.SkillHubSkill{
+		SkillID:   "demo.skill",
+		Version:   "1.0.0",
+		SourceRef: "/skill-hub/skills/demo.skill/demo.zip",
+	}
+	result, err := PromoteSkillHubObjects(skill)
+	if err != nil {
+		t.Fatalf("PromoteSkillHubObjects() error = %v", err)
+	}
+	if result.ZipPromoted || result.IconPromoted {
+		t.Fatal("PromoteSkillHubObjects() promoted final objects")
+	}
+	if skill.SourceRef != "skill-hub/skills/demo.skill/demo.zip" {
+		t.Fatalf("skill.SourceRef = %q", skill.SourceRef)
+	}
+}
+
+func TestPromoteSkillHubObjectsRejectsUnmanagedSourceRef(t *testing.T) {
+	skill := &model.SkillHubSkill{SourceRef: "other-prefix/demo.zip"}
+	if _, err := PromoteSkillHubObjects(skill); err == nil {
+		t.Fatal("PromoteSkillHubObjects() returned nil error for unmanaged source ref")
 	}
 }

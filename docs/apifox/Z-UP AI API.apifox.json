@@ -32397,7 +32397,7 @@
                   "required": true,
                   "additionalContentTypes": []
                 },
-                "description": "👨‍💼 需要管理员权限（Admin）；生成 OSS PUT signed URL，文件本体由浏览器直接上传到 OSS。",
+                "description": "👨‍💼 需要管理员权限（Admin）；生成 _tmp 临时 OSS PUT signed URL，文件本体由浏览器直接上传到 OSS。",
                 "tags": [
                   "技能广场管理"
                 ],
@@ -32505,7 +32505,7 @@
                   "required": true,
                   "additionalContentTypes": []
                 },
-                "description": "👨‍💼 需要管理员权限（Admin）；校验上传票据、OSS 对象大小和文件头，并返回保存 Skill 所需的 URL、object 和 checksum。",
+                "description": "👨‍💼 需要管理员权限（Admin）；校验上传票据、_tmp 临时 OSS 对象大小和文件头，并返回保存 Skill 所需的 URL、object 和 checksum；保存 Skill 时后端会将临时对象复制到正式目录。",
                 "tags": [
                   "技能广场管理"
                 ],
@@ -32613,7 +32613,7 @@
                   "required": true,
                   "additionalContentTypes": []
                 },
-                "description": "👨‍💼 需要管理员权限（Admin）；清理已经 PUT 到 OSS 但尚未保存到 Skill 记录的 zip 或 icon 对象。",
+                "description": "👨‍💼 需要管理员权限（Admin）；清理已经 PUT 到 OSS 但尚未保存到 Skill 记录的 _tmp 临时 zip 或 icon 对象。",
                 "tags": [
                   "技能广场管理"
                 ],
@@ -36126,7 +36126,7 @@
                   "required": true,
                   "additionalContentTypes": []
                 },
-                "description": "需要管理员权限；根据安装包文件名、大小和目标版本信息生成 OSS PUT signed URL。后端会先校验 version/platform/arch/channel、文件扩展名和大小，再强制生成文件名 Z-UP-Setup-{version}-{platform}-{arch}-{channel}.{ext} 与 OSS Object Key。安装包文件本体由浏览器直接 PUT 到 OSS，不经过 New API。",
+                "description": "需要管理员权限；根据安装包文件名、大小和目标版本信息生成 _tmp 临时 OSS PUT signed URL。后端会先校验 version/platform/arch/channel、文件扩展名和大小，再强制生成文件名 Z-UP-Setup-{version}-{platform}-{arch}-{channel}.{ext} 与临时 OSS Object Key。安装包文件本体由浏览器直接 PUT 到 OSS，不经过 New API。",
                 "tags": [
                   "客户端管理"
                 ],
@@ -36298,7 +36298,7 @@
                   "required": true,
                   "additionalContentTypes": []
                 },
-                "description": "需要管理员权限；浏览器完成 OSS PUT 后调用该接口。后端校验上传票据、检查 OSS 对象大小，并从 OSS 读取对象重新计算 sha256 和 sha512，返回保存版本记录所需的文件信息。",
+                "description": "需要管理员权限；浏览器完成 OSS PUT 后调用该接口。后端校验上传票据、检查 _tmp 临时 OSS 对象大小，并从 OSS 读取对象重新计算 sha256 和 sha512，返回保存版本记录所需的文件信息；保存版本记录时后端会将临时对象复制到正式目录。",
                 "tags": [
                   "客户端管理"
                 ],
@@ -36450,7 +36450,7 @@
                   "required": true,
                   "additionalContentTypes": []
                 },
-                "description": "需要管理员权限（Admin）；用于清理已经 PUT 到 OSS 但尚未保存到客户端版本记录的安装包对象。",
+                "description": "需要管理员权限（Admin）；用于清理已经 PUT 到 OSS 但尚未保存到客户端版本记录的 _tmp 临时安装包对象。",
                 "tags": [
                   "客户端管理"
                 ],
@@ -51498,9 +51498,9 @@
                 },
                 "objectKey": {
                   "type": "string",
-                  "description": "直传完成确认接口返回的 object 字段，保存版本记录时传入 objectKey",
+                  "description": "直传完成确认接口返回的 _tmp 临时 object 字段，保存版本记录时传入 objectKey；保存成功后响应会返回正式 objectKey",
                   "examples": [
-                    "client-releases/stable/windows/x64/1.2.3/20260702090000.000000000-Z-UP-Setup-1.2.3-windows-x64-stable.exe"
+                    "client-releases/_tmp/8f3c6e9d2a1b4c5d9e0f123456789abc/Z-UP-Setup-1.2.3-windows-x64-stable.exe"
                   ]
                 },
                 "size": {
@@ -51614,9 +51614,9 @@
                 },
                 "object": {
                   "type": "string",
-                  "description": "私有 OSS Object Key。保存版本记录时作为 objectKey 传入",
+                  "description": "_tmp 临时私有 OSS Object Key。保存版本记录时作为 objectKey 传入，保存成功后后端会转正为正式 Object Key",
                   "examples": [
-                    "client-releases/stable/windows/x64/1.2.3/20260702090000.000000000-Z-UP-Setup-1.2.3-windows-x64-stable.exe"
+                    "client-releases/_tmp/8f3c6e9d2a1b4c5d9e0f123456789abc/Z-UP-Setup-1.2.3-windows-x64-stable.exe"
                   ]
                 },
                 "size": {

@@ -259,10 +259,17 @@ func AdminCreateClientRelease(c *gin.Context) {
 		return
 	}
 	release := clientReleaseRequestToModel(request, nil)
-	if err := release.Insert(); err != nil {
+	promotion, err := service.PromoteClientReleaseObject(release)
+	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	if err := release.Insert(); err != nil {
+		cleanupPromotedClientReleaseFinal(promotion)
+		common.ApiError(c, err)
+		return
+	}
+	cleanupPromotedClientReleaseTemp(promotion)
 	common.ApiSuccess(c, release.ToResponse(true, clientReleaseDownloadURL(c, release)))
 }
 
@@ -272,17 +279,24 @@ func AdminUpdateClientRelease(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	oldObjectKey := release.ObjectKey
 	var request clientReleaseRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	release = clientReleaseRequestToModel(request, release)
-	if err := release.Update(); err != nil {
+	promotion, err := service.PromoteClientReleaseObject(release)
+	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	oldObjectKey, err := release.UpdateReturningPreviousObjectKey()
+	if err != nil {
+		cleanupPromotedClientReleaseFinal(promotion)
+		common.ApiError(c, err)
+		return
+	}
+	cleanupPromotedClientReleaseTemp(promotion)
 	cleanupClientReleaseObjectIfChanged(oldObjectKey, release.ObjectKey)
 	common.ApiSuccess(c, release.ToResponse(true, clientReleaseDownloadURL(c, release)))
 }
@@ -406,4 +420,18 @@ func cleanupClientReleaseObject(objectKey string) {
 	if err := service.DeleteClientReleaseObject(objectKey); err != nil {
 		common.SysLog(fmt.Sprintf("client release OSS object cleanup failed for %s: %v", objectKey, err))
 	}
+}
+
+func cleanupPromotedClientReleaseFinal(result *service.ClientReleasePromoteResult) {
+	if result == nil || !result.Promoted {
+		return
+	}
+	cleanupClientReleaseObject(result.FinalObject)
+}
+
+func cleanupPromotedClientReleaseTemp(result *service.ClientReleasePromoteResult) {
+	if result == nil || !result.Promoted {
+		return
+	}
+	cleanupClientReleaseObject(result.TempObject)
 }

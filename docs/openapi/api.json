@@ -6986,7 +6986,7 @@
       "post": {
         "summary": "初始化客户端安装包直传",
         "deprecated": false,
-        "description": "需要管理员权限（Admin）；根据安装包文件名、大小和目标版本信息生成 OSS PUT signed URL。后端会先校验 version/platform/arch/channel、文件扩展名和大小，再强制生成文件名 Z-UP-Setup-{version}-{platform}-{arch}-{channel}.{ext} 与 OSS Object Key。安装包文件本体由浏览器直接 PUT 到 OSS，不经过 New API。",
+        "description": "需要管理员权限（Admin）；根据安装包文件名、大小和目标版本信息生成 OSS PUT signed URL。后端会先校验 version/platform/arch/channel、文件扩展名和大小，再强制生成文件名 Z-UP-Setup-{version}-{platform}-{arch}-{channel}.{ext} 与 _tmp 临时 OSS Object Key。安装包文件本体由浏览器直接 PUT 到 OSS，不经过 New API。",
         "tags": [
           "客户端管理"
         ],
@@ -7030,7 +7030,7 @@
       "post": {
         "summary": "完成客户端安装包直传",
         "deprecated": false,
-        "description": "需要管理员权限（Admin）；浏览器完成 OSS PUT 后调用该接口。后端校验上传票据、检查 OSS 对象大小，并从 OSS 读取对象重新计算 sha256 和 sha512，返回保存版本记录所需的文件信息。",
+        "description": "需要管理员权限（Admin）；浏览器完成 OSS PUT 后调用该接口。后端校验上传票据、检查 _tmp 临时 OSS 对象大小，并从 OSS 读取对象重新计算 sha256 和 sha512，返回保存版本记录所需的文件信息；保存版本记录时后端会将临时对象复制到正式目录。",
         "tags": [
           "客户端管理"
         ],
@@ -7116,7 +7116,7 @@
       "put": {
         "summary": "后台更新客户端版本",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；如果 objectKey 被新上传对象替换，保存成功后会 best-effort 删除旧安装包 OSS 对象。",
+        "description": "👨‍💼 需要管理员权限（Admin）；如果 objectKey 是 _tmp 临时上传对象，保存时会先 CopyObject 到正式目录。保存成功后会 best-effort 删除临时对象和被替换的旧安装包 OSS 对象。",
         "tags": [
           "客户端管理"
         ],
@@ -7300,7 +7300,7 @@
       "post": {
         "summary": "初始化 Skill Hub 文件直传",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；根据 kind、文件名、大小、技能 ID 和版本生成 OSS PUT signed URL。zip 最大 50MB，icon 最大 1MB；文件本体由浏览器直接 PUT 到 OSS，不经过 New API。",
+        "description": "👨‍💼 需要管理员权限（Admin）；根据 kind、文件名、大小、技能 ID 和版本生成 _tmp 临时 OSS PUT signed URL。zip 最大 50MB，icon 最大 1MB；文件本体由浏览器直接 PUT 到 OSS，不经过 New API。",
         "tags": [
           "技能广场管理"
         ],
@@ -7344,7 +7344,7 @@
       "post": {
         "summary": "完成 Skill Hub 文件直传",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；浏览器完成 OSS PUT 后调用。后端校验上传票据、检查 OSS 对象大小、读取对象重新计算 sha256，并验证 zip 或图片文件头，返回保存 Skill 所需的 URL、object 和 checksum。",
+        "description": "👨‍💼 需要管理员权限（Admin）；浏览器完成 OSS PUT 后调用。后端校验上传票据、检查 _tmp 临时 OSS 对象大小、读取对象重新计算 sha256，并验证 zip 或图片文件头，返回保存 Skill 所需的 URL、object 和 checksum；保存 Skill 时后端会将临时对象复制到正式目录。",
         "tags": [
           "技能广场管理"
         ],
@@ -7388,7 +7388,7 @@
       "post": {
         "summary": "丢弃 Skill Hub 未保存上传",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；用于清理已经 PUT 到 OSS 但尚未保存到 Skill 记录的 zip 或 icon 对象。前端在替换上传、切换记录、新建草稿或离开页面时 best-effort 调用。",
+        "description": "👨‍💼 需要管理员权限（Admin）；用于清理已经 PUT 到 OSS 但尚未保存到 Skill 记录的 _tmp 临时 zip 或 icon 对象。前端在替换上传、切换记录、新建草稿或离开页面时 best-effort 调用。",
         "tags": [
           "技能广场管理"
         ],
@@ -7432,7 +7432,7 @@
       "post": {
         "summary": "丢弃客户端安装包未保存上传",
         "deprecated": false,
-        "description": "需要管理员权限（Admin）；用于清理已经 PUT 到 OSS 但尚未保存到客户端版本记录的安装包对象。前端在替换上传、切换记录、新建草稿或离开页面时 best-effort 调用。",
+        "description": "需要管理员权限（Admin）；用于清理已经 PUT 到 OSS 但尚未保存到客户端版本记录的 _tmp 临时安装包对象。前端在替换上传、切换记录、新建草稿或离开页面时 best-effort 调用。",
         "tags": [
           "客户端管理"
         ],
@@ -8749,8 +8749,8 @@
           },
           "objectKey": {
             "type": "string",
-            "description": "直传完成确认接口返回的 object 字段，保存版本记录时作为 objectKey 传入",
-            "example": "client-releases/stable/windows/x64/1.2.3/20260702090000.000000000-Z-UP-Setup-1.2.3-windows-x64-stable.exe"
+            "description": "直传完成确认接口返回的 _tmp 临时 object 字段，保存版本记录时作为 objectKey 传入；保存成功后响应会返回正式 objectKey",
+            "example": "client-releases/_tmp/8f3c6e9d2a1b4c5d9e0f123456789abc/Z-UP-Setup-1.2.3-windows-x64-stable.exe"
           },
           "size": {
             "type": "integer",
@@ -8897,8 +8897,8 @@
           },
           "object": {
             "type": "string",
-            "description": "私有 OSS Object Key。完成确认后保存版本记录时作为 objectKey 传入",
-            "example": "client-releases/stable/windows/x64/1.2.3/20260702090000.000000000-Z-UP-Setup-1.2.3-windows-x64-stable.exe"
+            "description": "_tmp 临时私有 OSS Object Key。完成确认后保存版本记录时作为 objectKey 传入，保存成功后后端会转正为正式 Object Key",
+            "example": "client-releases/_tmp/8f3c6e9d2a1b4c5d9e0f123456789abc/Z-UP-Setup-1.2.3-windows-x64-stable.exe"
           },
           "size": {
             "type": "integer",
@@ -8966,8 +8966,8 @@
           },
           "object": {
             "type": "string",
-            "description": "私有 OSS Object Key。保存版本记录时作为 objectKey 传入",
-            "example": "client-releases/stable/windows/x64/1.2.3/20260702090000.000000000-Z-UP-Setup-1.2.3-windows-x64-stable.exe"
+            "description": "_tmp 临时私有 OSS Object Key。保存版本记录时作为 objectKey 传入，保存成功后后端会转正为正式 Object Key",
+            "example": "client-releases/_tmp/8f3c6e9d2a1b4c5d9e0f123456789abc/Z-UP-Setup-1.2.3-windows-x64-stable.exe"
           },
           "size": {
             "type": "integer",
@@ -9145,8 +9145,8 @@
           },
           "object": {
             "type": "string",
-            "description": "OSS Object Key；complete 成功后作为 source.ref 或图标对象来源使用",
-            "example": "skill-hub/skills/demo.skill/demo-skill-1.0.0-20260703090000.000000000.zip"
+            "description": "_tmp 临时 OSS Object Key；complete 成功后作为 source.ref 或图标对象来源使用，保存 Skill 成功后后端会转正为正式 Object Key",
+            "example": "skill-hub/skills/_tmp/packages/demo.skill/8f3c6e9d2a1b4c5d9e0f123456789abc/demo-skill.zip"
           },
           "size": {
             "type": "integer",

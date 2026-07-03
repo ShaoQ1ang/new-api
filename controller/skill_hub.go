@@ -204,10 +204,17 @@ func AdminCreateSkillHubSkill(c *gin.Context) {
 		common.ApiErrorMsg(c, "skill id already exists")
 		return
 	}
-	if err := skill.Insert(); err != nil {
+	promotion, err := service.PromoteSkillHubObjects(skill)
+	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	if err := skill.Insert(); err != nil {
+		cleanupPromotedSkillHubFinalObjects(promotion)
+		common.ApiError(c, err)
+		return
+	}
+	cleanupPromotedSkillHubTempObjects(promotion)
 	common.ApiSuccess(c, skill.ToResponse(true))
 }
 
@@ -217,8 +224,6 @@ func AdminUpdateSkillHubSkill(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	oldSourceRef := skill.SourceRef
-	oldIcon := skill.Icon
 	var request skillHubSkillRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		common.ApiError(c, err)
@@ -237,10 +242,18 @@ func AdminUpdateSkillHubSkill(c *gin.Context) {
 		common.ApiErrorMsg(c, "skill id already exists")
 		return
 	}
-	if err := skill.Update(); err != nil {
+	promotion, err := service.PromoteSkillHubObjects(skill)
+	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	oldSourceRef, oldIcon, err := skill.UpdateReturningPreviousObjects()
+	if err != nil {
+		cleanupPromotedSkillHubFinalObjects(promotion)
+		common.ApiError(c, err)
+		return
+	}
+	cleanupPromotedSkillHubTempObjects(promotion)
 	cleanupSkillHubObjectsIfChanged(oldSourceRef, oldIcon, skill.SourceRef, skill.Icon)
 	common.ApiSuccess(c, skill.ToResponse(true))
 }
@@ -487,6 +500,39 @@ func cleanupSkillHubIconObject(iconURL string) {
 	}
 	if err := service.DeleteSkillHubIconByURL(iconURL); err != nil {
 		common.SysLog(fmt.Sprintf("skill hub icon OSS object cleanup failed for %s: %v", iconURL, err))
+	}
+}
+
+func cleanupPromotedSkillHubFinalObjects(result *service.SkillHubPromoteResult) {
+	if result == nil {
+		return
+	}
+	if result.ZipPromoted {
+		cleanupSkillHubZipObject(result.FinalSourceRef)
+	}
+	if result.IconPromoted {
+		cleanupSkillHubIconObjectByKey(result.FinalIconObject)
+	}
+}
+
+func cleanupPromotedSkillHubTempObjects(result *service.SkillHubPromoteResult) {
+	if result == nil {
+		return
+	}
+	if result.ZipPromoted {
+		cleanupSkillHubZipObject(result.TempSourceRef)
+	}
+	if result.IconPromoted {
+		cleanupSkillHubIconObjectByKey(result.TempIconObject)
+	}
+}
+
+func cleanupSkillHubIconObjectByKey(objectKey string) {
+	if strings.TrimSpace(objectKey) == "" {
+		return
+	}
+	if err := service.DeleteSkillHubIconObject(objectKey); err != nil {
+		common.SysLog(fmt.Sprintf("skill hub icon OSS object cleanup failed for %s: %v", objectKey, err))
 	}
 }
 

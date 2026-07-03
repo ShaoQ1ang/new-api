@@ -887,7 +887,7 @@
       "post": {
         "summary": "初始化 Skill Hub 文件直传",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；根据 kind、文件名、大小、技能 ID 和版本生成 OSS PUT signed URL。zip 最大 50MB，icon 最大 1MB；文件本体由浏览器直接 PUT 到 OSS，不经过 New API。",
+        "description": "👨‍💼 需要管理员权限（Admin）；根据 kind、文件名、大小、技能 ID 和版本生成 _tmp 临时 OSS PUT signed URL。zip 最大 50MB，icon 最大 1MB；文件本体由浏览器直接 PUT 到 OSS，不经过 New API。",
         "tags": [
           "技能广场管理"
         ],
@@ -931,7 +931,7 @@
       "post": {
         "summary": "完成 Skill Hub 文件直传",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；浏览器完成 OSS PUT 后调用。后端校验上传票据、检查 OSS 对象大小、读取对象重新计算 sha256，并验证 zip 或图片文件头，返回保存 Skill 所需的 URL、object 和 checksum。",
+        "description": "👨‍💼 需要管理员权限（Admin）；浏览器完成 OSS PUT 后调用。后端校验上传票据、检查 _tmp 临时 OSS 对象大小、读取对象重新计算 sha256，并验证 zip 或图片文件头，返回保存 Skill 所需的 URL、object 和 checksum；保存 Skill 时后端会将临时对象复制到正式目录。",
         "tags": [
           "技能广场管理"
         ],
@@ -975,7 +975,7 @@
       "post": {
         "summary": "丢弃 Skill Hub 未保存上传",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；用于清理已经 PUT 到 OSS 但尚未保存到 Skill 记录的 zip 或 icon 对象。前端在替换上传、切换记录、新建草稿或离开页面时 best-effort 调用。",
+        "description": "👨‍💼 需要管理员权限（Admin）；用于清理已经 PUT 到 OSS 但尚未保存到 Skill 记录的 _tmp 临时 zip 或 icon 对象。前端在替换上传、切换记录、新建草稿或离开页面时 best-effort 调用。",
         "tags": [
           "技能广场管理"
         ],
@@ -1453,8 +1453,8 @@
           },
           "object": {
             "type": "string",
-            "description": "OSS Object Key；complete 成功后作为 source.ref 或图标对象来源使用",
-            "example": "skill-hub/skills/demo.skill/demo-skill-1.0.0-20260703090000.000000000.zip"
+            "description": "_tmp 临时 OSS Object Key；complete 成功后作为 source.ref 或图标对象来源使用，保存 Skill 成功后后端会转正为正式 Object Key",
+            "example": "skill-hub/skills/_tmp/packages/demo.skill/8f3c6e9d2a1b4c5d9e0f123456789abc/demo-skill.zip"
           },
           "size": {
             "type": "integer",

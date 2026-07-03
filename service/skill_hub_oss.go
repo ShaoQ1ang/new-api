@@ -18,12 +18,14 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 )
 
 const SkillHubZipMaxBytes = 50 << 20
 const SkillHubIconMaxBytes = 1 << 20
 const defaultSkillHubUploadURLExpiresSeconds int64 = 3600
+const skillHubTempDir = "_tmp"
 
 const (
 	SkillHubUploadKindZip  = "zip"
@@ -64,6 +66,15 @@ type SkillHubDirectUploadCompleteResult struct {
 	Kind    string
 	SkillID string
 	Upload  *SkillHubUploadResult
+}
+
+type SkillHubPromoteResult struct {
+	ZipPromoted     bool
+	IconPromoted    bool
+	TempSourceRef   string
+	FinalSourceRef  string
+	TempIconObject  string
+	FinalIconObject string
 }
 
 type skillHubOSSConfig struct {
@@ -167,6 +178,9 @@ func CompleteSkillHubDirectUpload(uploadTicket string) (*SkillHubDirectUploadCom
 	if ticket.Object == "" || ticket.SkillID == "" || ticket.Size <= 0 {
 		return nil, errors.New("skill hub upload ticket is invalid")
 	}
+	if !cfg.isTempObjectKey(ticket.Object) {
+		return nil, errors.New("skill hub upload ticket object is not temporary")
+	}
 	bucket, err := cfg.bucket()
 	if err != nil {
 		return nil, err
@@ -228,6 +242,9 @@ func DiscardSkillHubDirectUpload(uploadTicket string) error {
 	if !ok {
 		return nil
 	}
+	if !cfg.isTempObjectKey(objectKey) {
+		return errors.New("skill hub upload ticket object is not temporary")
+	}
 	bucket, err := cfg.bucket()
 	if err != nil {
 		return err
@@ -268,6 +285,113 @@ func DeleteSkillHubIconByURL(value string) error {
 		return err
 	}
 	return bucket.DeleteObject(objectKey)
+}
+
+func DeleteSkillHubIconObject(objectKey string) error {
+	cfg := loadSkillHubIconOSSConfig()
+	objectKey, ok := cfg.managedObjectKey(objectKey)
+	if !ok {
+		return nil
+	}
+	if err := cfg.validate(); err != nil {
+		return err
+	}
+	bucket, err := cfg.bucket()
+	if err != nil {
+		return err
+	}
+	return bucket.DeleteObject(objectKey)
+}
+
+func PromoteSkillHubObjects(skill *model.SkillHubSkill) (*SkillHubPromoteResult, error) {
+	result := &SkillHubPromoteResult{}
+	if err := promoteSkillHubZipObject(skill, result); err != nil {
+		return nil, err
+	}
+	if err := promoteSkillHubIconObject(skill, result); err != nil {
+		if result.ZipPromoted {
+			_ = DeleteSkillHubZipObject(result.FinalSourceRef)
+		}
+		return nil, err
+	}
+	return result, nil
+}
+
+func promoteSkillHubZipObject(skill *model.SkillHubSkill, result *SkillHubPromoteResult) error {
+	cfg := loadSkillHubOSSConfig()
+	objectKey, ok := cfg.managedObjectKey(skill.SourceRef)
+	if strings.TrimSpace(skill.SourceRef) == "" {
+		return nil
+	}
+	if !ok {
+		return errors.New("skill hub source object is outside the managed prefix")
+	}
+	skill.SourceRef = objectKey
+	if !cfg.isTempObjectKey(objectKey) {
+		return nil
+	}
+	if err := cfg.validate(); err != nil {
+		return err
+	}
+	finalObject := cfg.objectKey(skill.SkillID, skill.Version, path.Base(objectKey))
+	if cfg.isTempObjectKey(finalObject) || finalObject == objectKey {
+		return errors.New("skill hub final source object is invalid")
+	}
+	bucket, err := cfg.bucket()
+	if err != nil {
+		return err
+	}
+	if _, err := bucket.CopyObject(objectKey, finalObject, oss.ForbidOverWrite(true)); err != nil {
+		return err
+	}
+	skill.SourceRef = finalObject
+	result.ZipPromoted = true
+	result.TempSourceRef = objectKey
+	result.FinalSourceRef = finalObject
+	return nil
+}
+
+func promoteSkillHubIconObject(skill *model.SkillHubSkill, result *SkillHubPromoteResult) error {
+	cfg := loadSkillHubIconOSSConfig()
+	if strings.TrimSpace(skill.Icon) == "" {
+		return nil
+	}
+	objectKey, ok := cfg.objectKeyFromPublicURL(skill.Icon)
+	if !ok {
+		return nil
+	}
+	if !cfg.isTempObjectKey(objectKey) {
+		return nil
+	}
+	if err := cfg.validate(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(cfg.PublicBaseURL) == "" {
+		return errors.New("skill hub icon public base url is not configured")
+	}
+	ext := strings.ToLower(path.Ext(objectKey))
+	if ext == ".jpeg" {
+		ext = ".jpg"
+	}
+	if ext != ".png" && ext != ".jpg" && ext != ".webp" {
+		return errors.New("skill hub icon object extension is invalid")
+	}
+	finalObject := cfg.iconObjectKey(skill.SkillID, path.Base(objectKey), ext)
+	if cfg.isTempObjectKey(finalObject) || finalObject == objectKey {
+		return errors.New("skill hub final icon object is invalid")
+	}
+	bucket, err := cfg.bucket()
+	if err != nil {
+		return err
+	}
+	if _, err := bucket.CopyObject(objectKey, finalObject, oss.ForbidOverWrite(true)); err != nil {
+		return err
+	}
+	skill.Icon = objectPublicURL(cfg.PublicBaseURL, finalObject)
+	result.IconPromoted = true
+	result.TempIconObject = objectKey
+	result.FinalIconObject = finalObject
+	return nil
 }
 
 func loadSkillHubOSSConfig() skillHubOSSConfig {
@@ -318,10 +442,6 @@ func (c skillHubOSSConfig) bucket() (*oss.Bucket, error) {
 }
 
 func (c skillHubOSSConfig) objectKey(skillID string, version string, filename string) string {
-	prefix := strings.Trim(strings.TrimSpace(c.Prefix), "/")
-	if prefix == "" {
-		prefix = "skill-hub/skills"
-	}
 	id := cleanObjectPart(skillID)
 	if id == "" {
 		id = "draft"
@@ -335,14 +455,26 @@ func (c skillHubOSSConfig) objectKey(skillID string, version string, filename st
 		name = id
 	}
 	stamp := time.Now().UTC().Format("20060102150405.000000000")
-	return path.Join(prefix, id, fmt.Sprintf("%s-%s-%s.zip", name, ver, stamp))
+	return path.Join(c.basePrefix(), id, fmt.Sprintf("%s-%s-%s.zip", name, ver, stamp))
+}
+
+func (c skillHubOSSConfig) tempObjectKey(kind string, skillID string, filename string) (string, error) {
+	id := cleanObjectPart(skillID)
+	if id == "" {
+		id = "draft"
+	}
+	objectID, err := randomOSSObjectID()
+	if err != nil {
+		return "", err
+	}
+	name := cleanSkillHubUploadFileName(filename)
+	if name == "" {
+		name = "upload"
+	}
+	return path.Join(c.basePrefix(), skillHubTempDir, kind, id, objectID, name), nil
 }
 
 func (c skillHubIconOSSConfig) iconObjectKey(skillID string, filename string, ext string) string {
-	prefix := strings.Trim(strings.TrimSpace(c.Prefix), "/")
-	if prefix == "" {
-		prefix = "skill-hub/icons"
-	}
 	id := cleanObjectPart(skillID)
 	if id == "" {
 		id = "draft"
@@ -352,7 +484,7 @@ func (c skillHubIconOSSConfig) iconObjectKey(skillID string, filename string, ex
 		name = "icon"
 	}
 	stamp := time.Now().UTC().Format("20060102150405.000000000")
-	return path.Join(prefix, id, fmt.Sprintf("%s-%s%s", name, stamp, ext))
+	return path.Join(c.basePrefix(), id, fmt.Sprintf("%s-%s%s", name, stamp, ext))
 }
 
 func (c skillHubOSSConfig) managedObjectKey(objectKey string) (string, bool) {
@@ -360,11 +492,22 @@ func (c skillHubOSSConfig) managedObjectKey(objectKey string) (string, bool) {
 	if objectKey == "" {
 		return "", false
 	}
+	prefix := c.basePrefix()
+	return objectKey, objectKey == prefix || strings.HasPrefix(objectKey, prefix+"/")
+}
+
+func (c skillHubOSSConfig) isTempObjectKey(objectKey string) bool {
+	objectKey = strings.TrimLeft(strings.TrimSpace(objectKey), "/")
+	tempPrefix := path.Join(c.basePrefix(), skillHubTempDir)
+	return objectKey == tempPrefix || strings.HasPrefix(objectKey, tempPrefix+"/")
+}
+
+func (c skillHubOSSConfig) basePrefix() string {
 	prefix := strings.Trim(strings.TrimSpace(c.Prefix), "/")
 	if prefix == "" {
 		prefix = "skill-hub/skills"
 	}
-	return objectKey, objectKey == prefix || strings.HasPrefix(objectKey, prefix+"/")
+	return prefix
 }
 
 func (c skillHubIconOSSConfig) objectKeyFromPublicURL(value string) (string, bool) {
@@ -429,9 +572,13 @@ func SignSkillHubZipURL(objectKey string, filename string) (string, error) {
 	if err := cfg.validate(); err != nil {
 		return "", err
 	}
-	objectKey = strings.TrimLeft(strings.TrimSpace(objectKey), "/")
-	if objectKey == "" {
+	var ok bool
+	objectKey, ok = cfg.managedObjectKey(objectKey)
+	if !ok {
 		return "", errors.New("skill hub oss object is required")
+	}
+	if cfg.isTempObjectKey(objectKey) {
+		return "", errors.New("skill hub oss object is not finalized")
 	}
 	client, err := oss.New(cfg.Endpoint, cfg.AccessKeyID, cfg.AccessKeySecret)
 	if err != nil {
@@ -501,12 +648,16 @@ func skillHubDirectUploadConfig(input SkillHubDirectUploadInput) (skillHubOSSCon
 		if err := cfg.validate(); err != nil {
 			return skillHubOSSConfig{}, "", "", "", err
 		}
-		return cfg, "", contentType, cfg.objectKey(input.SkillID, input.Version, input.FileName), nil
+		objectKey, err := cfg.tempObjectKey("packages", input.SkillID, input.FileName)
+		if err != nil {
+			return skillHubOSSConfig{}, "", "", "", err
+		}
+		return cfg, "", contentType, objectKey, nil
 	case SkillHubUploadKindIcon:
 		if input.Size > SkillHubIconMaxBytes {
 			return skillHubOSSConfig{}, "", "", "", fmt.Errorf("icon file must be <= %d MB", SkillHubIconMaxBytes>>20)
 		}
-		contentType, ext, err := skillHubIconContentType(input.FileName)
+		contentType, _, err := skillHubIconContentType(input.FileName)
 		if err != nil {
 			return skillHubOSSConfig{}, "", "", "", err
 		}
@@ -514,7 +665,11 @@ func skillHubDirectUploadConfig(input SkillHubDirectUploadInput) (skillHubOSSCon
 		if err := cfg.validate(); err != nil {
 			return skillHubOSSConfig{}, "", "", "", err
 		}
-		return cfg.skillHubOSSConfig, cfg.PublicBaseURL, contentType, cfg.iconObjectKey(input.SkillID, input.FileName, ext), nil
+		objectKey, err := cfg.tempObjectKey("icons", input.SkillID, input.FileName)
+		if err != nil {
+			return skillHubOSSConfig{}, "", "", "", err
+		}
+		return cfg.skillHubOSSConfig, cfg.PublicBaseURL, contentType, objectKey, nil
 	default:
 		return skillHubOSSConfig{}, "", "", "", errors.New("skill hub upload kind must be zip or icon")
 	}

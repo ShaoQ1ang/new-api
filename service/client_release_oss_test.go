@@ -1,6 +1,11 @@
 package service
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/QuantumNous/new-api/model"
+)
 
 func TestClientReleaseGeneratedFileName(t *testing.T) {
 	input := ClientReleaseUploadInput{
@@ -88,5 +93,56 @@ func TestClientReleaseUploadTicketRoundTrip(t *testing.T) {
 	}
 	if _, err := parseClientReleaseUploadTicket(value+"x", cfg); err == nil {
 		t.Fatal("parseClientReleaseUploadTicket() returned nil error for tampered ticket")
+	}
+}
+
+func TestClientReleaseTempObjectKey(t *testing.T) {
+	cfg := clientReleaseOSSConfig{Prefix: "client-releases"}
+	key, err := cfg.tempObjectKey("setup.exe")
+	if err != nil {
+		t.Fatalf("tempObjectKey() error = %v", err)
+	}
+	if !strings.HasPrefix(key, "client-releases/_tmp/") || !strings.HasSuffix(key, "/setup.exe") {
+		t.Fatalf("temp object key = %q", key)
+	}
+	if !cfg.isTempObjectKey(key) {
+		t.Fatalf("isTempObjectKey(%q) = false, want true", key)
+	}
+	final := cfg.objectKey(ClientReleaseUploadInput{
+		Version:  "1.2.3",
+		Platform: "windows",
+		Arch:     "x64",
+		Channel:  "stable",
+	}, "setup.exe")
+	if cfg.isTempObjectKey(final) {
+		t.Fatalf("final object key %q must not be temporary", final)
+	}
+}
+
+func TestPromoteClientReleaseObjectSkipsFinalManagedObjectWithoutOSSConfig(t *testing.T) {
+	release := &model.ClientRelease{
+		Version:   "1.2.3",
+		Platform:  "windows",
+		Arch:      "x64",
+		Channel:   "stable",
+		FileName:  "setup.exe",
+		ObjectKey: "/client-releases/stable/windows/x64/1.2.3/setup.exe",
+	}
+	result, err := PromoteClientReleaseObject(release)
+	if err != nil {
+		t.Fatalf("PromoteClientReleaseObject() error = %v", err)
+	}
+	if result.Promoted {
+		t.Fatal("PromoteClientReleaseObject() promoted a final object")
+	}
+	if release.ObjectKey != "client-releases/stable/windows/x64/1.2.3/setup.exe" {
+		t.Fatalf("release.ObjectKey = %q", release.ObjectKey)
+	}
+}
+
+func TestPromoteClientReleaseObjectRejectsUnmanagedObject(t *testing.T) {
+	release := &model.ClientRelease{ObjectKey: "other-prefix/setup.exe"}
+	if _, err := PromoteClientReleaseObject(release); err == nil {
+		t.Fatal("PromoteClientReleaseObject() returned nil error for unmanaged object")
 	}
 }

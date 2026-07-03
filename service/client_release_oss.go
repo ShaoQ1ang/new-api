@@ -2,6 +2,7 @@ package service
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/base64"
@@ -22,6 +23,7 @@ import (
 
 const defaultClientReleaseMaxBytes int64 = 500 << 20
 const defaultClientReleaseUploadURLExpiresSeconds int64 = 3600
+const clientReleaseTempDir = "_tmp"
 
 type ClientReleaseUploadInput struct {
 	Version  string
@@ -57,6 +59,12 @@ type ClientReleaseUploadResult struct {
 	Size     int64  `json:"size"`
 	SHA256   string `json:"sha256"`
 	SHA512   string `json:"sha512"`
+}
+
+type ClientReleasePromoteResult struct {
+	Promoted    bool
+	TempObject  string
+	FinalObject string
 }
 
 type clientReleaseOSSConfig struct {
@@ -122,7 +130,10 @@ func InitClientReleaseDirectUpload(input ClientReleaseDirectUploadInput) (*Clien
 		return nil, err
 	}
 
-	objectKey := cfg.objectKey(uploadInput, filename)
+	objectKey, err := cfg.tempObjectKey(filename)
+	if err != nil {
+		return nil, err
+	}
 	expires := clientReleaseUploadURLExpires()
 	uploadURL, err := bucket.SignURL(objectKey, oss.HTTPPut, expires, oss.ContentType(contentType))
 	if err != nil {
@@ -169,6 +180,9 @@ func CompleteClientReleaseDirectUpload(uploadTicket string) (*ClientReleaseUploa
 	}
 	if ticket.Object == "" || ticket.FileName == "" || ticket.Size <= 0 {
 		return nil, errors.New("client release upload ticket is invalid")
+	}
+	if !cfg.isTempObjectKey(ticket.Object) {
+		return nil, errors.New("client release upload ticket object is not temporary")
 	}
 	bucket, err := cfg.bucket()
 	if err != nil {
@@ -217,6 +231,9 @@ func DiscardClientReleaseDirectUpload(uploadTicket string) error {
 	if err != nil {
 		return err
 	}
+	if !cfg.isTempObjectKey(ticket.Object) {
+		return errors.New("client release upload ticket object is not temporary")
+	}
 	return DeleteClientReleaseObject(ticket.Object)
 }
 
@@ -236,14 +253,65 @@ func DeleteClientReleaseObject(objectKey string) error {
 	return bucket.DeleteObject(objectKey)
 }
 
+func PromoteClientReleaseObject(release *model.ClientRelease) (*ClientReleasePromoteResult, error) {
+	cfg := loadClientReleaseOSSConfig()
+	objectKey, ok := cfg.managedObjectKey(release.ObjectKey)
+	if !ok {
+		return nil, errors.New("client release OSS object is outside the managed prefix")
+	}
+	release.ObjectKey = objectKey
+	if !cfg.isTempObjectKey(objectKey) {
+		return &ClientReleasePromoteResult{}, nil
+	}
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+
+	uploadInput := ClientReleaseUploadInput{
+		Version:  release.Version,
+		Platform: release.Platform,
+		Arch:     release.Arch,
+		Channel:  release.Channel,
+	}
+	if err := normalizeClientReleaseUploadInput(&uploadInput); err != nil {
+		return nil, err
+	}
+	filename := cleanClientReleaseDownloadName(release.FileName)
+	if filename == "" {
+		return nil, errors.New("client release file name is required")
+	}
+	finalObject := cfg.objectKey(uploadInput, filename)
+	if cfg.isTempObjectKey(finalObject) || finalObject == objectKey {
+		return nil, errors.New("client release final OSS object is invalid")
+	}
+
+	bucket, err := cfg.bucket()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := bucket.CopyObject(objectKey, finalObject, oss.ForbidOverWrite(true)); err != nil {
+		return nil, err
+	}
+	release.ObjectKey = finalObject
+	return &ClientReleasePromoteResult{
+		Promoted:    true,
+		TempObject:  objectKey,
+		FinalObject: finalObject,
+	}, nil
+}
+
 func SignClientReleaseURL(objectKey string, filename string) (string, error) {
 	cfg := loadClientReleaseOSSConfig()
 	if err := cfg.validate(); err != nil {
 		return "", err
 	}
-	objectKey = strings.TrimLeft(strings.TrimSpace(objectKey), "/")
-	if objectKey == "" {
+	var ok bool
+	objectKey, ok = cfg.managedObjectKey(objectKey)
+	if !ok {
 		return "", errors.New("client release oss object is required")
+	}
+	if cfg.isTempObjectKey(objectKey) {
+		return "", errors.New("client release oss object is not finalized")
 	}
 	bucket, err := cfg.bucket()
 	if err != nil {
@@ -317,10 +385,6 @@ func (c clientReleaseOSSConfig) bucket() (*oss.Bucket, error) {
 }
 
 func (c clientReleaseOSSConfig) objectKey(input ClientReleaseUploadInput, filename string) string {
-	prefix := strings.Trim(strings.TrimSpace(c.Prefix), "/")
-	if prefix == "" {
-		prefix = "client-releases"
-	}
 	channel := cleanObjectPart(input.Channel)
 	if channel == "" {
 		channel = "stable"
@@ -342,7 +406,19 @@ func (c clientReleaseOSSConfig) objectKey(input ClientReleaseUploadInput, filena
 		name = "client-release"
 	}
 	stamp := time.Now().UTC().Format("20060102150405.000000000")
-	return path.Join(prefix, channel, platform, arch, version, fmt.Sprintf("%s-%s", stamp, name))
+	return path.Join(c.basePrefix(), channel, platform, arch, version, fmt.Sprintf("%s-%s", stamp, name))
+}
+
+func (c clientReleaseOSSConfig) tempObjectKey(filename string) (string, error) {
+	id, err := randomOSSObjectID()
+	if err != nil {
+		return "", err
+	}
+	name := cleanClientReleaseDownloadName(filename)
+	if name == "" {
+		name = "client-release"
+	}
+	return path.Join(c.basePrefix(), clientReleaseTempDir, id, name), nil
 }
 
 func (c clientReleaseOSSConfig) managedObjectKey(objectKey string) (string, bool) {
@@ -350,11 +426,22 @@ func (c clientReleaseOSSConfig) managedObjectKey(objectKey string) (string, bool
 	if objectKey == "" {
 		return "", false
 	}
+	prefix := c.basePrefix()
+	return objectKey, objectKey == prefix || strings.HasPrefix(objectKey, prefix+"/")
+}
+
+func (c clientReleaseOSSConfig) isTempObjectKey(objectKey string) bool {
+	objectKey = strings.TrimLeft(strings.TrimSpace(objectKey), "/")
+	tempPrefix := path.Join(c.basePrefix(), clientReleaseTempDir)
+	return objectKey == tempPrefix || strings.HasPrefix(objectKey, tempPrefix+"/")
+}
+
+func (c clientReleaseOSSConfig) basePrefix() string {
 	prefix := strings.Trim(strings.TrimSpace(c.Prefix), "/")
 	if prefix == "" {
 		prefix = "client-releases"
 	}
-	return objectKey, objectKey == prefix || strings.HasPrefix(objectKey, prefix+"/")
+	return prefix
 }
 
 func clientReleaseSignedURLExpires() int64 {
@@ -470,4 +557,12 @@ func cleanClientReleaseDownloadName(value string) string {
 		return value[len(value)-255:]
 	}
 	return value
+}
+
+func randomOSSObjectID() (string, error) {
+	var data [16]byte
+	if _, err := rand.Read(data[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(data[:]), nil
 }
