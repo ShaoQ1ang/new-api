@@ -388,6 +388,9 @@ export function ClientReleases() {
               <div className='space-y-2'>
                 {releases.map((release) => {
                   const published = release.published || release.status === 1
+                  const forcedLabel = release.minVersion
+                    ? `≥${release.minVersion}`
+                    : t('Forced')
                   return (
                     <button
                       key={release.id}
@@ -414,7 +417,7 @@ export function ClientReleases() {
                         </div>
                         <div className='flex shrink-0 flex-wrap justify-end gap-1'>
                           {release.forced && (
-                            <Badge variant='destructive'>{t('Forced')}</Badge>
+                            <Badge variant='destructive'>{forcedLabel}</Badge>
                           )}
                           <Badge variant={published ? 'default' : 'outline'}>
                             {published ? t('Published') : t('Draft')}
