@@ -33,6 +33,40 @@ CLIENT_RELEASE_OSS_MAX_BYTES=524288000
 - 同一 `platform / arch / channel` 范围内，`latest` 和 `latest.yml` 按 `id` 最大的已发布记录作为最新记录。
 - 客户端仍会比较 `latest.version` 和自己的当前版本；如果误发布了版本号更低但 `id` 更大的记录，客户端不会把它当作升级版本。
 
+## 桌面端更新流程
+
+- 客户端先请求 `GET /api/client-releases/latest` 判断是否有新版本、是否强制更新，以及弹窗展示的版本信息。
+- 用户点击“下载更新”后，客户端不会打开浏览器外链，而是交给 `electron-updater` 读取 `latest.yml` 并下载安装包。
+- 下载过程中客户端显示进度；下载完成后按钮切换为“更新并重启程序”。
+- 用户点击“更新并重启程序”后，客户端隐藏旧窗口并调用安装器静默安装；安装完成后自动启动新版本。
+- 强制更新不会提供“稍后”，但仍然按“下载更新 -> 更新并重启程序”的两段式流程执行，用户也可以直接退出程序。
+
+## 安全边界
+
+- 管理接口都挂在 `/api/admin/client-releases` 下，并要求 `AdminAuth`；公开接口只提供已发布版本的读取、`latest.yml` 和下载跳转。
+- OSS Bucket 应保持私有。客户端只访问 New API，New API 再为已发布版本生成短时 signed URL；不要把 OSS Bucket 改成公开读。
+- 上传入口会限制请求体大小，默认最大 `500MB`；文件扩展名、`version / platform / arch / channel` 会在写入 OSS 前校验。
+- 上传后的文件名由后端强制生成：`Z-UP-Setup-{version}-{platform}-{arch}-{channel}.{ext}`，避免用户可控文件名进入下载路径。
+- 公开响应不会返回 `objectKey / status / published` 等后台字段；公开下载会再次检查版本状态，草稿版本不会签名下载。
+- 发布版本必须带 `sha512`，否则 `latest.yml` 不可用；客户端安装阶段由 `electron-updater` 按 `sha512` 校验安装包。
+- 生产环境建议配置系统 `ServerAddress` 为固定 HTTPS 外部地址，避免根据 `X-Forwarded-*` Header 推导出错误或被污染的 `downloadUrl`。
+- OSS AccessKey 只放服务端环境变量，不写入前端配置、打包产物或 Apifox 示例环境。
+
+## 并发行为
+
+- 同一 `version / platform / arch / channel` 由数据库唯一索引兜底；前端的“同版本覆盖”确认只是交互提示，最终仍以后端唯一约束为准。
+- 两个管理员同时创建同一目标版本时，只会有一个写入成功；另一个请求会收到唯一索引冲突，需要刷新列表后决定是否覆盖。
+- 上传到 OSS 的 object key 带时间戳和规范化目标路径，避免并发上传同名文件时直接覆盖 OSS 对象。
+- 发布、取消发布和更新记录没有额外应用层锁；同一条记录的并发编辑采用数据库最后一次写入生效。运营上应避免多人同时编辑同一版本。
+- `latest` 和 `latest.yml` 总是读取同一目标下 `id` 最大的已发布记录；如果下载过程中又发布了新记录，已开始的下载仍按当次 `latest.yml` 中的 `id` 获取安装包。
+- 客户端更新检查本身做进程内去重；同一客户端同时触发自动检查和手动检查时，会复用同一次后端请求结果。
+
+## 管理端双前端同步
+
+- 客户端管理页同时存在 default 和 classic 两套实现：`web/default/src/features/client-releases` 与 `web/classic/src/pages/ClientReleases`。
+- 修改字段、校验、按钮文案、列表标签、上传逻辑或接口 payload 时，必须同时检查两套实现。
+- 例如强制更新标签应两边一致：有 `minVersion` 时显示 `≥x.x.x`，没有最低版本时才兜底显示“强更”或本地化的 Forced 文案。
+
 ## 接口入口
 
 ```txt
@@ -50,4 +84,3 @@ POST   /api/admin/client-releases/{id}/publish
 POST   /api/admin/client-releases/{id}/unpublish
 DELETE /api/admin/client-releases/{id}
 ```
-

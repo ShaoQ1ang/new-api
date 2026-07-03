@@ -575,6 +575,9 @@ const ClientReleases = () => {
               <div className='flex max-h-[70vh] flex-col gap-2 overflow-auto pr-1'>
                 {releases.map((release) => {
                   const published = isPublishedRelease(release);
+                  const forcedLabel = release.minVersion
+                    ? `≥${release.minVersion}`
+                    : '强更';
                   return (
                     <button
                       key={release.id}
@@ -596,7 +599,9 @@ const ClientReleases = () => {
                           </div>
                         </div>
                         <Space spacing={4}>
-                          {release.forced ? <Tag color='red'>强更</Tag> : null}
+                          {release.forced ? (
+                            <Tag color='red'>{forcedLabel}</Tag>
+                          ) : null}
                           <Tag color={published ? 'green' : 'grey'}>
                             {published ? '已发布' : '草稿'}
                           </Tag>

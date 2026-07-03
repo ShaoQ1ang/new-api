@@ -6684,7 +6684,7 @@
       "get": {
         "summary": "检查客户端最新版本",
         "deprecated": false,
-        "description": "无需鉴权；按 platform/arch/channel/status=published 返回 id 最大的发布记录，并根据 current_version 判断是否需要更新。",
+        "description": "无需鉴权；按 platform/arch/channel/status=published 返回 id 最大的发布记录，并根据 current_version 判断是否需要更新。该接口只用于客户端检查更新和展示弹窗信息；安装包实际下载由 electron-updater 读取 latest.yml 完成。",
         "tags": [
           "客户端更新"
         ],
@@ -6808,7 +6808,7 @@
       "get": {
         "summary": "获取客户端 latest.yml",
         "deprecated": false,
-        "description": "Electron updater 读取的 latest.yml；按 platform/arch/channel/status=published 返回 id 最大且带 sha512 的发布记录。",
+        "description": "Electron updater 在“下载更新”阶段读取的 latest.yml；按 platform/arch/channel/status=published 返回 id 最大且带 sha512 的发布记录。客户端下载完成后会等待用户点击“更新并重启程序”，再静默安装并重启。",
         "tags": [
           "客户端更新"
         ],
@@ -8634,7 +8634,7 @@
           },
           "forceUpdate": {
             "type": "boolean",
-            "description": "是否需要强制更新"
+            "description": "是否需要强制更新；强制更新不提供“稍后”，客户端只能退出程序或按“下载更新 -> 更新并重启程序”完成更新"
           },
           "currentVersion": {
             "type": "string",
