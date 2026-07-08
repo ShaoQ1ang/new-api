@@ -23,8 +23,7 @@ const (
 var skillHubIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
 const (
-	skillHubSkillOrder          = "CASE WHEN sort = 0 THEN 1 ELSE 0 END ASC, sort ASC, updated_time DESC, id DESC"
-	skillHubQualifiedSkillOrder = "CASE WHEN skill_hub_skills.sort = 0 THEN 1 ELSE 0 END ASC, skill_hub_skills.sort ASC, skill_hub_skills.updated_time DESC, skill_hub_skills.id DESC"
+	skillHubSkillOrder = "CASE WHEN sort = 0 THEN 1 ELSE 0 END ASC, sort ASC, updated_time DESC, id DESC"
 )
 
 type SkillHubSkill struct {
@@ -429,9 +428,11 @@ func SearchSkillHubSkillsByTagIDs(tagIDs []int, keyword string, admin bool, offs
 		return []*SkillHubSkill{}, 0, nil
 	}
 
-	db := DB.Model(&SkillHubSkill{}).
-		Joins("JOIN skill_hub_skill_tags ON skill_hub_skill_tags.skill_id = skill_hub_skills.id").
+	skillIDSubQuery := DB.Model(&SkillHubSkillTag{}).
+		Select("skill_hub_skill_tags.skill_id").
 		Where("skill_hub_skill_tags.tag_id IN ?", cleanTagIDs)
+
+	db := DB.Model(&SkillHubSkill{}).Where("id IN (?)", skillIDSubQuery)
 	if !admin {
 		db = db.Where("status = ?", SkillHubStatusPublished)
 	}
@@ -453,12 +454,11 @@ func SearchSkillHubSkillsByTagIDs(tagIDs []int, keyword string, admin bool, offs
 	}
 
 	var total int64
-	if err := db.Distinct("skill_hub_skills.id").Count(&total).Error; err != nil {
+	if err := db.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 	var skills []*SkillHubSkill
-	err = db.Distinct("skill_hub_skills.*").
-		Order(skillHubQualifiedSkillOrder).
+	err = db.Order(skillHubSkillOrder).
 		Offset(offset).
 		Limit(limit).
 		Find(&skills).Error
