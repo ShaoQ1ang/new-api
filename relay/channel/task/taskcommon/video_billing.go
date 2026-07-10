@@ -11,6 +11,9 @@ import (
 
 func ConvertVideoBillingParams(_ *relaycommon.RelayInfo, req relaycommon.TaskSubmitReq) (*types.VideoBillingParams, error) {
 	modelName := strings.ToLower(strings.TrimSpace(req.Model))
+	if converter := getRegisteredVideoBillingConverter(modelName); converter != nil {
+		return converter(req)
+	}
 	switch {
 	case strings.HasPrefix(modelName, "happyhorse-1.0"), strings.HasPrefix(modelName, "happyhorse-1.1"):
 		return convertAliHappyHorseVideoBillingParams(req)

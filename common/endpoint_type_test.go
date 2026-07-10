@@ -29,6 +29,19 @@ func TestGetEndpointTypesByChannelType_SoraDoesNotUseSeedanceNative(t *testing.T
 	}
 }
 
+func TestGetEndpointTypesByChannelType_OpenRouterIncludesOpenAIVideo(t *testing.T) {
+	endpoints := GetEndpointTypesByChannelType(constant.ChannelTypeOpenRouter, "openai/sora")
+	if len(endpoints) < 2 {
+		t.Fatalf("expected at least 2 endpoint types, got %d: %v", len(endpoints), endpoints)
+	}
+	if endpoints[0] != constant.EndpointTypeOpenAIVideo {
+		t.Fatalf("expected first endpoint %q, got %q", constant.EndpointTypeOpenAIVideo, endpoints[0])
+	}
+	if endpoints[1] != constant.EndpointTypeOpenAI {
+		t.Fatalf("expected second endpoint %q, got %q", constant.EndpointTypeOpenAI, endpoints[1])
+	}
+}
+
 func TestGetDefaultEndpointInfo_OpenAIVideo(t *testing.T) {
 	info, ok := GetDefaultEndpointInfo(constant.EndpointTypeOpenAIVideo)
 	if !ok {

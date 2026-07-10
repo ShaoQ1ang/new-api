@@ -14,8 +14,8 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
-	"github.com/glebarez/sqlite"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -284,6 +284,29 @@ func TestLogTaskConsumptionIncludesVideoSecondsBillingDetails(t *testing.T) {
 	assert.Equal(t, float64(0.6), other["video_seconds_unit_price"])
 	assert.Equal(t, "720p", other["video_seconds_tier"])
 	assert.Equal(t, float64(5), other["video_duration_seconds"])
+	assert.Equal(t, false, other["video_audio_enabled"])
+}
+
+func TestTaskBillingOtherIncludesVideoSecondsBillingDetails(t *testing.T) {
+	audioEnabled := false
+	task := &model.Task{
+		PrivateData: model.TaskPrivateData{
+			BillingContext: &model.TaskBillingContext{
+				ModelPrice:            -1,
+				GroupRatio:            1,
+				VideoSecondsUnitPrice: 0.6,
+				VideoSecondsTier:      "720p",
+				VideoDurationSeconds:  5,
+				VideoAudioEnabled:     &audioEnabled,
+			},
+		},
+	}
+
+	other := taskBillingOther(task)
+	assert.Equal(t, "video_seconds", other["billing_mode"])
+	assert.Equal(t, 0.6, other["video_seconds_unit_price"])
+	assert.Equal(t, "720p", other["video_seconds_tier"])
+	assert.Equal(t, 5, other["video_duration_seconds"])
 	assert.Equal(t, false, other["video_audio_enabled"])
 }
 
