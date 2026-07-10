@@ -154,7 +154,11 @@ func (a *TaskAdaptor) FetchTask(baseURL, key string, body map[string]any, proxy 
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
-	handler := SelectHandler("")
+	return a.ParseTaskResultForModel("", respBody)
+}
+
+func (a *TaskAdaptor) ParseTaskResultForModel(modelName string, respBody []byte) (*relaycommon.TaskInfo, error) {
+	handler := SelectHandler(modelName)
 	return handler.ParseFetchResponse(nil, respBody)
 }
 

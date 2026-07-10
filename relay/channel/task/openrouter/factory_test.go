@@ -3,6 +3,7 @@ package openrouter
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 )
 
@@ -67,5 +68,44 @@ func TestDefaultHandlerEstimateBillingContext(t *testing.T) {
 	}
 	if ctx.AudioEnabled == nil || !*ctx.AudioEnabled {
 		t.Fatalf("expected audio enabled, got %+v", ctx.AudioEnabled)
+	}
+}
+
+type parseFetchStubHandler struct {
+	BaseHandler
+	family string
+	match  string
+	status string
+}
+
+func (h *parseFetchStubHandler) Family() string {
+	return h.family
+}
+
+func (h *parseFetchStubHandler) Match(model string) bool {
+	return model == h.match
+}
+
+func (h *parseFetchStubHandler) ParseFetchResponse(_ *relaycommon.RelayInfo, _ []byte) (*relaycommon.TaskInfo, error) {
+	return &relaycommon.TaskInfo{Status: h.status}, nil
+}
+
+func TestTaskAdaptorParseTaskResultForModelUsesMatchedHandler(t *testing.T) {
+	originalHandlers := registeredHandlers
+	registeredHandlers = []ModelHandler{
+		&parseFetchStubHandler{BaseHandler: NewBaseHandler("seedance"), family: "seedance", match: "bytedance/seedance-2.0", status: string(model.TaskStatusSuccess)},
+		&DefaultHandler{BaseHandler: NewBaseHandler("default")},
+	}
+	t.Cleanup(func() {
+		registeredHandlers = originalHandlers
+	})
+
+	adaptor := &TaskAdaptor{}
+	taskInfo, err := adaptor.ParseTaskResultForModel("bytedance/seedance-2.0", []byte(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if taskInfo.Status != string(model.TaskStatusSuccess) {
+		t.Fatalf("expected success status from matched handler, got %q", taskInfo.Status)
 	}
 }
