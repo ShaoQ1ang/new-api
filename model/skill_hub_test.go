@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -322,6 +323,12 @@ func TestSearchSkillHubSkillsUsesConfiguredSortOrder(t *testing.T) {
 func TestValidateSkillHubTag(t *testing.T) {
 	if err := ValidateSkillHubTag(&SkillHubTag{Name: "办公协同"}); err != nil {
 		t.Fatalf("ValidateSkillHubTag() error = %v", err)
+	}
+	if err := ValidateSkillHubTag(&SkillHubTag{Name: strings.Repeat("标", 40)}); err != nil {
+		t.Fatalf("ValidateSkillHubTag() error = %v, want 40 characters allowed", err)
+	}
+	if err := ValidateSkillHubTag(&SkillHubTag{Name: strings.Repeat("标", 41)}); err == nil || err.Error() != "tag name must be 40 characters or fewer" {
+		t.Fatalf("ValidateSkillHubTag() error = %v, want 40 character limit", err)
 	}
 	if err := ValidateSkillHubTag(&SkillHubTag{Name: ""}); err == nil || err.Error() != "tag name is required" {
 		t.Fatalf("ValidateSkillHubTag() error = %v, want name required", err)

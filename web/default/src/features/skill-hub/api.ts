@@ -112,6 +112,26 @@ export async function deleteSkillHubSkill(
   return res.data
 }
 
+export async function batchDeleteSkillHubSkills(ids: string[]) {
+  const res = await api.post('/api/admin/skill-hub/skills/batch-delete', {
+    ids,
+  })
+  return res.data as {
+    success: boolean
+    message?: string
+    data?: { deleted: number }
+  }
+}
+
+export async function batchExportSkillHubSkills(ids: string[]) {
+  const res = await api.post(
+    '/api/admin/skill-hub/skills/batch-export',
+    { ids },
+    { responseType: 'blob' }
+  )
+  return res.data as Blob
+}
+
 export async function setSkillHubSkillPublished(
   id: string,
   published: boolean

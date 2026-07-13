@@ -200,8 +200,8 @@ func ValidateSkillHubTag(t *SkillHubTag) error {
 	if t.Name == "" {
 		return errors.New("tag name is required")
 	}
-	if len([]rune(t.Name)) > 32 {
-		return errors.New("tag name must be 32 characters or fewer")
+	if len([]rune(t.Name)) > 40 {
+		return errors.New("tag name must be 40 characters or fewer")
 	}
 	if strings.ContainsAny(t.Name, `/\`) {
 		return errors.New("tag name cannot contain slashes")
@@ -340,6 +340,31 @@ func DeleteSkillHubSkill(skill *SkillHubSkill) error {
 			return err
 		}
 		return tx.Delete(skill).Error
+	})
+}
+
+func GetSkillHubSkillsBySkillIDs(skillIDs []string) ([]*SkillHubSkill, error) {
+	if len(skillIDs) == 0 {
+		return []*SkillHubSkill{}, nil
+	}
+	var skills []*SkillHubSkill
+	err := DB.Where("skill_id IN ?", skillIDs).Order("skill_id ASC").Find(&skills).Error
+	return skills, err
+}
+
+func DeleteSkillHubSkills(skills []*SkillHubSkill) error {
+	if len(skills) == 0 {
+		return nil
+	}
+	ids := make([]int, 0, len(skills))
+	for _, skill := range skills {
+		ids = append(ids, skill.Id)
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("skill_id IN ?", ids).Delete(&SkillHubSkillTag{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&SkillHubSkill{}, ids).Error
 	})
 }
 
@@ -857,4 +882,8 @@ func stringListFromJSON(value string) []string {
 		return nil
 	}
 	return result
+}
+
+func StringListFromJSON(value string) []string {
+	return stringListFromJSON(value)
 }

@@ -50037,8 +50037,8 @@
                 },
                 "name": {
                   "type": "string",
-                  "description": "标签名称，最多 32 个字符，不能包含 / 或 \\",
-                  "maxLength": 32
+                  "description": "标签名称，最多 40 个字符，不能包含 / 或 \\",
+                  "maxLength": 40
                 },
                 "sort": {
                   "type": "integer",
@@ -50117,8 +50117,8 @@
               "properties": {
                 "name": {
                   "type": "string",
-                  "description": "标签名称，最多 32 个字符，不能包含 / 或 \\",
-                  "maxLength": 32
+                  "description": "标签名称，最多 40 个字符，不能包含 / 或 \\",
+                  "maxLength": 40
                 },
                 "sort": {
                   "type": "integer",
