@@ -7,13 +7,13 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 )
 
-func TestSelectHandler_PicksSoraFamilyHandler(t *testing.T) {
+func TestSelectHandler_UnsupportedSoraFallsBackToDefault(t *testing.T) {
 	handler := SelectHandler("openai/sora")
 	if handler == nil {
 		t.Fatal("expected handler")
 	}
-	if handler.Family() != "sora" {
-		t.Fatalf("expected sora handler, got %q", handler.Family())
+	if handler.Family() != "default" {
+		t.Fatalf("expected default handler for unsupported sora, got %q", handler.Family())
 	}
 }
 
@@ -68,6 +68,9 @@ func TestDefaultHandlerEstimateBillingContext(t *testing.T) {
 	}
 	if ctx.AudioEnabled == nil || !*ctx.AudioEnabled {
 		t.Fatalf("expected audio enabled, got %+v", ctx.AudioEnabled)
+	}
+	if ctx.OtherRatios["seconds"] != 6 {
+		t.Fatalf("expected seconds ratio 6, got %v", ctx.OtherRatios["seconds"])
 	}
 }
 

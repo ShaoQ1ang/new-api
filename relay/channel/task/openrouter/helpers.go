@@ -275,7 +275,8 @@ func mapStatus(status string) string {
 	case "failed", "error", "canceled", "cancelled":
 		return "failed"
 	default:
-		return "queued"
+		// Unknown / empty: do not pretend the task is still queued.
+		return ""
 	}
 }
 
@@ -290,7 +291,7 @@ func mapTaskStatus(status string) string {
 	case "failed":
 		return "FAILURE"
 	default:
-		return "PENDING"
+		return ""
 	}
 }
 
@@ -303,6 +304,20 @@ func mapProgress(status string) string {
 	case "completed", "failed":
 		return "100%"
 	default:
-		return "10%"
+		return ""
 	}
+}
+
+func isRateLimitError(code, message string) bool {
+	normalizedCode := strings.ToLower(strings.TrimSpace(code))
+	normalizedMessage := strings.ToLower(strings.TrimSpace(message))
+	switch normalizedCode {
+	case "429", "rate_limit_error", "rate_limit_exceeded", "too_many_requests":
+		return true
+	}
+	if strings.Contains(normalizedMessage, "rate limit") ||
+		strings.Contains(normalizedMessage, "too many requests") {
+		return true
+	}
+	return false
 }

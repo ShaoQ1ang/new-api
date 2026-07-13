@@ -102,6 +102,64 @@ func TestBaseHandlerParseFetchResponseExtractsFailureReason(t *testing.T) {
 	}
 }
 
+func TestBaseHandlerParseFetchResponseTreatsErrorBodyWithoutStatusAsFailure(t *testing.T) {
+	handler := NewBaseHandler("default")
+	body := []byte(`{
+		"error":{"message":"provider unavailable","code":"503"}
+	}`)
+
+	taskInfo, err := handler.ParseFetchResponse(nil, body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if taskInfo.Status != model.TaskStatusFailure {
+		t.Fatalf("expected FAILURE, got %q", taskInfo.Status)
+	}
+	if taskInfo.Reason != "provider unavailable" {
+		t.Fatalf("expected failure reason, got %q", taskInfo.Reason)
+	}
+}
+
+func TestBaseHandlerParseFetchResponseErrorsWhenStatusMissingWithoutError(t *testing.T) {
+	handler := NewBaseHandler("default")
+	_, err := handler.ParseFetchResponse(nil, []byte(`{"data":{"id":"vid_000"}}`))
+	if err == nil {
+		t.Fatal("expected missing status error")
+	}
+}
+
+func TestBaseHandlerParseFetchResponseErrorsOnUnknownStatus(t *testing.T) {
+	handler := NewBaseHandler("default")
+	_, err := handler.ParseFetchResponse(nil, []byte(`{"id":"vid_1","status":"weird_state"}`))
+	if err == nil {
+		t.Fatal("expected unknown status error")
+	}
+}
+
+func TestBaseHandlerParseFetchResponseRateLimitIsNotFailure(t *testing.T) {
+	handler := NewBaseHandler("default")
+	body := []byte(`{"error":{"message":"Rate limit exceeded","code":"429"}}`)
+	taskInfo, err := handler.ParseFetchResponse(nil, body)
+	if err == nil {
+		t.Fatal("expected rate limit error")
+	}
+	if taskInfo != nil {
+		t.Fatalf("expected nil task info on rate limit, got %+v", taskInfo)
+	}
+}
+
+func TestMapStatusDoesNotDefaultUnknownToQueued(t *testing.T) {
+	if got := mapStatus("weird_state"); got != "" {
+		t.Fatalf("expected empty mapped status, got %q", got)
+	}
+	if got := mapTaskStatus("weird_state"); got != "" {
+		t.Fatalf("expected empty task status, got %q", got)
+	}
+	if got := mapStatus("processing"); got != "in_progress" {
+		t.Fatalf("expected in_progress, got %q", got)
+	}
+}
+
 func TestBaseHandlerConvertToOpenAIVideoIncludesErrorAndMetadata(t *testing.T) {
 	handler := NewBaseHandler("default")
 	task := &model.Task{

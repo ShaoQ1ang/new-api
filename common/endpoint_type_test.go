@@ -30,7 +30,7 @@ func TestGetEndpointTypesByChannelType_SoraDoesNotUseSeedanceNative(t *testing.T
 }
 
 func TestGetEndpointTypesByChannelType_OpenRouterIncludesOpenAIVideo(t *testing.T) {
-	endpoints := GetEndpointTypesByChannelType(constant.ChannelTypeOpenRouter, "openai/sora")
+	endpoints := GetEndpointTypesByChannelType(constant.ChannelTypeOpenRouter, "google/veo-3.1-lite")
 	if len(endpoints) < 2 {
 		t.Fatalf("expected at least 2 endpoint types, got %d: %v", len(endpoints), endpoints)
 	}
@@ -39,6 +39,28 @@ func TestGetEndpointTypesByChannelType_OpenRouterIncludesOpenAIVideo(t *testing.
 	}
 	if endpoints[1] != constant.EndpointTypeOpenAI {
 		t.Fatalf("expected second endpoint %q, got %q", constant.EndpointTypeOpenAI, endpoints[1])
+	}
+}
+
+func TestGetEndpointTypesByChannelType_OpenRouterChatDoesNotUseOpenAIVideo(t *testing.T) {
+	endpoints := GetEndpointTypesByChannelType(constant.ChannelTypeOpenRouter, "openai/gpt-4o")
+	if len(endpoints) == 0 {
+		t.Fatalf("expected endpoint types")
+	}
+	for _, ep := range endpoints {
+		if ep == constant.EndpointTypeOpenAIVideo {
+			t.Fatalf("did not expect openai-video endpoint for chat model: %v", endpoints)
+		}
+	}
+	if endpoints[0] != constant.EndpointTypeOpenAI {
+		t.Fatalf("expected first endpoint %q, got %q", constant.EndpointTypeOpenAI, endpoints[0])
+	}
+}
+
+func TestGetEndpointTypesByChannelType_OpenRouterSeedanceUsesOpenAIVideo(t *testing.T) {
+	endpoints := GetEndpointTypesByChannelType(constant.ChannelTypeOpenRouter, "bytedance/seedance-2.0")
+	if len(endpoints) < 2 || endpoints[0] != constant.EndpointTypeOpenAIVideo {
+		t.Fatalf("expected openai-video first for seedance, got %v", endpoints)
 	}
 }
 

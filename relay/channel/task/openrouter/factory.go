@@ -5,7 +5,7 @@ import "strings"
 var registeredHandlers = []ModelHandler{
 	&SeedanceHandler{BaseHandler: NewBaseHandler("seedance")},
 	&VeoHandler{BaseHandler: NewBaseHandler("veo")},
-	&SoraHandler{BaseHandler: NewBaseHandler("sora")},
+	// Sora is intentionally not registered until request mapping + video_seconds billing are implemented.
 	&DefaultHandler{BaseHandler: NewBaseHandler("default")},
 }
 
@@ -25,15 +25,6 @@ type DefaultHandler struct {
 
 func (h *DefaultHandler) Match(string) bool {
 	return true
-}
-
-type SoraHandler struct {
-	BaseHandler
-}
-
-func (h *SoraHandler) Match(model string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(model))
-	return strings.HasPrefix(normalized, "openai/sora") || strings.HasPrefix(normalized, "sora")
 }
 
 type SeedanceHandler struct {

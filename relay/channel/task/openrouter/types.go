@@ -120,7 +120,7 @@ func (h BaseHandler) EstimateBillingContext(req *relaycommon.TaskSubmitReq) (*Vi
 		ResolutionTier:  tier,
 		AudioEnabled:    audio,
 		OtherRatios: map[string]float64{
-			"seconds": 1,
+			"seconds": float64(duration),
 		},
 	}, nil
 }
@@ -138,8 +138,13 @@ func (h BaseHandler) ParseSubmitResponse(info *relaycommon.RelayInfo, body []byt
 	video.ID = info.PublicTaskID
 	video.TaskID = info.PublicTaskID
 	video.Model = info.OriginModelName
-	video.Status = mapStatus(firstString(payload, "status", "state", "data.status", "data.state"))
-	video.SetProgressStr(mapProgress(video.Status))
+	// Submit responses without a status are treated as queued once we have a task id.
+	status := mapStatus(firstString(payload, "status", "state", "data.status", "data.state"))
+	if status == "" {
+		status = "queued"
+	}
+	video.Status = status
+	video.SetProgressStr(mapProgress(status))
 	video.CreatedAt = firstInt64(payload, "created_at", "created", "data.created_at", "data.created")
 	video.SetMetadata("upstream_task_id", upstreamTaskID)
 	if pollingURL := firstString(payload, "polling_url", "data.polling_url"); pollingURL != "" {
@@ -169,13 +174,36 @@ func (h BaseHandler) ParseFetchResponse(_ *relaycommon.RelayInfo, body []byte) (
 		return nil, err
 	}
 	statusText := firstString(payload, "status", "state", "data.status", "data.state")
+	reason, code := firstError(payload)
+	taskID := firstString(payload, "id", "task_id", "data.id", "data.task_id")
+
+	// Empty / unknown status must not be silently mapped to PENDING.
+	if strings.TrimSpace(statusText) == "" || mapStatus(statusText) == "" {
+		if reason != "" {
+			if isRateLimitError(code, reason) {
+				// Transient: let the poller keep the previous task state.
+				return nil, errf("upstream rate limited: %s", reason)
+			}
+			return &relaycommon.TaskInfo{
+				Status:   model.TaskStatusFailure,
+				TaskID:   taskID,
+				Reason:   reason,
+				Progress: "100%",
+			}, nil
+		}
+		if strings.TrimSpace(statusText) == "" {
+			return nil, errf("task status is empty")
+		}
+		return nil, errf("unknown task status: %s", statusText)
+	}
+
 	status := mapTaskStatus(statusText)
 	taskInfo := &relaycommon.TaskInfo{
 		Status:   status,
-		TaskID:   firstString(payload, "id", "task_id", "data.id", "data.task_id"),
+		TaskID:   taskID,
 		Progress: mapProgress(statusText),
 	}
-	if reason, _ := firstError(payload); reason != "" && status == model.TaskStatusFailure {
+	if reason != "" && status == model.TaskStatusFailure {
 		taskInfo.Reason = reason
 	}
 	if url := firstURL(payload); url != "" {

@@ -1,6 +1,10 @@
 package common
 
-import "github.com/QuantumNous/new-api/constant"
+import (
+	"strings"
+
+	"github.com/QuantumNous/new-api/constant"
+)
 
 // GetEndpointTypesByChannelType 获取渠道最优先端点类型（所有的渠道都支持 OpenAI 端点）
 func GetEndpointTypesByChannelType(channelType int, modelName string) []constant.EndpointType {
@@ -25,7 +29,11 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 	case constant.ChannelTypeGemini:
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeGemini, constant.EndpointTypeOpenAI}
 	case constant.ChannelTypeOpenRouter:
-		endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAIVideo, constant.EndpointTypeOpenAI}
+		// OpenRouter serves both chat and video models. Only attach openai-video for known video families.
+		endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAI}
+		if isOpenRouterVideoModel(modelName) {
+			endpointTypes = append([]constant.EndpointType{constant.EndpointTypeOpenAIVideo}, endpointTypes...)
+		}
 	case constant.ChannelTypeXai:
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeOpenAIResponse}
 	case constant.ChannelTypeDoubaoVideo:
@@ -44,4 +52,10 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 		endpointTypes = append([]constant.EndpointType{constant.EndpointTypeImageGeneration}, endpointTypes...)
 	}
 	return endpointTypes
+}
+
+func isOpenRouterVideoModel(modelName string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(modelName))
+	return strings.HasPrefix(normalized, "google/veo") ||
+		strings.HasPrefix(normalized, "bytedance/seedance")
 }
