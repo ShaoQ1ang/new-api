@@ -25,6 +25,8 @@ type skillHubSkillRequest struct {
 	Description string               `json:"description"`
 	Version     string               `json:"version"`
 	Author      string               `json:"author"`
+	Origin      string               `json:"origin"`
+	OriginURL   string               `json:"originUrl"`
 	Icon        string               `json:"icon"`
 	Tags        []string             `json:"tags"`
 	Verified    bool                 `json:"verified"`
@@ -62,6 +64,8 @@ type skillHubExportManifestItem struct {
 	Description string   `json:"description,omitempty"`
 	Version     string   `json:"version"`
 	Author      string   `json:"author,omitempty"`
+	Origin      string   `json:"origin,omitempty"`
+	OriginURL   string   `json:"originUrl,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
 	Verified    bool     `json:"verified"`
 	Recommended bool     `json:"recommended"`
@@ -338,7 +342,8 @@ func AdminBatchExportSkillHubSkills(c *gin.Context) {
 		}
 		item := skillHubExportManifestItem{
 			ID: skill.SkillID, Name: skill.Name, Description: skill.Description,
-			Version: skill.Version, Author: skill.Author, Tags: model.StringListFromJSON(skill.Tags),
+			Version: skill.Version, Author: skill.Author, Origin: skill.Origin, OriginURL: skill.OriginURL,
+			Tags:     model.StringListFromJSON(skill.Tags),
 			Verified: skill.Verified, Recommended: skill.Recommended, Sort: skill.Sort,
 			Zip: "./" + zipPath,
 		}
@@ -606,6 +611,8 @@ func skillHubRequestToModel(request skillHubSkillRequest, existing *model.SkillH
 	skill.Description = strings.TrimSpace(request.Description)
 	skill.Version = strings.TrimSpace(request.Version)
 	skill.Author = strings.TrimSpace(request.Author)
+	skill.Origin = strings.TrimSpace(request.Origin)
+	skill.OriginURL = strings.TrimSpace(request.OriginURL)
 	skill.Icon = strings.TrimSpace(request.Icon)
 	skill.Tags = model.StringListToJSON(request.Tags)
 	skill.Verified = request.Verified

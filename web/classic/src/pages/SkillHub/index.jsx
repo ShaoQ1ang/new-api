@@ -39,6 +39,8 @@ const createDefaultForm = () => ({
   description: '',
   version: '1.0.0',
   author: '',
+  origin: '',
+  originUrl: '',
   icon: '',
   tags: [],
   verified: false,
@@ -91,6 +93,21 @@ const isAllowedZipUrl = (value) => {
     if (url.protocol === 'https:') return true;
     if (url.protocol !== 'http:') return false;
     return isLocalHTTPHost(url.hostname);
+  } catch {
+    return false;
+  }
+};
+
+const isAllowedOriginUrl = (value) => {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return true;
+  try {
+    const url = new URL(trimmed);
+    return (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      !url.username &&
+      !url.password
+    );
   } catch {
     return false;
   }
@@ -217,6 +234,8 @@ const skillToForm = (skill) => ({
   description: skill?.description || '',
   version: skill?.version || '1.0.0',
   author: skill?.author || '',
+  origin: skill?.origin || '',
+  originUrl: skill?.originUrl || '',
   icon: skill?.icon || '',
   tags: normalizeTags(skill?.tags),
   verified: Boolean(skill?.verified),
@@ -234,6 +253,8 @@ const formToPayload = (form) => ({
   description: form.description.trim(),
   version: form.version.trim(),
   author: form.author.trim(),
+  origin: form.origin.trim(),
+  originUrl: form.originUrl.trim(),
   icon: form.icon.trim(),
   tags: normalizeTags(form.tags),
   verified: form.verified,
@@ -566,6 +587,10 @@ const SkillHub = () => {
       );
       return;
     }
+    if (!isAllowedOriginUrl(form.originUrl)) {
+      showError('源地址必须使用 HTTP 或 HTTPS');
+      return;
+    }
     setSaving(true);
     try {
       const payload = formToPayload(form);
@@ -889,6 +914,7 @@ const SkillHub = () => {
                           <div className='mt-1 truncate text-xs text-semi-color-text-2'>
                             {skill.id} · {skill.version}
                             {skill.author ? ` · ${skill.author}` : ''}
+                            {skill.origin ? ` · ${skill.origin}` : ''}
                           </div>
                           <div className='mt-2 line-clamp-2 min-h-[40px] text-sm text-semi-color-text-1'>
                             {skill.description || '暂无描述'}
@@ -946,6 +972,23 @@ const SkillHub = () => {
                   <Input
                     value={form.author}
                     onChange={(value) => updateForm('author', value)}
+                  />
+                </Field>
+                <Field label='来源'>
+                  <Input
+                    value={form.origin}
+                    maxLength={64}
+                    placeholder='Clawhub'
+                    onChange={(value) => updateForm('origin', value)}
+                  />
+                </Field>
+                <Field label='源地址'>
+                  <Input
+                    type='url'
+                    value={form.originUrl}
+                    maxLength={2048}
+                    placeholder='https://...'
+                    onChange={(value) => updateForm('originUrl', value)}
                   />
                 </Field>
                 <Field label='排序'>

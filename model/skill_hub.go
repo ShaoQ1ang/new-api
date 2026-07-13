@@ -34,6 +34,8 @@ type SkillHubSkill struct {
 	Description         string         `json:"description,omitempty" gorm:"type:text"`
 	Version             string         `json:"version" gorm:"size:64;not null"`
 	Author              string         `json:"author,omitempty" gorm:"size:128"`
+	Origin              string         `json:"origin,omitempty" gorm:"size:64"`
+	OriginURL           string         `json:"originUrl,omitempty" gorm:"type:text"`
 	Icon                string         `json:"icon,omitempty" gorm:"type:text"`
 	Tags                string         `json:"-" gorm:"type:text"`
 	Verified            bool           `json:"verified" gorm:"default:false"`
@@ -80,6 +82,8 @@ type SkillHubSkillResponse struct {
 	Description string         `json:"description,omitempty"`
 	Version     string         `json:"version"`
 	Author      string         `json:"author,omitempty"`
+	Origin      string         `json:"origin,omitempty"`
+	OriginURL   string         `json:"originUrl,omitempty"`
 	Icon        string         `json:"icon,omitempty"`
 	Tags        []string       `json:"tags,omitempty"`
 	Verified    bool           `json:"verified"`
@@ -130,6 +134,8 @@ func (s *SkillHubSkill) BeforeSave(tx *gorm.DB) error {
 	s.SkillID = strings.TrimSpace(s.SkillID)
 	s.Name = strings.TrimSpace(s.Name)
 	s.Version = strings.TrimSpace(s.Version)
+	s.Origin = strings.TrimSpace(s.Origin)
+	s.OriginURL = strings.TrimSpace(s.OriginURL)
 	s.Icon = strings.TrimSpace(s.Icon)
 	s.ManifestEntry = strings.TrimSpace(s.ManifestEntry)
 	if s.ManifestEntry == "" {
@@ -179,6 +185,15 @@ func ValidateSkillHubSkill(s *SkillHubSkill) error {
 	if s.Version == "" {
 		return errors.New("skill version is required")
 	}
+	if len([]rune(s.Origin)) > 64 {
+		return errors.New("skill origin must be 64 characters or fewer")
+	}
+	if len(s.OriginURL) > 2048 {
+		return errors.New("skill origin url must be 2048 characters or fewer")
+	}
+	if !isAllowedSkillHubOriginURL(s.OriginURL) {
+		return errors.New("skill origin url must be an absolute http or https url")
+	}
 	switch s.SourceType {
 	case "zip":
 	default:
@@ -194,6 +209,18 @@ func ValidateSkillHubSkill(s *SkillHubSkill) error {
 		return errors.New("skill icon must be uploaded to the configured OSS icon bucket")
 	}
 	return nil
+}
+
+func isAllowedSkillHubOriginURL(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return true
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Host == "" || parsed.User != nil {
+		return false
+	}
+	return parsed.Scheme == "http" || parsed.Scheme == "https"
 }
 
 func ValidateSkillHubTag(t *SkillHubTag) error {
@@ -397,7 +424,9 @@ func SearchSkillHubSkills(keyword string, admin bool, offset int, limit int, rec
 	}
 	if like != "" {
 		db = db.Where(
-			"(skill_id LIKE ? ESCAPE '!' OR name LIKE ? ESCAPE '!' OR description LIKE ? ESCAPE '!' OR tags LIKE ? ESCAPE '!')",
+			"(skill_id LIKE ? ESCAPE '!' OR name LIKE ? ESCAPE '!' OR description LIKE ? ESCAPE '!' OR tags LIKE ? ESCAPE '!' OR origin LIKE ? ESCAPE '!' OR origin_url LIKE ? ESCAPE '!')",
+			like,
+			like,
 			like,
 			like,
 			like,
@@ -469,7 +498,9 @@ func SearchSkillHubSkillsByTagIDs(tagIDs []int, keyword string, admin bool, offs
 	}
 	if keywordLike != "" {
 		db = db.Where(
-			"(skill_id LIKE ? ESCAPE '!' OR name LIKE ? ESCAPE '!' OR description LIKE ? ESCAPE '!' OR tags LIKE ? ESCAPE '!')",
+			"(skill_hub_skills.skill_id LIKE ? ESCAPE '!' OR skill_hub_skills.name LIKE ? ESCAPE '!' OR skill_hub_skills.description LIKE ? ESCAPE '!' OR skill_hub_skills.tags LIKE ? ESCAPE '!' OR skill_hub_skills.origin LIKE ? ESCAPE '!' OR skill_hub_skills.origin_url LIKE ? ESCAPE '!')",
+			keywordLike,
+			keywordLike,
 			keywordLike,
 			keywordLike,
 			keywordLike,
@@ -830,6 +861,8 @@ func (s *SkillHubSkill) ToResponse(admin bool) SkillHubSkillResponse {
 		Description: s.Description,
 		Version:     s.Version,
 		Author:      s.Author,
+		Origin:      s.Origin,
+		OriginURL:   s.OriginURL,
 		Icon:        s.Icon,
 		Tags:        stringListFromJSON(s.Tags),
 		Verified:    s.Verified,

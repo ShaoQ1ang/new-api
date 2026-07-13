@@ -216,6 +216,10 @@ export function SkillHub() {
       )
       return
     }
+    if (!isAllowedOriginUrl(form.originUrl)) {
+      toast.error(t('Source project URL must use HTTP or HTTPS'))
+      return
+    }
     setSaving(true)
     try {
       const payload = selected
@@ -624,6 +628,7 @@ export function SkillHub() {
                               <div className='text-muted-foreground truncate text-xs'>
                                 {skill.id} · {skill.version}
                                 {skill.author ? ` · ${skill.author}` : ''}
+                                {skill.origin ? ` · ${skill.origin}` : ''}
                               </div>
                             </div>
                             <div className='flex shrink-0 flex-wrap justify-end gap-1'>
@@ -714,6 +719,27 @@ export function SkillHub() {
                         value={form.author}
                         onChange={(event) =>
                           update('author', event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label={t('Source')}>
+                      <Input
+                        value={form.origin}
+                        maxLength={64}
+                        placeholder='Clawhub'
+                        onChange={(event) =>
+                          update('origin', event.target.value)
+                        }
+                      />
+                    </Field>
+                    <Field label={t('Source project URL')}>
+                      <Input
+                        type='url'
+                        value={form.originUrl}
+                        maxLength={2048}
+                        placeholder='https://...'
+                        onChange={(event) =>
+                          update('originUrl', event.target.value)
                         }
                       />
                     </Field>
@@ -917,6 +943,21 @@ function isAllowedZipUrl(value: string) {
     if (url.protocol === 'https:') return true
     if (url.protocol !== 'http:') return false
     return isLocalHTTPHost(url.hostname)
+  } catch {
+    return false
+  }
+}
+
+function isAllowedOriginUrl(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return true
+  try {
+    const url = new URL(trimmed)
+    return (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      !url.username &&
+      !url.password
+    )
   } catch {
     return false
   }

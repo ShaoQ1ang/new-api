@@ -28,7 +28,7 @@
           {
             "name": "keyword",
             "in": "query",
-            "description": "搜索关键字，匹配技能 ID、名称、描述或标签；最多 128 个字符，%、_、! 按普通字符处理",
+            "description": "搜索关键字，匹配技能 ID、名称、描述、标签、来源或源地址；最多 128 个字符，%、_、! 按普通字符处理",
             "required": false,
             "schema": {
               "type": "string"
@@ -187,7 +187,7 @@
           {
             "name": "keyword",
             "in": "query",
-            "description": "可选搜索关键字，匹配技能 ID、名称、描述或标签；最多 128 个字符，%、_、! 按普通字符处理",
+            "description": "可选搜索关键字，匹配技能 ID、名称、描述、标签、来源或源地址；最多 128 个字符，%、_、! 按普通字符处理",
             "required": false,
             "schema": {
               "type": "string"
@@ -441,7 +441,7 @@
           {
             "name": "keyword",
             "in": "query",
-            "description": "可选搜索关键字，匹配技能 ID、名称、描述或标签；最多 128 个字符，%、_、! 按普通字符处理",
+            "description": "可选搜索关键字，匹配技能 ID、名称、描述、标签、来源或源地址；最多 128 个字符，%、_、! 按普通字符处理",
             "required": false,
             "schema": {
               "type": "string"
@@ -556,7 +556,7 @@
           {
             "name": "keyword",
             "in": "query",
-            "description": "搜索关键字，匹配技能 ID、名称、描述或标签；最多 128 个字符，%、_、! 按普通字符处理",
+            "description": "搜索关键字，匹配技能 ID、名称、描述、标签、来源或源地址；最多 128 个字符，%、_、! 按普通字符处理",
             "required": false,
             "schema": {
               "type": "string"
@@ -1098,6 +1098,17 @@
             "type": "string",
             "description": "技能版本"
           },
+          "origin": {
+            "type": "string",
+            "description": "技能来源，例如 Clawhub",
+            "maxLength": 64
+          },
+          "originUrl": {
+            "type": "string",
+            "description": "源项目地址，必须是 HTTP 或 HTTPS 绝对 URL",
+            "format": "uri",
+            "maxLength": 2048
+          },
           "icon": {
             "type": "string",
             "description": "图标 URL",
@@ -1263,6 +1274,17 @@
           "version": {
             "type": "string",
             "description": "技能版本"
+          },
+          "origin": {
+            "type": "string",
+            "description": "技能来源，例如 Clawhub",
+            "maxLength": 64
+          },
+          "originUrl": {
+            "type": "string",
+            "description": "源项目地址，必须是 HTTP 或 HTTPS 绝对 URL",
+            "format": "uri",
+            "maxLength": 2048
           },
           "icon": {
             "type": "string",
