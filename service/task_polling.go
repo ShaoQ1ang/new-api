@@ -375,14 +375,6 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if err != nil {
 		return fmt.Errorf("readAll failed for task %s: %w", taskId, err)
 	}
-	// Rate limits are transient — keep the previous task status for the next poll cycle.
-	if resp.StatusCode == http.StatusTooManyRequests {
-		logger.LogError(ctx, fmt.Sprintf("Get Task status code: 429, task: %s", taskId))
-		return nil
-	}
-	if resp.StatusCode != http.StatusOK {
-		logger.LogError(ctx, fmt.Sprintf("Get Task status code: %d, task: %s", resp.StatusCode, taskId))
-	}
 
 	logger.LogDebug(ctx, fmt.Sprintf("updateVideoSingleTask response: %s", string(responseBody)))
 
@@ -401,16 +393,13 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		taskResult.Reason = t.FailReason
 		task.Data = t.Data
 	} else if modelAware, ok := adaptor.(taskModelAwareParser); ok {
+		// Optional: multi-family adaptors (e.g. OpenRouter) select parser by origin model.
 		taskResult, err = modelAware.ParseTaskResultForModel(task.Properties.OriginModelName, responseBody)
 		if err != nil {
 			return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
 		}
 	} else if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
 		return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
-	}
-	// Non-OK responses may still carry a terminal failure body; otherwise skip this poll.
-	if resp.StatusCode != http.StatusOK && taskResult.Status != model.TaskStatusFailure {
-		return fmt.Errorf("get task status code: %d", resp.StatusCode)
 	}
 
 	task.Data = redactVideoResponseBody(responseBody)
