@@ -21,6 +21,7 @@ import { CheckinSettingsSection } from '../general/checkin-settings-section'
 import { PricingSection } from '../general/pricing-section'
 import { QuotaSettingsSection } from '../general/quota-settings-section'
 import { PaymentSettingsSection } from '../integrations/payment-settings-section'
+import { WechatPaySettingsSection } from '../integrations/wechatpay-settings-section'
 import { RatioSettingsCard } from '../models/ratio-settings-card'
 import type { BillingSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
@@ -210,6 +211,13 @@ const BILLING_SECTIONS = [
         }}
       />
     ),
+  },
+  {
+    id: 'wechatpay',
+    titleKey: 'WeChat Pay Native',
+    descriptionKey:
+      'Configure API v3 native QR-code payments for wallet top-ups',
+    build: () => <WechatPaySettingsSection />,
   },
   {
     id: 'checkin',

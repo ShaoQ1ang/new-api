@@ -28,6 +28,7 @@ import type {
   AmountResponse,
   PaymentResponse,
   AlipayPaymentResponse,
+  WechatPayPaymentResponse,
   StripePaymentResponse,
   AffiliateCodeResponse,
   AffiliateTransferResponse,
@@ -39,6 +40,7 @@ import type {
   WaffoPaymentResponse,
   WaffoPancakePaymentRequest,
   WaffoPancakePaymentResponse,
+  OrderStatus,
 } from './types'
 
 // ============================================================================
@@ -129,6 +131,29 @@ export async function requestAlipayPayment(
 ): Promise<AlipayPaymentResponse> {
   const res = await api.post('/api/user/alipay/pay', request, {
     skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+/**
+ * Create a native WeChat Pay QR-code order.
+ */
+export async function requestWechatPayPayment(
+  request: PaymentRequest
+): Promise<WechatPayPaymentResponse> {
+  const res = await api.post('/api/user/wechatpay/native', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+export async function getOrderStatus(
+  tradeNo: string
+): Promise<ApiResponse<OrderStatus>> {
+  const res = await api.get('/api/user/order/status', {
+    params: { trade_no: tradeNo, type: 'topup' },
+    skipBusinessError: true,
+    disableDuplicate: true,
   } as Record<string, unknown>)
   return res.data
 }

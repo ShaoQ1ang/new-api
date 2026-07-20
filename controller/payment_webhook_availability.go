@@ -50,6 +50,24 @@ func isAlipayWebhookEnabled() bool {
 	return isAlipayWebhookConfigured()
 }
 
+func isWechatPayTopUpEnabled() bool {
+	return isWechatPayTopUpEnabledWithConfig(setting.GetWechatPayConfig())
+}
+
+func isWechatPayTopUpEnabledWithConfig(config setting.WechatPayConfig) bool {
+	return isPaymentComplianceConfirmed() &&
+		config.Enabled &&
+		setting.WechatPayConfigComplete(config)
+}
+
+func isWechatPayWebhookEnabledWithConfig(config setting.WechatPayConfig) bool {
+	return setting.WechatPayConfigComplete(config)
+}
+
+func isWechatPayWebhookEnabled() bool {
+	return isWechatPayWebhookEnabledWithConfig(setting.GetWechatPayConfig())
+}
+
 func isCreemTopUpEnabled() bool {
 	if !isPaymentComplianceConfirmed() {
 		return false

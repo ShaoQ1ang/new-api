@@ -174,6 +174,7 @@ docker run --name new-api -d --restart always \
 | 🚀 部署指南 | [安装文档](https://docs.newapi.pro/zh/docs/installation) |
 | ⚙️ 环境配置 | [环境变量](https://docs.newapi.pro/zh/docs/installation/config-maintenance/environment-variables) |
 | 🧩 Skill Hub | [Skill Hub OSS 配置](./docs/skill-hub.md) |
+| 💳 微信支付 | [Native 支付接入与运维](./docs/development/2026-07-20-wechatpay-native.md) |
 | 📡 接口文档 | [API 文档](https://docs.newapi.pro/zh/docs/api) |
 | ❓ 常见问题 | [FAQ](https://docs.newapi.pro/zh/docs/support/faq) |
 | 💬 社区交流 | [交流渠道](https://docs.newapi.pro/zh/docs/support/community-interaction) |
@@ -196,7 +197,7 @@ docker run --name new-api -d --restart always \
 
 ### 💰 授权用量与成本管理
 
-- ✅ 合法授权场景下的内部充值与额度分配（易支付、Stripe）
+- ✅ 合法授权场景下的内部充值与额度分配（易支付、Stripe、支付宝、微信支付 Native）
 - ✅ 组织内按次、按量或缓存命中成本核算
 - ✅ 支持 OpenAI、Azure、DeepSeek、Claude、Qwen 等模型的缓存计费统计
 - ✅ 面向内部管理或企业客户的灵活计费策略配置

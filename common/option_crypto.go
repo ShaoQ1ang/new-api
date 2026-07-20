@@ -20,7 +20,7 @@ var optionCryptSaltV1 = []byte("new-api:option-crypto:v1")
 var (
 	errOptionCryptKeyRequired = errors.New("OPTION_CRYPT_KEY is required")
 	errOptionEncryptedFormat  = errors.New("invalid encrypted option format")
-	errOptionKeyNotSupported  = errors.New("option key is not supported for alipay option crypto")
+	errOptionKeyNotSupported  = errors.New("option key is not supported for option crypto")
 )
 
 func GetOptionCryptKey() string {
@@ -35,8 +35,21 @@ func IsAlipaySensitiveOptionKey(optionKey string) bool {
 	return optionKey == "AlipayPrivateKey" || optionKey == "AlipayPublicKey"
 }
 
-func EncryptAlipayOptionValue(optionKey string, plainText string) (string, error) {
-	if !IsAlipaySensitiveOptionKey(optionKey) {
+func IsWechatPaySensitiveOptionKey(optionKey string) bool {
+	switch optionKey {
+	case "WechatPayMerchantPrivateKey", "WechatPayAPIV3Key", "WechatPayPublicKey":
+		return true
+	default:
+		return false
+	}
+}
+
+func IsSensitiveOptionKey(optionKey string) bool {
+	return IsAlipaySensitiveOptionKey(optionKey) || IsWechatPaySensitiveOptionKey(optionKey)
+}
+
+func EncryptOptionValue(optionKey string, plainText string) (string, error) {
+	if !IsSensitiveOptionKey(optionKey) {
 		return "", errOptionKeyNotSupported
 	}
 	key := GetOptionCryptKey()
@@ -59,8 +72,8 @@ func EncryptAlipayOptionValue(optionKey string, plainText string) (string, error
 	return OptionEncryptedPrefixV1 + base64.RawStdEncoding.EncodeToString(payload), nil
 }
 
-func DecryptAlipayOptionValue(optionKey string, value string) (string, error) {
-	if !IsAlipaySensitiveOptionKey(optionKey) {
+func DecryptOptionValue(optionKey string, value string) (string, error) {
+	if !IsSensitiveOptionKey(optionKey) {
 		return "", errOptionKeyNotSupported
 	}
 	if !IsEncryptedOptionValue(value) {
@@ -95,6 +108,22 @@ func DecryptAlipayOptionValue(optionKey string, value string) (string, error) {
 		return "", fmt.Errorf("failed to decrypt option value: %w", err)
 	}
 	return string(plainText), nil
+}
+
+// EncryptAlipayOptionValue is retained for compatibility with existing callers.
+func EncryptAlipayOptionValue(optionKey string, plainText string) (string, error) {
+	if !IsAlipaySensitiveOptionKey(optionKey) {
+		return "", errOptionKeyNotSupported
+	}
+	return EncryptOptionValue(optionKey, plainText)
+}
+
+// DecryptAlipayOptionValue is retained for compatibility with existing callers.
+func DecryptAlipayOptionValue(optionKey string, value string) (string, error) {
+	if !IsAlipaySensitiveOptionKey(optionKey) {
+		return "", errOptionKeyNotSupported
+	}
+	return DecryptOptionValue(optionKey, value)
 }
 
 func createOptionAEAD(optionCryptKey string) (cipher.AEAD, error) {

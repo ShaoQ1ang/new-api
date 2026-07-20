@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -212,14 +213,18 @@ func InitOptionMap() {
 }
 
 func loadOptionsFromDatabase() {
+	wechatPayOptionUpdateMutex.Lock()
+	defer wechatPayOptionUpdateMutex.Unlock()
+
 	options, _ := AllOption()
+	wechatPayValues := make(map[string]string)
 	for _, option := range options {
 		if option.Key == "AlipayEncryptKey" {
 			continue
 		}
 		valueToApply := option.Value
-		if common.IsAlipaySensitiveOptionKey(option.Key) {
-			decryptedValue, err := common.DecryptAlipayOptionValue(option.Key, option.Value)
+		if common.IsSensitiveOptionKey(option.Key) {
+			decryptedValue, err := common.DecryptOptionValue(option.Key, option.Value)
 			if err != nil {
 				common.SysLog("failed to decrypt option value: " + err.Error())
 				valueToApply = ""
@@ -227,12 +232,17 @@ func loadOptionsFromDatabase() {
 				valueToApply = decryptedValue
 			}
 		}
+		if isWechatPayOptionKey(option.Key) {
+			wechatPayValues[option.Key] = valueToApply
+			continue
+		}
 
 		err := updateOptionMap(option.Key, valueToApply)
 		if err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
 		}
 	}
+	publishWechatPayRuntimeOptions(wechatPayValues)
 }
 
 func SyncOptions(frequency int) {
@@ -247,10 +257,13 @@ func UpdateOption(key string, value string) error {
 	if key == "AlipayEncryptKey" {
 		return DB.Delete(&Option{}, "key = ?", key).Error
 	}
+	if isWechatPayOptionKey(key) {
+		return fmt.Errorf("WeChat Pay options must be updated through the dedicated settings API")
+	}
 
 	valueToPersist := value
-	if common.IsAlipaySensitiveOptionKey(key) {
-		encryptedValue, err := common.EncryptAlipayOptionValue(key, value)
+	if common.IsSensitiveOptionKey(key) {
+		encryptedValue, err := common.EncryptOptionValue(key, value)
 		if err != nil {
 			return err
 		}

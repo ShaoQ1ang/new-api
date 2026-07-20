@@ -130,7 +130,8 @@ const PaymentConfirmModal = ({
                             size={16}
                             color='#1677FF'
                           />
-                        ) : payMethod.type === 'wxpay' ? (
+                        ) : payMethod.type === 'wxpay' ||
+                          payMethod.type === 'wechatpay_native' ? (
                           <SiWechat
                             className='mr-2'
                             size={16}

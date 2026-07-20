@@ -44,6 +44,12 @@ export type AlipayPaymentResponse = ApiResponse<{
   pay_form?: string
   trade_no: string
 }>
+export type WechatPayPaymentResponse = ApiResponse<{
+  pay_type: 'qrcode'
+  code_url: string
+  trade_no: string
+  expires_at: number
+}>
 export type StripePaymentResponse = ApiResponse<{ pay_link: string }>
 export type AffiliateCodeResponse = ApiResponse<string>
 export type AffiliateTransferResponse = ApiResponse
@@ -127,6 +133,8 @@ export interface TopupInfo {
   enable_stripe_topup: boolean
   /** Whether Alipay topup is enabled */
   enable_alipay_topup?: boolean
+  /** Whether native WeChat Pay topup is enabled */
+  enable_wechatpay_topup?: boolean
   /** Available payment methods */
   pay_methods: PaymentMethod[]
   /** Minimum topup amount for online topup */
@@ -135,6 +143,9 @@ export interface TopupInfo {
   stripe_min_topup: number
   /** Minimum topup amount for Alipay */
   alipay_min_topup?: number
+  /** Minimum topup amount for native WeChat Pay */
+  wechatpay_min_topup?: number
+  wechatpay_max_topup?: number
   /** Preset amount options */
   amount_options: number[]
   /** Discount rates by amount */
@@ -253,6 +264,14 @@ export interface UserWalletData {
  * Topup record status
  */
 export type TopupStatus = 'success' | 'pending' | 'expired'
+
+export interface OrderStatus {
+  order_type: 'topup' | 'subscription'
+  trade_no: string
+  status: TopupStatus | 'failed'
+  payment_method: string
+  payment_provider: string
+}
 
 /**
  * Topup billing record

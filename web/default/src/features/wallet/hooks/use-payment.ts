@@ -93,29 +93,43 @@ export function usePayment() {
               payment_method: 'alipay',
             })
           : isStripe
-          ? await requestStripePayment({
-              amount,
-              payment_method: 'stripe',
-            })
-          : await requestPayment({
-              amount,
-              payment_method: paymentType,
-            })
+            ? await requestStripePayment({
+                amount,
+                payment_method: 'stripe',
+              })
+            : await requestPayment({
+                amount,
+                payment_method: paymentType,
+              })
 
         if (!isApiSuccess(response)) {
           toast.error(response.message || i18next.t('Payment request failed'))
           return false
         }
 
-        if (isAlipay && response.data?.pay_url) {
-          window.location.href = response.data.pay_url
+        const payUrl =
+          isAlipay &&
+          response.data &&
+          'pay_url' in response.data &&
+          typeof response.data.pay_url === 'string'
+            ? response.data.pay_url
+            : undefined
+        if (payUrl) {
+          window.location.href = payUrl
           toast.success(i18next.t('Redirecting to payment page...'))
           return true
         }
 
         // Handle Stripe payment
-        if (isStripe && response.data?.pay_link) {
-          window.open(response.data.pay_link as string, '_blank')
+        const payLink =
+          isStripe &&
+          response.data &&
+          'pay_link' in response.data &&
+          typeof response.data.pay_link === 'string'
+            ? response.data.pay_link
+            : undefined
+        if (payLink) {
+          window.open(payLink, '_blank')
           toast.success(i18next.t('Redirecting to payment page...'))
           return true
         }

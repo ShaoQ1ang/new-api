@@ -77,7 +77,7 @@ func TestGetOrderStatusAutoFindsTopUp(t *testing.T) {
 		CreateTime:      123,
 	}).Error)
 
-	c, recorder := newOrderStatusTestContext(t, 11, "/api/user/self/order/status?trade_no=topup-auto-1")
+	c, recorder := newOrderStatusTestContext(t, 11, "/api/user/order/status?trade_no=topup-auto-1")
 	GetOrderStatus(c)
 
 	payload := decodeOrderStatusResponse(t, recorder)
@@ -104,7 +104,7 @@ func TestGetOrderStatusSupportsTopUpFilter(t *testing.T) {
 		CompleteTime:    789,
 	}).Error)
 
-	c, recorder := newOrderStatusTestContext(t, 12, "/api/user/self/order/status?trade_no=topup-filter-1&type=topup")
+	c, recorder := newOrderStatusTestContext(t, 12, "/api/user/order/status?trade_no=topup-filter-1&type=topup")
 	GetOrderStatus(c)
 
 	payload := decodeOrderStatusResponse(t, recorder)
@@ -130,7 +130,7 @@ func TestGetOrderStatusSupportsSubscriptionFilter(t *testing.T) {
 		CompleteTime:    1002,
 	}).Error)
 
-	c, recorder := newOrderStatusTestContext(t, 21, "/api/user/self/order/status?trade_no=sub-filter-1&type=subscription")
+	c, recorder := newOrderStatusTestContext(t, 21, "/api/user/order/status?trade_no=sub-filter-1&type=subscription")
 	GetOrderStatus(c)
 
 	payload := decodeOrderStatusResponse(t, recorder)
@@ -144,7 +144,7 @@ func TestGetOrderStatusRejectsInvalidType(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupOrderStatusTestDB(t)
 
-	c, recorder := newOrderStatusTestContext(t, 1, "/api/user/self/order/status?trade_no=abc&type=invalid")
+	c, recorder := newOrderStatusTestContext(t, 1, "/api/user/order/status?trade_no=abc&type=invalid")
 	GetOrderStatus(c)
 
 	payload := decodeOrderStatusResponse(t, recorder)
@@ -167,7 +167,7 @@ func TestGetOrderStatusRejectsOtherUsersOrder(t *testing.T) {
 		CreateTime:      111,
 	}).Error)
 
-	c, recorder := newOrderStatusTestContext(t, 32, "/api/user/self/order/status?trade_no=sub-other-user-1")
+	c, recorder := newOrderStatusTestContext(t, 32, "/api/user/order/status?trade_no=sub-other-user-1")
 	GetOrderStatus(c)
 
 	payload := decodeOrderStatusResponse(t, recorder)
@@ -179,7 +179,7 @@ func TestGetOrderStatusReturnsNotFound(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	setupOrderStatusTestDB(t)
 
-	c, recorder := newOrderStatusTestContext(t, 41, "/api/user/self/order/status?trade_no=missing-order&type=subscription")
+	c, recorder := newOrderStatusTestContext(t, 41, "/api/user/order/status?trade_no=missing-order&type=subscription")
 	GetOrderStatus(c)
 
 	payload := decodeOrderStatusResponse(t, recorder)

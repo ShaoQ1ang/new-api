@@ -119,6 +119,7 @@ func main() {
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
 	service.StartAlipayPendingTopUpTask()
+	service.StartWechatPayPendingTopUpTask()
 	// Alipay auto-renew: light due-period charge (no mid-cycle polling)
 	service.StartAlipayAutoRenewChargeTask()
 

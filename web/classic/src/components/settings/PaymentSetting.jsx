@@ -22,6 +22,7 @@ import { Banner, Button, Card, Spin, Tabs } from '@douyinfe/semi-ui';
 import SettingsGeneralPayment from '../../pages/Setting/Payment/SettingsGeneralPayment';
 import SettingsPaymentGateway from '../../pages/Setting/Payment/SettingsPaymentGateway';
 import SettingsPaymentGatewayAlipay from '../../pages/Setting/Payment/SettingsPaymentGatewayAlipay';
+import SettingsPaymentGatewayWechatPay from '../../pages/Setting/Payment/SettingsPaymentGatewayWechatPay';
 import SettingsPaymentGatewayStripe from '../../pages/Setting/Payment/SettingsPaymentGatewayStripe';
 import SettingsPaymentGatewayCreem from '../../pages/Setting/Payment/SettingsPaymentGatewayCreem';
 import SettingsPaymentGatewayWaffo from '../../pages/Setting/Payment/SettingsPaymentGatewayWaffo';
@@ -332,6 +333,9 @@ const PaymentSetting = () => {
                   refresh={onRefresh}
                   hideSectionTitle
                 />
+              </Tabs.TabPane>
+              <Tabs.TabPane tab={t('微信支付设置')} itemKey='wechatpay'>
+                <SettingsPaymentGatewayWechatPay hideSectionTitle />
               </Tabs.TabPane>
               <Tabs.TabPane tab={t('Stripe 设置')} itemKey='stripe'>
                 <SettingsPaymentGatewayStripe

@@ -41,6 +41,7 @@ func TestMain(m *testing.M) {
 		&Channel{},
 		&TopUp{},
 		&AlipayPendingTask{},
+		&WechatPayPendingTask{},
 		&SubscriptionPlan{},
 		&BillingSubscription{},
 		&SubscriptionOrder{},
@@ -62,6 +63,7 @@ func truncateTables(t *testing.T) {
 		DB.Exec("DELETE FROM channels")
 		DB.Exec("DELETE FROM top_ups")
 		DB.Exec("DELETE FROM alipay_pending_tasks")
+		DB.Exec("DELETE FROM wechat_pay_pending_tasks")
 		DB.Exec("DELETE FROM billing_subscriptions")
 		DB.Exec("DELETE FROM subscription_orders")
 		DB.Exec("DELETE FROM subscription_plans")

@@ -79,6 +79,10 @@ export function isAlipayPayment(paymentType: string): boolean {
   return paymentType === PAYMENT_TYPES.ALIPAY
 }
 
+export function isWechatPayNativePayment(paymentType: string): boolean {
+  return paymentType === PAYMENT_TYPES.WECHATPAY_NATIVE
+}
+
 /**
  * Check if payment method is Waffo Pancake
  *
@@ -111,6 +115,10 @@ export function getDefaultPaymentType(topupInfo: TopupInfo | null): string {
     return PAYMENT_TYPES.ALIPAY
   }
 
+  if (topupInfo.enable_wechatpay_topup) {
+    return PAYMENT_TYPES.WECHATPAY_NATIVE
+  }
+
   if (topupInfo.enable_waffo_topup) {
     return PAYMENT_TYPES.WAFFO
   }
@@ -140,6 +148,10 @@ export function getMinTopupAmount(topupInfo: TopupInfo | null): number {
 
   if (topupInfo.enable_alipay_topup) {
     return topupInfo.alipay_min_topup || DEFAULT_MIN_TOPUP
+  }
+
+  if (topupInfo.enable_wechatpay_topup) {
+    return topupInfo.wechatpay_min_topup || DEFAULT_MIN_TOPUP
   }
 
   if (topupInfo.enable_waffo_topup) {

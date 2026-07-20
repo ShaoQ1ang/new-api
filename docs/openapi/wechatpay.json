@@ -1,0 +1,370 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "微信支付 Native 充值接口",
+    "description": "钱包微信支付 Native 下单、订单状态、异步通知及 root 管理配置接口。微信支付 API v3 没有独立沙盒，联调应使用受限用户和小额真实支付，禁止对生产支付接口压测。用户和管理接口沿用系统 success/data 响应包装；微信支付通知接口使用微信要求的 code/message 响应。",
+    "version": "1.1.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.example.com",
+      "description": "生产环境示例，请替换为实际公网 HTTPS 地址"
+    }
+  ],
+  "tags": [
+    {
+      "name": "微信支付 Native",
+      "description": "用户创建扫码充值订单"
+    },
+    {
+      "name": "微信支付通知",
+      "description": "微信支付平台异步通知；必须保留原始请求体和 Wechatpay-* 请求头"
+    },
+    {
+      "name": "微信支付管理",
+      "description": "仅 root 管理员可用的配置读取与更新"
+    }
+  ],
+  "paths": {
+    "/api/user/wechatpay/native": {
+      "post": {
+        "tags": ["微信支付 Native"],
+        "summary": "创建 Native 扫码充值订单",
+        "description": "需要已登录用户。服务端计算实际人民币金额并向微信支付下单，返回 code_url 供前端生成二维码。payment_method 必须为 wechatpay_native。",
+        "operationId": "createWechatPayNativeOrder",
+        "security": [
+          {"sessionAuth": [], "userIdHeader": []},
+          {"accessToken": [], "userIdHeader": []}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/CreateNativeOrderRequest"},
+              "example": {"amount": 10, "payment_method": "wechatpay_native"}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "业务成功或失败均可能返回 HTTP 200，请以 success 判断",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {"$ref": "#/components/schemas/CreateNativeOrderResponse"},
+                    {"$ref": "#/components/schemas/ApiErrorResponse"}
+                  ]
+                }
+              }
+            }
+          },
+          "413": {"description": "请求体超过限制"},
+          "429": {"description": "触发关键接口限流"}
+        }
+      }
+    },
+    "/api/user/order/status": {
+      "get": {
+        "tags": ["微信支付 Native"],
+        "summary": "读取当前用户的充值订单状态",
+        "description": "前端二维码弹窗轮询此本地接口，不直接轮询微信支付。服务端同时按当前登录用户 ID 和 trade_no 查询，不能读取其他用户订单。微信充值应固定传 type=topup。",
+        "operationId": "getWechatPayTopUpOrderStatus",
+        "security": [
+          {"sessionAuth": [], "userIdHeader": []},
+          {"accessToken": [], "userIdHeader": []}
+        ],
+        "parameters": [
+          {"name": "trade_no", "in": "query", "required": true, "description": "创建 Native 订单时返回的本地商户订单号", "schema": {"type": "string", "maxLength": 32}},
+          {"name": "type", "in": "query", "required": true, "description": "微信充值固定为 topup", "schema": {"type": "string", "enum": ["topup"]}}
+        ],
+        "responses": {
+          "200": {
+            "description": "订单状态或业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {"$ref": "#/components/schemas/TopUpOrderStatusResponse"},
+                    {"$ref": "#/components/schemas/ApiErrorResponse"}
+                  ]
+                }
+              }
+            }
+          },
+          "401": {"description": "未登录"}
+        }
+      }
+    },
+    "/api/wechatpay/notify": {
+      "post": {
+        "tags": ["微信支付通知"],
+        "summary": "接收微信支付异步通知",
+        "description": "无需系统登录。服务端使用 Wechatpay-Serial、Wechatpay-Signature、Wechatpay-Timestamp、Wechatpay-Nonce 对原始请求验签，并使用 APIv3 密钥解密 resource。验签、商户、单号、交易类型、金额、币种及订单渠道全部校验通过后才入账。不要通过普通 API 客户端自行调用。",
+        "operationId": "wechatPayNotify",
+        "parameters": [
+          {"$ref": "#/components/parameters/WechatpaySerial"},
+          {"$ref": "#/components/parameters/WechatpaySignature"},
+          {"$ref": "#/components/parameters/WechatpayTimestamp"},
+          {"$ref": "#/components/parameters/WechatpayNonce"}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/WechatPayNotifyEnvelope"}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "通知已验签、解密、业务校验并完成幂等处理",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/WechatPayNotifyResponse"},
+                "example": {"code": "SUCCESS", "message": "success"}
+              }
+            }
+          },
+          "400": {
+            "description": "交易状态或业务字段校验失败",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WechatPayNotifyResponse"}}}
+          },
+          "401": {
+            "description": "验签或解密失败",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WechatPayNotifyResponse"}}}
+          },
+          "403": {"description": "微信支付配置不完整，通知处理不可用"},
+          "500": {
+            "description": "可重试的内部处理失败",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WechatPayNotifyResponse"}}}
+          }
+        }
+      }
+    },
+    "/api/wechatpay/admin/settings": {
+      "get": {
+        "tags": ["微信支付管理"],
+        "summary": "读取微信支付配置状态",
+        "description": "仅 root 管理员。敏感字段不返回原文，只返回 *_configured 布尔值。",
+        "operationId": "getWechatPayAdminSettings",
+        "security": [
+          {"sessionAuth": [], "userIdHeader": []},
+          {"accessToken": [], "userIdHeader": []}
+        ],
+        "responses": {
+          "200": {
+            "description": "配置状态",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/WechatPaySettingsResponse"}}}
+          },
+          "401": {"description": "未登录"},
+          "403": {"description": "不是 root 管理员"}
+        }
+      },
+      "put": {
+        "tags": ["微信支付管理"],
+        "summary": "更新微信支付配置",
+        "description": "仅 root 管理员。请求采用部分更新；敏感字段传空字符串表示保留原值，必须通过 clear_secrets 显式清除。写入敏感字段或启用支付前必须在服务端设置 OPTION_CRYPT_KEY。",
+        "operationId": "updateWechatPayAdminSettings",
+        "security": [
+          {"sessionAuth": [], "userIdHeader": []},
+          {"accessToken": [], "userIdHeader": []}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/WechatPaySettingsUpdateRequest"},
+              "example": {
+                "enabled": true,
+                "app_id": "wx1234567890abcdef",
+                "mch_id": "1900000109",
+                "merchant_cert_serial_no": "5157F09EFDC096DE15EBE81A47057A7232F1B8E1",
+                "merchant_private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----",
+                "api_v3_key": "0123456789abcdef0123456789abcdef",
+                "public_key_id": "PUB_KEY_ID_011234567890202501010000000001",
+                "public_key": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
+                "notify_url": "https://api.example.com/api/wechatpay/notify",
+                "min_topup": 1,
+                "max_topup": 4000,
+                "order_expire_minutes": 10
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "保存后的脱敏配置状态或业务错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {"$ref": "#/components/schemas/WechatPaySettingsResponse"},
+                    {"$ref": "#/components/schemas/ApiErrorResponse"}
+                  ]
+                }
+              }
+            }
+          },
+          "401": {"description": "未登录"},
+          "403": {"description": "不是 root 管理员"},
+          "413": {"description": "请求体超过限制"},
+          "429": {"description": "触发关键接口限流"}
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionAuth": {"type": "apiKey", "in": "cookie", "name": "session"},
+      "accessToken": {"type": "apiKey", "in": "header", "name": "Authorization", "description": "项目管理接口使用的登录凭据，按现有鉴权约定传递"},
+      "userIdHeader": {"type": "apiKey", "in": "header", "name": "New-Api-User", "description": "当前登录用户 ID；必须与会话或访问令牌所属用户一致"}
+    },
+    "parameters": {
+      "WechatpaySerial": {"name": "Wechatpay-Serial", "in": "header", "required": true, "description": "微信支付公钥 ID", "schema": {"type": "string"}},
+      "WechatpaySignature": {"name": "Wechatpay-Signature", "in": "header", "required": true, "description": "微信支付通知 RSA 签名", "schema": {"type": "string"}},
+      "WechatpayTimestamp": {"name": "Wechatpay-Timestamp", "in": "header", "required": true, "description": "签名时间戳", "schema": {"type": "string"}},
+      "WechatpayNonce": {"name": "Wechatpay-Nonce", "in": "header", "required": true, "description": "签名随机串", "schema": {"type": "string"}}
+    },
+    "schemas": {
+      "CreateNativeOrderRequest": {
+        "type": "object",
+        "required": ["amount", "payment_method"],
+        "properties": {
+          "amount": {"type": "integer", "format": "int64", "minimum": 1, "description": "充值数量；最低值和最高值由后台配置及额度展示模式决定，折算后的计费单位最高为 4000"},
+          "payment_method": {"type": "string", "enum": ["wechatpay_native"], "description": "固定为微信支付 Native 渠道标识"}
+        }
+      },
+      "CreateNativeOrderResponse": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": {"type": "boolean", "example": true},
+          "message": {"type": "string", "example": ""},
+          "data": {
+            "type": "object",
+            "required": ["pay_type", "code_url", "trade_no", "expires_at"],
+            "properties": {
+              "pay_type": {"type": "string", "enum": ["qrcode"], "description": "前端交互类型"},
+              "code_url": {"type": "string", "description": "微信 Native code_url，应编码为二维码，不应作为普通网页链接打开", "example": "weixin://wxpay/bizpayurl?pr=example"},
+              "trade_no": {"type": "string", "maxLength": 32, "description": "本地商户订单号"},
+              "expires_at": {"type": "integer", "format": "int64", "description": "订单失效 Unix 秒时间戳"}
+            }
+          }
+        }
+      },
+      "WechatPayNotifyEnvelope": {
+        "type": "object",
+        "required": ["id", "create_time", "event_type", "resource_type", "resource", "summary"],
+        "properties": {
+          "id": {"type": "string", "description": "通知 ID"},
+          "create_time": {"type": "string", "format": "date-time", "description": "通知创建时间"},
+          "event_type": {"type": "string", "example": "TRANSACTION.SUCCESS"},
+          "resource_type": {"type": "string", "example": "encrypt-resource"},
+          "summary": {"type": "string"},
+          "resource": {
+            "type": "object",
+            "required": ["algorithm", "ciphertext", "nonce", "associated_data"],
+            "properties": {
+              "algorithm": {"type": "string", "example": "AEAD_AES_256_GCM"},
+              "ciphertext": {"type": "string", "description": "Base64 编码的加密交易资源"},
+              "nonce": {"type": "string"},
+              "associated_data": {"type": "string"}
+            }
+          }
+        }
+      },
+      "WechatPayNotifyResponse": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"type": "string", "enum": ["SUCCESS", "FAIL"]},
+          "message": {"type": "string"}
+        }
+      },
+      "TopUpOrderStatusResponse": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": {"type": "boolean", "example": true},
+          "message": {"type": "string", "example": ""},
+          "data": {
+            "type": "object",
+            "required": ["order_type", "trade_no", "status", "payment_method", "payment_provider"],
+            "properties": {
+              "order_type": {"type": "string", "enum": ["topup"]},
+              "trade_no": {"type": "string"},
+              "status": {"type": "string", "enum": ["pending", "success", "failed", "expired"]},
+              "payment_method": {"type": "string", "enum": ["wechatpay_native"]},
+              "payment_provider": {"type": "string", "enum": ["wechatpay"]},
+              "create_time": {"type": "integer", "format": "int64"},
+              "complete_time": {"type": "integer", "format": "int64"},
+              "amount": {"type": "integer", "format": "int64"},
+              "money": {"type": "number", "format": "double", "description": "订单人民币实付金额"}
+            }
+          }
+        }
+      },
+      "WechatPaySettingsUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "enabled": {"type": "boolean"},
+          "app_id": {"type": "string"},
+          "mch_id": {"type": "string"},
+          "merchant_cert_serial_no": {"type": "string"},
+          "merchant_private_key": {"type": "string", "description": "PKCS#8 RSA PEM；空字符串保留原值", "writeOnly": true},
+          "api_v3_key": {"type": "string", "minLength": 32, "maxLength": 32, "description": "32 字节 APIv3 密钥；空字符串保留原值", "writeOnly": true},
+          "public_key_id": {"type": "string"},
+          "public_key": {"type": "string", "description": "微信支付 RSA 公钥 PEM；空字符串保留原值", "writeOnly": true},
+          "notify_url": {"type": "string", "format": "uri", "description": "公网 HTTPS 地址，不允许 query 或 fragment；空值使用系统默认地址"},
+          "min_topup": {"type": "integer", "minimum": 1},
+          "max_topup": {"type": "integer", "minimum": 1, "maximum": 4000, "description": "单笔最高充值数量；必须不小于 min_topup"},
+          "order_expire_minutes": {"type": "integer", "minimum": 1, "maximum": 120},
+          "clear_secrets": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "enum": ["merchant_private_key", "api_v3_key", "public_key"]},
+            "description": "显式清除指定密钥；清除必要密钥时服务端同时关闭 enabled"
+          },
+          "force_clear_secrets": {"type": "boolean", "default": false, "description": "存在 pending 订单时默认拒绝清除。仅在密钥泄露等必须紧急吊销的情况下设为 true；这会阻断依赖旧密钥的通知验签和后台查单"}
+        }
+      },
+      "WechatPaySettingsResponse": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": {"type": "boolean", "example": true},
+          "message": {"type": "string", "example": ""},
+          "data": {
+            "type": "object",
+            "properties": {
+              "enabled": {"type": "boolean"},
+              "app_id": {"type": "string"},
+              "mch_id": {"type": "string"},
+              "merchant_cert_serial_no": {"type": "string"},
+              "merchant_private_key_configured": {"type": "boolean"},
+              "api_v3_key_configured": {"type": "boolean"},
+              "public_key_id": {"type": "string"},
+              "public_key_configured": {"type": "boolean"},
+              "notify_url": {"type": "string"},
+              "resolved_notify_url": {"type": "string", "format": "uri"},
+              "min_topup": {"type": "integer"},
+              "max_topup": {"type": "integer", "maximum": 4000},
+              "order_expire_minutes": {"type": "integer"},
+              "pending_order_count": {"type": "integer", "format": "int64"},
+              "option_crypt_key_configured": {"type": "boolean"}
+            }
+          }
+        }
+      },
+      "ApiErrorResponse": {
+        "type": "object",
+        "required": ["success", "message"],
+        "properties": {
+          "success": {"type": "boolean", "example": false},
+          "message": {"type": "string", "example": "支付渠道未配置或未启用"}
+        }
+      }
+    }
+  }
+}

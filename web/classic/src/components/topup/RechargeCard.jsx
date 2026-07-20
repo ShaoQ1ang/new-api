@@ -54,6 +54,7 @@ const RechargeCard = ({
   enableOnlineTopUp,
   enableStripeTopUp,
   enableAlipayTopUp,
+  enableWechatPayTopUp,
   enableCreemTopUp,
   creemProducts,
   creemPreTopUp,
@@ -112,6 +113,7 @@ const RechargeCard = ({
     const minTopupVal = Number(payMethod.min_topup) || 0;
     const isStripe = payMethod.type === 'stripe';
     const isAlipay = payMethod.type === 'alipay';
+    const isWechatPay = payMethod.type === 'wechatpay_native';
     const isWaffo =
       typeof payMethod.type === 'string' && payMethod.type.startsWith('waffo:');
     const isWaffoPancake = payMethod.type === 'waffo_pancake';
@@ -120,10 +122,12 @@ const RechargeCard = ({
       (!enableOnlineTopUp &&
         !isStripe &&
         !isAlipay &&
+        !isWechatPay &&
         !isWaffo &&
         !isWaffoPancake) ||
       (!enableStripeTopUp && isStripe) ||
       (!enableAlipayTopUp && isAlipay) ||
+      (!enableWechatPayTopUp && isWechatPay) ||
       (!enableWaffoTopUp && isWaffo) ||
       (!enableWaffoPancakeTopUp && isWaffoPancake) ||
       minTopupVal > Number(topUpCount || 0)
@@ -169,6 +173,7 @@ const RechargeCard = ({
     enableOnlineTopUp,
     enableStripeTopUp,
     enableAlipayTopUp,
+    enableWechatPayTopUp,
     enableWaffoTopUp,
     enableWaffoPancakeTopUp,
   ]);
@@ -177,7 +182,7 @@ const RechargeCard = ({
     if (payMethod.type === 'alipay') {
       return <SiAlipay size={18} color='#1677ff' />;
     }
-    if (payMethod.type === 'wxpay') {
+    if (payMethod.type === 'wxpay' || payMethod.type === 'wechatpay_native') {
       return <SiWechat size={18} color='#07c160' />;
     }
     if (payMethod.type === 'stripe') {
@@ -371,6 +376,7 @@ const RechargeCard = ({
             </div>
           ) : enableOnlineTopUp ||
             enableAlipayTopUp ||
+            enableWechatPayTopUp ||
             enableStripeTopUp ||
             enableCreemTopUp ||
             enableWaffoTopUp ||
@@ -382,6 +388,7 @@ const RechargeCard = ({
             >
               {(enableOnlineTopUp ||
                 enableAlipayTopUp ||
+                enableWechatPayTopUp ||
                 enableStripeTopUp ||
                 enableWaffoTopUp ||
                 enableWaffoPancakeTopUp) && (
@@ -394,11 +401,10 @@ const RechargeCard = ({
 
               {(enableOnlineTopUp ||
                 enableAlipayTopUp ||
+                enableWechatPayTopUp ||
                 enableStripeTopUp ||
                 enableWaffoTopUp) && (
-                <Form.Slot
-                  label={t('选择充值额度')}
-                >
+                <Form.Slot label={t('选择充值额度')}>
                   <div className='billing-amount-grid'>
                     {presetAmounts.map(renderPresetCard)}
                   </div>
@@ -407,6 +413,7 @@ const RechargeCard = ({
 
               {(enableOnlineTopUp ||
                 enableAlipayTopUp ||
+                enableWechatPayTopUp ||
                 enableStripeTopUp ||
                 enableWaffoTopUp ||
                 enableWaffoPancakeTopUp) && (
@@ -476,6 +483,7 @@ const RechargeCard = ({
 
               {(enableOnlineTopUp ||
                 enableAlipayTopUp ||
+                enableWechatPayTopUp ||
                 enableStripeTopUp ||
                 enableWaffoTopUp ||
                 enableWaffoPancakeTopUp) && (

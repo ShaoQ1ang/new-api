@@ -26,7 +26,7 @@ func GetTopUpInfo(c *gin.Context) {
 	complianceConfirmed := operation_setting.IsPaymentComplianceConfirmed()
 
 	// 获取支付方式
-	payMethods := operation_setting.PayMethods
+	payMethods := append([]map[string]string(nil), operation_setting.PayMethods...)
 	if !complianceConfirmed {
 		payMethods = []map[string]string{}
 	}
@@ -68,6 +68,26 @@ func GetTopUpInfo(c *gin.Context) {
 				"type":      model.PaymentMethodAlipay,
 				"color":     "#1677FF",
 				"min_topup": strconv.Itoa(setting.AlipayMinTopUp),
+			})
+		}
+	}
+
+	wechatPayConfig := setting.GetWechatPayConfig()
+	if isWechatPayTopUpEnabledWithConfig(wechatPayConfig) {
+		hasWechatPay := false
+		for _, method := range payMethods {
+			if method["type"] == model.PaymentMethodWechatPay {
+				hasWechatPay = true
+				break
+			}
+		}
+		if !hasWechatPay {
+			payMethods = append(payMethods, map[string]string{
+				"name":      "WeChat Pay",
+				"type":      model.PaymentMethodWechatPay,
+				"color":     "#07C160",
+				"min_topup": strconv.Itoa(wechatPayConfig.MinTopUp),
+				"max_topup": strconv.Itoa(wechatPayConfig.MaxTopUp),
 			})
 		}
 	}
@@ -117,6 +137,7 @@ func GetTopUpInfo(c *gin.Context) {
 	data := gin.H{
 		"enable_online_topup":              isEpayTopUpEnabled(),
 		"enable_alipay_topup":              isAlipayTopUpEnabled(),
+		"enable_wechatpay_topup":           isWechatPayTopUpEnabledWithConfig(wechatPayConfig),
 		"enable_stripe_topup":              isStripeTopUpEnabled(),
 		"enable_creem_topup":               isCreemTopUpEnabled(),
 		"enable_waffo_topup":               enableWaffo,
@@ -134,6 +155,8 @@ func GetTopUpInfo(c *gin.Context) {
 		"pay_methods":             payMethods,
 		"min_topup":               operation_setting.MinTopUp,
 		"alipay_min_topup":        setting.AlipayMinTopUp,
+		"wechatpay_min_topup":     wechatPayConfig.MinTopUp,
+		"wechatpay_max_topup":     wechatPayConfig.MaxTopUp,
 		"stripe_min_topup":        setting.StripeMinTopUp,
 		"waffo_min_topup":         setting.WaffoMinTopUp,
 		"waffo_pancake_min_topup": setting.WaffoPancakeMinTopUp,
