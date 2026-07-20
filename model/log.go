@@ -579,3 +579,40 @@ func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64,
 
 	return total, nil
 }
+
+func buildOpField(action string, params map[string]interface{}) map[string]interface{} {
+	op := map[string]interface{}{
+		"action": action,
+	}
+	if len(params) > 0 {
+		op["params"] = params
+	}
+	return op
+}
+
+// RecordOperationAuditLog records manage/high-risk operation audit logs (LogTypeManage).
+func RecordOperationAuditLog(logUserId int, content string, ip string, action string, params map[string]interface{}, adminInfo map[string]interface{}, auditInfo map[string]interface{}) {
+	username, _ := GetUsernameById(logUserId, false)
+	other := map[string]interface{}{
+		"op": buildOpField(action, params),
+	}
+	if len(adminInfo) > 0 {
+		other["admin_info"] = adminInfo
+	}
+	if len(auditInfo) > 0 {
+		other["audit_info"] = auditInfo
+	}
+	log := &Log{
+		UserId:    logUserId,
+		Username:  username,
+		CreatedAt: common.GetTimestamp(),
+		Type:      LogTypeManage,
+		Content:   content,
+		Ip:        ip,
+		Other:     common.MapToJsonStr(other),
+	}
+	if err := LOG_DB.Create(log).Error; err != nil {
+		common.SysLog("failed to record operation audit log: " + err.Error())
+	}
+}
+

@@ -19,9 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { memo, useState } from 'react'
 import { Megaphone } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { getAnnouncementColorClass } from '@/lib/colors'
-import { formatDateTimeObject } from '@/lib/time'
-import { cn } from '@/lib/utils'
+
+import { IconBadge } from '@/components/ui/icon-badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAnnouncements } from '@/features/dashboard/hooks/use-status-data'
 import { getPreviewText } from '@/features/dashboard/lib'
@@ -58,7 +57,9 @@ export function AnnouncementsPanel() {
     <PanelWrapper
       title={
         <span className='flex items-center gap-2'>
-          <Megaphone className='text-muted-foreground/60 size-4' />
+          <IconBadge tone='warning' size='sm'>
+            <Megaphone />
+          </IconBadge>
           {t('Announcements')}
         </span>
       }

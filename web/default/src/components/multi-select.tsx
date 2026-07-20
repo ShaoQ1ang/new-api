@@ -50,8 +50,78 @@ export function MultiSelect({
   const [open, setOpen] = React.useState(false)
   const [inputValue, setInputValue] = React.useState('')
 
-  const handleUnselect = (value: string) => {
-    onChange(selected.filter((s) => s !== value))
+  const selectedSet = React.useMemo(
+    () => new Set(props.selected),
+    [props.selected]
+  )
+
+  // Lookup of value -> display label so chips and items can show friendly names
+  // even when the underlying option list changes (e.g. custom-added values).
+  const labelMap = React.useMemo(() => {
+    const map = new Map<string, string>()
+    for (const option of props.options) {
+      map.set(option.value, option.label)
+    }
+    return map
+  }, [props.options])
+
+  const trimmedInput = inputValue.trim()
+  const inputMatchesExisting =
+    trimmedInput.length > 0 &&
+    (selectedSet.has(trimmedInput) ||
+      props.options.some(
+        (option) =>
+          option.value === trimmedInput || option.label === trimmedInput
+      ))
+
+  const canCreate =
+    props.allowCreate === true &&
+    trimmedInput.length > 0 &&
+    !inputMatchesExisting
+
+  // We expose all known option values + every currently selected value to Base
+  // UI's items list. This way Base UI filters them by the search query and the
+  // user can still see the chip labels mapped correctly.
+  const items = React.useMemo(() => {
+    const set = new Set<string>(props.options.map((option) => option.value))
+    for (const value of props.selected) {
+      set.add(value)
+    }
+    if (canCreate) {
+      set.add(trimmedInput)
+    }
+    return Array.from(set)
+  }, [props.options, props.selected, canCreate, trimmedInput])
+
+  const addValues = React.useCallback(
+    (values: string[]) => {
+      const next: string[] = []
+      const seen = new Set<string>(props.selected)
+      for (const raw of values) {
+        const value = raw.trim()
+        if (!value) continue
+        if (seen.has(value)) continue
+        seen.add(value)
+        next.push(value)
+      }
+      if (next.length === 0) return
+      props.onChange([...props.selected, ...next])
+    },
+    [props]
+  )
+
+  const handleInputValueChange = (value: string) => {
+    if (!props.allowCreate) {
+      setInputValue(value)
+      return
+    }
+    const parsed = splitDraft(value)
+    if (parsed.completed.length > 0) {
+      addValues(parsed.completed)
+      setInputValue(parsed.draft)
+      return
+    }
+    setInputValue(value)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {

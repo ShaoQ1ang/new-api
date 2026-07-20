@@ -21,6 +21,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Download, Loader2, RefreshCcw, Terminal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
+import { IconBadge } from '@/components/ui/icon-badge'
 import {
   Dialog,
   DialogContent,
@@ -142,49 +143,55 @@ export function ViewLogsDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='flex h-[calc(100dvh-2rem)] flex-col max-sm:w-screen max-sm:max-w-none max-sm:rounded-none max-sm:p-4 sm:h-[80vh] sm:max-w-4xl'>
-        <DialogHeader>
-          <DialogTitle className='flex items-center gap-2'>
-            <Terminal className='h-5 w-5' />
-            {t('Deployment logs')}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className='mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3'>
-          <div className='text-muted-foreground text-sm'>
-            {t('Deployment ID')}: {deploymentId}
-          </div>
-          <div className='grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center'>
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={() => {
-                refetchContainers()
-                refetchLogs()
-              }}
-              disabled={isFetchingLogs || isFetchingContainers}
-            >
-              {isFetchingLogs || isFetchingContainers ? (
-                <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-              ) : (
-                <RefreshCcw className='mr-2 h-4 w-4' />
-              )}
-              {t('Refresh')}
-            </Button>
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={handleDownload}
-              disabled={!logsText.trim()}
-            >
-              <Download className='mr-2 h-4 w-4' />
-              {t('Download')}
-            </Button>
-            <div className='col-span-2 flex items-center justify-between gap-2 rounded-md border px-3 py-1.5 sm:col-span-1'>
-              <span className='text-xs'>{t('Auto refresh')}</span>
-              <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} />
-            </div>
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={
+        <>
+          <IconBadge tone='chart-3' size='sm'>
+            <Terminal />
+          </IconBadge>
+          {t('Deployment logs')}
+        </>
+      }
+      contentClassName='flex h-[calc(100dvh-2rem)] flex-col max-sm:w-screen max-sm:max-w-none max-sm:rounded-none max-sm:p-4 sm:h-[80vh] sm:max-w-4xl'
+      titleClassName='flex items-center gap-2'
+      contentHeight='min(72vh, 720px)'
+      bodyClassName='space-y-4'
+    >
+      <div className='mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3'>
+        <div className='text-muted-foreground text-sm'>
+          {t('Deployment ID')}: {deploymentId}
+        </div>
+        <div className='grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center'>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => {
+              refetchContainers()
+              refetchLogs()
+            }}
+            disabled={isFetchingLogs || isFetchingContainers}
+          >
+            {isFetchingLogs || isFetchingContainers ? (
+              <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+            ) : (
+              <RefreshCcw className='mr-2 h-4 w-4' />
+            )}
+            {t('Refresh')}
+          </Button>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={handleDownload}
+            disabled={!logsText.trim()}
+          >
+            <Download className='mr-2 h-4 w-4' />
+            {t('Download')}
+          </Button>
+          <div className='col-span-2 flex items-center justify-between gap-2 rounded-md border px-3 py-1.5 sm:col-span-1'>
+            <span className='text-xs'>{t('Auto refresh')}</span>
+            <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} />
           </div>
         </div>
 

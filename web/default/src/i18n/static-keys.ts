@@ -216,6 +216,20 @@ export const STATIC_I18N_KEYS = [
   'Match models starting with this name',
   'Match models containing this name',
   'Match models ending with this name',
+
+  // Playground parameter controls
+  'Temperature',
+  'Top P',
+  'Frequency Penalty',
+  'Presence Penalty',
+  'Max Tokens',
+  'Seed',
+  'Controls randomness and creativity',
+  'Limits token selection to a probability mass',
+  'Reduces repeated wording',
+  'Encourages new topics',
+  'Caps the response length',
+  'Keeps compatible responses more repeatable',
   'All Status',
   'All Sync Status',
   'Official Sync',
@@ -477,6 +491,27 @@ export const STATIC_I18N_KEYS = [
   'Detection complete: {{add}} to add, {{remove}} to remove',
   'Batch detection failed',
   'Batch detection complete: {{channels}} channels, {{add}} to add, {{remove}} to remove, {{fails}} failed',
+
+  // Advanced Custom model discovery
+  'Only one OpenAI Models route is allowed',
+  'OpenAI Models route does not support client model rules',
+  'OpenAI Models route must use native forwarding',
+  'OpenAI Models upstream path must not contain {model}',
+  'OpenAI Models route is required to enable upstream model checks',
+
+  // Dashboard flow stages (labels/descriptions passed to t at runtime)
+  'User',
+  'Node',
+  'Token',
+  'Group',
+  'Model',
+  'Channel',
+  'The user who made the requests',
+  'The deployment node that handled the requests',
+  'The API key used for the requests',
+  'The user group applied to the requests',
+  'The model that was requested',
+  'The upstream channel that served the requests',
 
   // Misc
   'Cancel',

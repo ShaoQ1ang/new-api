@@ -16,30 +16,27 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 import { formatQuota, formatTimestamp } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Progress } from '@/components/ui/progress'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { DataTableColumnHeader } from '@/components/data-table'
-import { GroupBadge } from '@/components/group-badge'
-import { LongText } from '@/components/long-text'
-import { StatusBadge, dotColorMap } from '@/components/status-badge'
-import { USER_STATUSES, USER_ROLES, isUserDeleted } from '../constants'
-import { type User } from '../types'
-import { DataTableRowActions } from './data-table-row-actions'
+import { formatQuota, formatTimestamp } from '@/lib/format'
 
-function getQuotaProgressColor(percentage: number): string {
-  if (percentage <= 10) return '[&_[data-slot=progress-indicator]]:bg-rose-500'
-  if (percentage <= 30) return '[&_[data-slot=progress-indicator]]:bg-amber-500'
-  return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
-}
+import {
+  USER_STATUS,
+  USER_STATUSES,
+  USER_ROLES,
+  isUserDeleted,
+} from '../constants'
+import type { User } from '../types'
+import { DataTableRowActions } from './data-table-row-actions'
+import { UserQuotaCell } from './user-quota-cell'
 
 export function useUsersColumns(): ColumnDef<User>[] {
   const { t } = useTranslation()
@@ -73,9 +70,15 @@ export function useUsersColumns(): ColumnDef<User>[] {
         <DataTableColumnHeader column={column} title='ID' />
       ),
       cell: ({ row }) => {
-        return <div className='w-[60px]'>{row.getValue('id')}</div>
+        return (
+          <TableId
+            value={row.getValue('id') as number}
+            className='w-[60px] text-sm'
+          />
+        )
       },
-      meta: { label: t('ID'), mobileHidden: true },
+      size: 80,
+      meta: { mobileOrder: 10 },
     },
     {
       accessorKey: 'username',
@@ -166,59 +169,11 @@ export function useUsersColumns(): ColumnDef<User>[] {
       ),
       cell: ({ row }) => {
         const user = row.original
-        const used = user.used_quota
-        const remaining = user.quota
-        const total = used + remaining
-        const percentage = total > 0 ? (remaining / total) * 100 : 0
-
-        if (total === 0) {
-          return (
-            <StatusBadge
-              label={t('No Quota')}
-              variant='neutral'
-              copyable={false}
-            />
-          )
-        }
-
-        return (
-          <Tooltip>
-            <TooltipTrigger
-              render={<div className='w-[150px] cursor-help space-y-1' />}
-            >
-              <div className='flex justify-between text-xs'>
-                <span className='font-medium tabular-nums'>
-                  {formatQuota(remaining)}
-                </span>
-                <span className='text-muted-foreground tabular-nums'>
-                  {formatQuota(total)}
-                </span>
-              </div>
-              <Progress
-                value={percentage}
-                className={cn('h-1.5', getQuotaProgressColor(percentage))}
-              />
-            </TooltipTrigger>
-            <TooltipContent>
-              <div className='space-y-1 text-xs'>
-                <div>
-                  {t('Used:')} {formatQuota(used)}
-                </div>
-                <div>
-                  {t('Remaining:')} {formatQuota(remaining)}
-                </div>
-                <div>
-                  {t('Total:')} {formatQuota(total)}
-                </div>
-                <div>
-                  {t('Percentage:')} {percentage.toFixed(1)}%
-                </div>
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        )
+        return <UserQuotaCell used={user.used_quota} remaining={user.quota} />
       },
-      meta: { label: t('Quota') },
+      size: 300,
+      minSize: 260,
+      meta: { mobileOrder: 40 },
     },
     {
       accessorKey: 'group',
@@ -234,7 +189,8 @@ export function useUsersColumns(): ColumnDef<User>[] {
         const searchValue = String(value).toLowerCase()
         return group.includes(searchValue)
       },
-      meta: { label: t('Group') },
+      size: 140,
+      meta: { mobileOrder: 30 },
     },
     {
       accessorKey: 'role',
@@ -262,7 +218,8 @@ export function useUsersColumns(): ColumnDef<User>[] {
         return value.includes(String(row.getValue(id)))
       },
       enableSorting: false,
-      meta: { label: t('Role') },
+      size: 120,
+      meta: { mobileOrder: 20 },
     },
     {
       id: 'invite_info',

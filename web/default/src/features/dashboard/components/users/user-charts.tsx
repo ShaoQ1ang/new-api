@@ -21,9 +21,10 @@ import { useQuery } from '@tanstack/react-query'
 import { VChart } from '@visactor/react-vchart'
 import { Users, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { getRollingDateRange, type TimeGranularity } from '@/lib/time'
-import { VCHART_OPTION } from '@/lib/vchart'
-import { useThemeCustomization } from '@/context/theme-customization-provider'
+
+import { IconBadge } from '@/components/ui/icon-badge'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTheme } from '@/context/theme-provider'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getUserQuotaDataByUsers } from '@/features/dashboard/api'
@@ -225,7 +226,9 @@ export function UserCharts() {
               className='overflow-hidden rounded-lg border'
             >
               <div className='flex w-full items-center gap-2 border-b px-3 py-2 sm:px-5 sm:py-3'>
-                <Users className='text-muted-foreground/60 size-4' />
+                <IconBadge tone='info' size='sm'>
+                  <Users />
+                </IconBadge>
                 <div className='text-sm font-semibold'>{t(chart.labelKey)}</div>
               </div>
 

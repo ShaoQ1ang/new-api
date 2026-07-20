@@ -58,6 +58,10 @@ import { useChannels } from './channels-provider'
 import { DataTableBulkActions } from './data-table-bulk-actions'
 
 const route = getRouteApi('/_authenticated/channels/')
+const CHANNELS_COLUMN_VISIBILITY_STORAGE_KEY = 'channels:column-visibility'
+const CHANNELS_COLUMN_SIZING_STORAGE_KEY = 'channels:column-sizing'
+const CHANNELS_VIEW_MODE_STORAGE_KEY = 'channels:view-mode'
+const CHANNELS_STATUS_FILTER_STORAGE_KEY = 'channel-status-filter'
 
 const CHANNEL_SORTABLE_COLUMNS = new Set<ChannelSortBy>([
   'id',
@@ -292,8 +296,16 @@ export function ChannelsTable() {
       expanded,
       globalFilter,
     },
-    enableRowSelection: (row: Row<Channel>) => !isTagAggregateRow(row.original),
-    onRowSelectionChange: setRowSelection,
+    columnVisibilityStorageKey: CHANNELS_COLUMN_VISIBILITY_STORAGE_KEY,
+    columnSizingStorageKey: isMobile
+      ? false
+      : CHANNELS_COLUMN_SIZING_STORAGE_KEY,
+    columnFilters,
+    pagination,
+    globalFilter,
+    enableRowSelection: batchMode
+      ? (row: Row<Channel>) => !isTagAggregateRow(row.original)
+      : false,
     onSortingChange: handleSortingChange,
     onColumnFiltersChange,
     onColumnVisibilityChange: setColumnVisibility,
@@ -306,6 +318,9 @@ export function ChannelsTable() {
     manualPagination: true,
     manualSorting: true,
     manualFiltering: true,
+    withExpandedRowModel: true,
+    enableColumnResizing: !isMobile,
+    ensurePageInRange,
   })
 
   // Ensure page is in range when total count changes

@@ -620,3 +620,5 @@ func resolvePlanKindForUpdate(raw string) (*string, error) {
 	}
 	return &kind, nil
 }
+
+

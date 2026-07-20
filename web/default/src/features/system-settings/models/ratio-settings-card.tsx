@@ -38,9 +38,58 @@ import {
   validateJsonString,
 } from './utils'
 
-const modelSchema = z.object({
-  ModelPrice: z.string().superRefine((value, ctx) => {
-    const result = validateJsonString(value)
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
+function formatJsonValidationError(
+  t: Translate,
+  error?: JsonValidationError,
+  fallback = 'Invalid JSON'
+) {
+  if (!error) return t(fallback)
+
+  if (error.type === 'required') return t('Value is required')
+  if (error.type === 'structure') {
+    return t(
+      fallback === 'Invalid JSON' ? 'JSON structure is invalid' : fallback
+    )
+  }
+
+  let locationMessage: string
+  if (error.line && error.column) {
+    locationMessage = t(
+      'JSON is invalid at line {{line}}, column {{column}}.',
+      {
+        line: error.line,
+        column: error.column,
+      }
+    )
+  } else if (error.position !== undefined) {
+    locationMessage = t('JSON is invalid at position {{position}}.', {
+      position: error.position,
+    })
+  } else {
+    locationMessage = t('JSON is invalid. Please check the syntax.')
+  }
+
+  const parts = [locationMessage]
+
+  if (error.missingCommaLine) {
+    parts.push(
+      t('Check line {{line}} for a missing comma.', {
+        line: error.missingCommaLine,
+      })
+    )
+  }
+
+  return parts.join(' ')
+}
+
+function createJsonStringField(
+  t: Translate,
+  options?: Parameters<typeof validateJsonString>[1]
+) {
+  return z.string().superRefine((value, ctx) => {
+    const result = validateJsonString(value, options)
     if (!result.valid) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -195,9 +244,14 @@ const groupSchema = z.object({
   }),
 })
 
-type ModelFormValues = z.infer<typeof modelSchema>
-type GroupFormValues = z.infer<typeof groupSchema>
-type RatioTabId = 'models' | 'groups' | 'tool-prices' | 'upstream-sync'
+type ModelFormValues = z.infer<ReturnType<typeof createModelSchema>>
+type GroupFormValues = z.infer<ReturnType<typeof createGroupSchema>>
+type RatioTabId =
+  | 'models'
+  | 'unset-models'
+  | 'groups'
+  | 'tool-prices'
+  | 'upstream-sync'
 
 type RatioSettingsCardProps = {
   modelDefaults: ModelFormValues
@@ -441,6 +495,7 @@ export function RatioSettingsCard({
 
   const tabLabels: Record<RatioTabId, string> = {
     models: 'Model prices',
+    'unset-models': 'Unset price models',
     groups: 'Group ratios',
     'tool-prices': 'Tool prices',
     'upstream-sync': 'Upstream price sync',
@@ -451,11 +506,12 @@ export function RatioSettingsCard({
       2: 'grid-cols-2',
       3: 'grid-cols-3',
       4: 'grid-cols-4',
+      5: 'grid-cols-5',
     }[visibleTabs.length] ?? 'grid-cols-4'
   const defaultTab = visibleTabs[0] ?? 'models'
 
   const renderTabContent = (tab: RatioTabId) => {
-    if (tab === 'models') {
+    if (tab === 'models' || tab === 'unset-models') {
       return (
         <ModelRatioForm
           form={modelForm}
@@ -463,6 +519,7 @@ export function RatioSettingsCard({
           onReset={handleResetRatios}
           isSaving={updateOption.isPending}
           isResetting={resetMutation.isPending}
+          variant={tab === 'unset-models' ? 'unset' : 'default'}
         />
       )
     }
@@ -501,12 +558,16 @@ export function RatioSettingsCard({
       {visibleTabs.length === 1 ? (
         renderTabContent(defaultTab)
       ) : (
-        <Tabs defaultValue={defaultTab} className='space-y-6'>
-          <TabsList className={`grid w-full ${tabsGridClass}`}>
+        <Tabs defaultValue={defaultTab} className='h-full min-h-0 gap-6'>
+          <SettingsPageTitleStatusPortal>
+            {renderTabSwitcher()}
+          </SettingsPageTitleStatusPortal>
+
+          <SettingsSection title={t(titleKey)} className='min-h-0 flex-1'>
             {visibleTabs.map((tab) => (
-              <TabsTrigger key={tab} value={tab}>
-                {t(tabLabels[tab])}
-              </TabsTrigger>
+              <TabsContent key={tab} value={tab} className='min-h-0'>
+                {renderTabContent(tab)}
+              </TabsContent>
             ))}
           </TabsList>
 

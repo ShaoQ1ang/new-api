@@ -21,12 +21,27 @@ import { SkillHub } from '@/features/skill-hub'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
-export const Route = createFileRoute('/_authenticated/skill-hub/')({
-  beforeLoad: () => {
-    const { auth } = useAuthStore.getState()
-    if (!auth.user || auth.user.role < ROLE.ADMIN) {
-      throw redirect({ to: '/403' })
-    }
-  },
-  component: SkillHub,
-})
+import {
+  SideDrawerSection,
+  SideDrawerSectionHeader,
+} from '@/components/drawer-layout'
+
+type ChannelApiAccessSectionProps = {
+  children: ReactNode
+}
+
+export function ChannelApiAccessSection(props: ChannelApiAccessSectionProps) {
+  const { t } = useTranslation()
+
+  return (
+    <SideDrawerSection>
+      <SideDrawerSectionHeader
+        title={t('Credentials')}
+        description={t('Authentication')}
+        icon={<KeyRound className='h-4 w-4' aria-hidden='true' />}
+        iconTone='success'
+      />
+      {props.children}
+    </SideDrawerSection>
+  )
+}

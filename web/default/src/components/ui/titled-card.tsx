@@ -25,6 +25,7 @@ import {
   CardHeader,
   CardTitle,
 } from './card'
+import { IconBadge, type IconBadgeTone } from './icon-badge'
 
 type TitledCardProps = {
   title: ReactNode
@@ -36,6 +37,7 @@ type TitledCardProps = {
   headerClassName?: string
   contentClassName?: string
   iconClassName?: string
+  iconTone?: IconBadgeTone
   titleClassName?: string
   descriptionClassName?: string
 }
@@ -50,6 +52,7 @@ export function TitledCard({
   headerClassName,
   contentClassName,
   iconClassName,
+  iconTone,
   titleClassName,
   descriptionClassName,
 }: TitledCardProps) {
@@ -61,14 +64,9 @@ export function TitledCard({
         <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
           <div className='flex min-w-0 items-center gap-3'>
             {icon != null && (
-              <div
-                className={cn(
-                  'bg-muted flex h-8 w-8 shrink-0 items-center justify-center rounded-lg sm:h-9 sm:w-9',
-                  iconClassName
-                )}
-              >
+              <IconBadge size='title' tone={iconTone} className={iconClassName}>
                 {icon}
-              </div>
+              </IconBadge>
             )}
             <div className='min-w-0'>
               <CardTitle

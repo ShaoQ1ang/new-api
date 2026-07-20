@@ -32,12 +32,8 @@ import { formatQuotaWithCurrency } from '@/lib/currency'
 import dayjs from '@/lib/dayjs'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Card } from '@/components/ui/card'
+import { IconBadge } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Tooltip,
@@ -164,7 +160,7 @@ export function CheckinCalendarCard({
           }
           toast.error(res.message || t('Check-in failed'))
         }
-      } catch (_error) {
+      } catch {
         toast.error(t('Check-in failed'))
       } finally {
         setCheckinLoading(false)
@@ -243,6 +239,13 @@ export function CheckinCalendarCard({
     )
   }
 
+  let checkinButtonLabel = t('Check in now')
+  if (checkinLoading) {
+    checkinButtonLabel = t('Loading...')
+  } else if (checkedToday) {
+    checkinButtonLabel = t('Checked in')
+  }
+
   return (
     <TooltipProvider delay={100}>
       <Dialog
@@ -286,12 +289,12 @@ export function CheckinCalendarCard({
               className='flex h-auto min-w-0 flex-1 items-start gap-3 p-0 text-left whitespace-normal hover:bg-transparent'
               onClick={() => setCollapsed((v) => !v)}
             >
-              <div className='bg-primary/10 text-primary flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11'>
+              <IconBadge tone='neutral' size='lg' className='sm:size-11'>
                 <CalendarDays
                   className='h-4 w-4 sm:h-5 sm:w-5'
                   strokeWidth={2}
                 />
-              </div>
+              </IconBadge>
               <div className='min-w-0 flex-1'>
                 <div className='flex flex-wrap items-center gap-1.5 sm:gap-2'>
                   <h3 className='text-base font-semibold tracking-tight sm:text-lg'>
@@ -324,11 +327,7 @@ export function CheckinCalendarCard({
               size='sm'
               className='w-full shrink-0 sm:w-auto'
             >
-              {checkinLoading
-                ? t('Loading...')
-                : checkedToday
-                  ? t('Checked in')
-                  : t('Check in now')}
+              {checkinButtonLabel}
             </Button>
           </div>
         </div>
@@ -409,7 +408,7 @@ export function CheckinCalendarCard({
                   ))}
 
                   {/* Calendar days */}
-                  {calendarDays.map((dayObj, idx) => {
+                  {calendarDays.map((dayObj) => {
                     const dateStr = `${dayObj.date.getFullYear()}-${String(
                       dayObj.date.getMonth() + 1
                     ).padStart(2, '0')}-${String(
@@ -422,7 +421,7 @@ export function CheckinCalendarCard({
 
                     const dayButton = (
                       <Button
-                        key={idx}
+                        key={dateStr}
                         variant={isToday ? 'default' : 'ghost'}
                         disabled={!dayObj.isCurrentMonth}
                         className={cn(
@@ -435,15 +434,15 @@ export function CheckinCalendarCard({
                       >
                         <span className='tabular-nums'>{dayNum}</span>
                         {isCheckedIn && !isToday && (
-                          <span className='absolute bottom-0.5 h-1 w-1 rounded-full bg-emerald-500 sm:bottom-1' />
+                          <span className='bg-success absolute bottom-0.5 size-1 rounded-full sm:bottom-1' />
                         )}
                       </Button>
                     )
 
                     if (isCheckedIn && dayObj.isCurrentMonth) {
                       return (
-                        <Tooltip key={idx}>
-                          <TooltipTrigger render={dayButton}></TooltipTrigger>
+                        <Tooltip key={dateStr}>
+                          <TooltipTrigger render={dayButton} />
                           <TooltipContent>
                             <div className='text-xs'>
                               <div className='font-medium'>
