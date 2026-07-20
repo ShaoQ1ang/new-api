@@ -42,7 +42,7 @@ const languages = [
 export function LanguageSwitcher() {
   const { i18n, t } = useTranslation()
   const user = useAuthStore((s) => s.auth.user)
-
+  const currentLanguage = normalizeInterfaceLanguage(i18n.language)
   const handleChangeLanguage = useCallback(
     async (code: string) => {
       await i18n.changeLanguage(code)

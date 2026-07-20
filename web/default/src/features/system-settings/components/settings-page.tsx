@@ -30,9 +30,59 @@ type SettingsPageProps<
   getSectionContent: (
     sectionId: TSectionId,
     settings: TSettings,
-    ...extraArgs: unknown[]
-  ) => React.ReactNode
-  extraArgs?: unknown[]
+    ...extraArgs: TExtraArgs
+  ) => ReactNode
+  getSectionMeta: (sectionId: TSectionId) => {
+    titleKey: string
+  }
+  extraArgs?: TExtraArgs
+  loadingMessage?: string
+  resolveSettings?: (
+    settings: TSettings,
+    raw: SystemOption[] | undefined
+  ) => TSettings
+}
+
+type SettingsPageFrameProps = {
+  title: ReactNode
+  children: ReactNode
+}
+
+function SettingsPageFrame(props: SettingsPageFrameProps) {
+  const [actionsContainer, setActionsContainer] =
+    useState<HTMLDivElement | null>(null)
+  const [titleStatusContainer, setTitleStatusContainer] =
+    useState<HTMLSpanElement | null>(null)
+
+  return (
+    <SettingsPageProvider
+      actionsContainer={actionsContainer}
+      titleStatusContainer={titleStatusContainer}
+    >
+      <SectionPageLayout>
+        <SectionPageLayout.Title>
+          <span className='inline-flex max-w-full min-w-0 items-center gap-2 align-middle'>
+            <span className='truncate'>{props.title}</span>
+            <span
+              ref={setTitleStatusContainer}
+              className='inline-flex min-w-0 shrink-0 items-center'
+            />
+          </span>
+        </SectionPageLayout.Title>
+        <SectionPageLayout.Actions>
+          <div
+            ref={setActionsContainer}
+            className='flex flex-wrap items-center justify-end gap-2'
+          />
+        </SectionPageLayout.Actions>
+        <SectionPageLayout.Content>
+          <div className='flex h-full min-h-0 w-full flex-col gap-4'>
+            {props.children}
+          </div>
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
+    </SettingsPageProvider>
+  )
 }
 
 /**

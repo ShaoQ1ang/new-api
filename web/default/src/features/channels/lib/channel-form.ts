@@ -19,66 +19,284 @@ For commercial licensing, please contact support@quantumnous.com
 import { z } from 'zod'
 import { CHANNEL_STATUS, MODEL_FETCHABLE_TYPES } from '../constants'
 import type { Channel } from '../types'
+import {
+  CHANNEL_TYPE_ADVANCED_CUSTOM,
+  advancedCustomConfigUsesRelativeUpstreamPath,
+  hasValidAdvancedCustomModelListRoute,
+  parseAdvancedCustomConfig,
+  stringifyAdvancedCustomConfig,
+  validateAdvancedCustomConfig,
+} from './advanced-custom'
 
 // ============================================================================
 // Form Validation Schema
 // ============================================================================
 
-export const channelFormSchema = z.object({
-  name: z.string().min(1, 'Channel name is required'),
-  type: z.number().min(0, 'Channel type is required'),
-  base_url: z.string().optional(),
-  key: z.string(),
-  openai_organization: z.string().optional(),
-  models: z.string().min(1, 'At least one model is required'),
-  group: z.array(z.string()).min(1, 'At least one group is required'),
-  model_mapping: z.string().optional(),
-  priority: z.number().optional(),
-  weight: z.number().optional(),
-  test_model: z.string().optional(),
-  auto_ban: z.number().optional(),
-  status: z.number(),
-  status_code_mapping: z.string().optional(),
-  tag: z.string().optional(),
-  remark: z
-    .string()
-    .max(255, 'Remark must be less than 255 characters')
-    .optional(),
-  setting: z.string().optional(),
-  param_override: z.string().optional(),
-  header_override: z.string().optional(),
-  settings: z.string().optional(),
-  other: z.string().optional(),
-  // Multi-key options (not sent to backend directly)
-  multi_key_mode: z.enum(['single', 'batch', 'multi_to_single']).optional(),
-  multi_key_type: z.enum(['random', 'polling']).optional(),
-  batch_add_set_key_prefix_2_name: z.boolean().optional(),
-  key_mode: z.enum(['append', 'replace']).optional(), // For editing multi-key channels
-  // Channel extra settings (stored in setting JSON, not sent directly)
-  force_format: z.boolean().optional(),
-  thinking_to_content: z.boolean().optional(),
-  proxy: z.string().optional(),
-  pass_through_body_enabled: z.boolean().optional(),
-  system_prompt: z.string().optional(),
-  system_prompt_override: z.boolean().optional(),
-  // Type-specific settings (stored in settings JSON)
-  is_enterprise_account: z.boolean().optional(), // OpenRouter specific
-  vertex_key_type: z.enum(['json', 'api_key']).optional(), // Vertex AI specific
-  aws_key_type: z.enum(['ak_sk', 'api_key']).optional(), // AWS specific
-  azure_responses_version: z.string().optional(), // Azure specific
-  // Field passthrough controls (stored in settings JSON)
-  allow_service_tier: z.boolean().optional(), // OpenAI/Anthropic
-  disable_store: z.boolean().optional(), // OpenAI only
-  allow_safety_identifier: z.boolean().optional(), // OpenAI only
-  allow_include_obfuscation: z.boolean().optional(), // OpenAI: include usage obfuscation
-  allow_inference_geo: z.boolean().optional(), // OpenAI/Anthropic: inference geography
-  allow_speed: z.boolean().optional(), // Anthropic: speed mode control
-  claude_beta_query: z.boolean().optional(), // Anthropic: beta query passthrough
-  // Upstream model update settings (stored in settings JSON)
-  upstream_model_update_check_enabled: z.boolean().optional(),
-  upstream_model_update_auto_sync_enabled: z.boolean().optional(),
-  upstream_model_update_ignored_models: z.string().optional(),
-})
+function parseOptionalJson(value: string | undefined): unknown {
+  if (!value?.trim()) return undefined
+  return JSON.parse(value)
+}
+
+function isJsonObjectValue(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isOptionalJsonObject(value: string | undefined): boolean {
+  try {
+    const parsed = parseOptionalJson(value)
+    return parsed === undefined || isJsonObjectValue(parsed)
+  } catch {
+    return false
+  }
+}
+
+function isOptionalModelMapping(value: string | undefined): boolean {
+  try {
+    const parsed = parseOptionalJson(value)
+    if (parsed === undefined) return true
+    if (!isJsonObjectValue(parsed)) return false
+    return Object.values(parsed).every((item) => typeof item === 'string')
+  } catch {
+    return false
+  }
+}
+
+function isOptionalStatusCodeMapping(value: string | undefined): boolean {
+  try {
+    const parsed = parseOptionalJson(value)
+    if (parsed === undefined) return true
+    if (!isJsonObjectValue(parsed)) return false
+    return Object.entries(parsed).every(([from, to]) => {
+      const fromCode = Number(from)
+      const toCode = Number(to)
+      return (
+        Number.isInteger(fromCode) &&
+        Number.isInteger(toCode) &&
+        fromCode >= 100 &&
+        fromCode <= 599 &&
+        toCode >= 100 &&
+        toCode <= 599
+      )
+    })
+  } catch {
+    return false
+  }
+}
+
+function isCodexCredential(value: string | undefined): boolean {
+  try {
+    const parsed = parseOptionalJson(value)
+    if (parsed === undefined) return true
+    return (
+      isJsonObjectValue(parsed) &&
+      typeof parsed.access_token === 'string' &&
+      parsed.access_token.trim().length > 0 &&
+      typeof parsed.account_id === 'string' &&
+      parsed.account_id.trim().length > 0
+    )
+  } catch {
+    return false
+  }
+}
+
+function isVertexJsonKey(value: string | undefined): boolean {
+  try {
+    const parsed = parseOptionalJson(value)
+    if (parsed === undefined) return true
+    if (Array.isArray(parsed)) {
+      return parsed.every((item) => isJsonObjectValue(item))
+    }
+    return isJsonObjectValue(parsed)
+  } catch {
+    return false
+  }
+}
+
+function addRequiredIssue(
+  ctx: z.RefinementCtx,
+  path: string,
+  message: string
+): void {
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path: [path],
+    message,
+  })
+}
+
+export const channelFormSchema = z
+  .object({
+    name: z.string().min(1, ERROR_MESSAGES.REQUIRED_NAME),
+    type: z.number().min(0, ERROR_MESSAGES.REQUIRED_TYPE),
+    base_url: z.string().optional(),
+    key: z.string(),
+    openai_organization: z.string().optional(),
+    models: z.string().min(1, ERROR_MESSAGES.REQUIRED_MODELS),
+    group: z.array(z.string()).min(1, ERROR_MESSAGES.REQUIRED_GROUP),
+    model_mapping: z
+      .string()
+      .optional()
+      .refine(
+        isOptionalModelMapping,
+        'Model mapping must be a JSON object with string values'
+      ),
+    priority: z.number().optional(),
+    weight: z.number().optional(),
+    test_model: z.string().optional(),
+    auto_ban: z.number().optional(),
+    status: z.number(),
+    status_code_mapping: z
+      .string()
+      .optional()
+      .refine(
+        isOptionalStatusCodeMapping,
+        'Status code mapping must use valid HTTP status codes'
+      ),
+    tag: z.string().optional(),
+    remark: z
+      .string()
+      .max(255, 'Remark must be less than 255 characters')
+      .optional(),
+    setting: z
+      .string()
+      .optional()
+      .refine(isOptionalJsonObject, ERROR_MESSAGES.INVALID_JSON),
+    param_override: z
+      .string()
+      .optional()
+      .refine(isOptionalJsonObject, ERROR_MESSAGES.INVALID_JSON),
+    header_override: z
+      .string()
+      .optional()
+      .refine(isOptionalJsonObject, ERROR_MESSAGES.INVALID_JSON),
+    settings: z
+      .string()
+      .optional()
+      .refine(isOptionalJsonObject, ERROR_MESSAGES.INVALID_JSON),
+    advanced_custom: z.string().optional(),
+    other: z.string().optional(),
+    // Multi-key options (not sent to backend directly)
+    multi_key_mode: z.enum(['single', 'batch', 'multi_to_single']).optional(),
+    multi_key_type: z.enum(['random', 'polling']).optional(),
+    batch_add_set_key_prefix_2_name: z.boolean().optional(),
+    key_mode: z.enum(['append', 'replace']).optional(), // For editing multi-key channels
+    // Channel extra settings (stored in setting JSON, not sent directly)
+    force_format: z.boolean().optional(),
+    thinking_to_content: z.boolean().optional(),
+    proxy: z.string().optional(),
+    pass_through_body_enabled: z.boolean().optional(),
+    system_prompt: z.string().optional(),
+    system_prompt_override: z.boolean().optional(),
+    // Type-specific settings (stored in settings JSON)
+    is_enterprise_account: z.boolean().optional(), // OpenRouter specific
+    vertex_key_type: z.enum(['json', 'api_key']).optional(), // Vertex AI specific
+    aws_key_type: z.enum(['ak_sk', 'api_key']).optional(), // AWS specific
+    azure_responses_version: z.string().optional(), // Azure specific
+    // Field passthrough controls (stored in settings JSON)
+    allow_service_tier: z.boolean().optional(), // OpenAI/Anthropic
+    disable_store: z.boolean().optional(), // OpenAI only
+    allow_safety_identifier: z.boolean().optional(), // OpenAI only
+    allow_include_obfuscation: z.boolean().optional(), // OpenAI: include usage obfuscation
+    allow_inference_geo: z.boolean().optional(), // OpenAI/Anthropic: inference geography
+    allow_speed: z.boolean().optional(), // Anthropic: speed mode control
+    claude_beta_query: z.boolean().optional(), // Anthropic: beta query passthrough
+    disable_task_polling_sleep: z.boolean().optional(),
+    // Upstream model update settings (stored in settings JSON)
+    upstream_model_update_check_enabled: z.boolean().optional(),
+    upstream_model_update_auto_sync_enabled: z.boolean().optional(),
+    upstream_model_update_ignored_models: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if ([3, 8, 36, 45].includes(data.type) && !data.base_url?.trim()) {
+      addRequiredIssue(
+        ctx,
+        'base_url',
+        'Base URL is required for this channel type'
+      )
+    }
+
+    if (data.type === CHANNEL_TYPE_ADVANCED_CUSTOM) {
+      const advancedCustomConfig = parseAdvancedCustomConfig(
+        data.advanced_custom
+      )
+      const advancedCustomError =
+        validateAdvancedCustomConfig(advancedCustomConfig)
+      if (advancedCustomError) {
+        addRequiredIssue(ctx, 'advanced_custom', advancedCustomError.message)
+      }
+      if (
+        advancedCustomConfigUsesRelativeUpstreamPath(advancedCustomConfig) &&
+        !data.base_url?.trim()
+      ) {
+        addRequiredIssue(
+          ctx,
+          'base_url',
+          'Base URL is required when an advanced route uses an upstream path'
+        )
+      }
+      if (
+        data.upstream_model_update_check_enabled === true &&
+        !hasValidAdvancedCustomModelListRoute(advancedCustomConfig)
+      ) {
+        addRequiredIssue(
+          ctx,
+          'upstream_model_update_check_enabled',
+          'OpenAI Models route is required to enable upstream model checks'
+        )
+      }
+    }
+
+    if ([3, 18, 21, 39, 41, 49].includes(data.type) && !data.other?.trim()) {
+      addRequiredIssue(
+        ctx,
+        'other',
+        'This channel type requires additional configuration'
+      )
+    }
+
+    if (data.type === 57) {
+      if (data.multi_key_mode && data.multi_key_mode !== 'single') {
+        addRequiredIssue(
+          ctx,
+          'multi_key_mode',
+          'Codex channels do not support batch creation'
+        )
+      }
+      if (data.key?.trim() && !isCodexCredential(data.key)) {
+        addRequiredIssue(
+          ctx,
+          'key',
+          'Codex credential must be a JSON object with access_token and account_id'
+        )
+      }
+    }
+
+    if (
+      data.type === 41 &&
+      data.vertex_key_type === 'json' &&
+      data.key?.trim() &&
+      !isVertexJsonKey(data.key)
+    ) {
+      addRequiredIssue(
+        ctx,
+        'key',
+        'Vertex AI service account key must be valid JSON'
+      )
+    }
+
+    if (
+      data.type === 41 &&
+      data.vertex_key_type === 'api_key' &&
+      data.multi_key_mode &&
+      data.multi_key_mode !== 'single'
+    ) {
+      addRequiredIssue(
+        ctx,
+        'multi_key_mode',
+        'Vertex AI API Key mode does not support batch creation'
+      )
+    }
+  })
 
 export type ChannelFormValues = z.infer<typeof channelFormSchema>
 
@@ -327,13 +545,13 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
   // Field passthrough controls:
   // - OpenAI (type 1) and Anthropic (type 14): allow_service_tier
   // - OpenAI only: disable_store, allow_safety_identifier
-  if (formData.type === 1 || formData.type === 14) {
+  if (formData.type === 1 || formData.type === 14 || formData.type === 57) {
     settingsObj.allow_service_tier = formData.allow_service_tier === true
   } else if ('allow_service_tier' in settingsObj) {
     delete settingsObj.allow_service_tier
   }
 
-  if (formData.type === 1) {
+  if (formData.type === 1 || formData.type === 57) {
     settingsObj.disable_store = formData.disable_store === true
     settingsObj.allow_safety_identifier =
       formData.allow_safety_identifier === true
@@ -341,13 +559,18 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
       formData.allow_include_obfuscation === true
     settingsObj.allow_inference_geo = formData.allow_inference_geo === true
   } else {
-    if ('disable_store' in settingsObj) delete settingsObj.disable_store
-    if ('allow_safety_identifier' in settingsObj)
+    if ('disable_store' in settingsObj) {
+      delete settingsObj.disable_store
+    }
+    if ('allow_safety_identifier' in settingsObj) {
       delete settingsObj.allow_safety_identifier
-    if ('allow_include_obfuscation' in settingsObj)
+    }
+    if ('allow_include_obfuscation' in settingsObj) {
       delete settingsObj.allow_include_obfuscation
-    if (formData.type !== 14 && 'allow_inference_geo' in settingsObj)
+    }
+    if (formData.type !== 14 && 'allow_inference_geo' in settingsObj) {
       delete settingsObj.allow_inference_geo
+    }
   }
 
   // Anthropic (type 14): claude_beta_query, allow_inference_geo, allow_speed
@@ -356,8 +579,12 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     settingsObj.allow_speed = formData.allow_speed === true
     settingsObj.claude_beta_query = formData.claude_beta_query === true
   } else {
-    if ('allow_speed' in settingsObj) delete settingsObj.allow_speed
-    if ('claude_beta_query' in settingsObj) delete settingsObj.claude_beta_query
+    if ('allow_speed' in settingsObj) {
+      delete settingsObj.allow_speed
+    }
+    if ('claude_beta_query' in settingsObj) {
+      delete settingsObj.claude_beta_query
+    }
   }
 
   // Upstream model update settings (for model-fetchable channel types)
@@ -367,14 +594,14 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     settingsObj.upstream_model_update_auto_sync_enabled =
       settingsObj.upstream_model_update_check_enabled === true &&
       formData.upstream_model_update_auto_sync_enabled === true
-    settingsObj.upstream_model_update_ignored_models = Array.from(
-      new Set(
+    settingsObj.upstream_model_update_ignored_models = [
+      ...new Set(
         String(formData.upstream_model_update_ignored_models || '')
           .split(',')
           .map((model) => model.trim())
           .filter(Boolean)
-      )
-    )
+      ),
+    ]
     if (
       !Array.isArray(settingsObj.upstream_model_update_last_detected_models) ||
       settingsObj.upstream_model_update_check_enabled !== true

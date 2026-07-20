@@ -21,12 +21,27 @@ import { useAuthStore } from '@/stores/auth-store'
 import { ROLE } from '@/lib/roles'
 import { SkillHubTags } from '@/features/skill-hub/tags'
 
-export const Route = createFileRoute('/_authenticated/skill-hub/tags')({
-  beforeLoad: () => {
-    const { auth } = useAuthStore.getState()
-    if (!auth.user || auth.user.role < ROLE.ADMIN) {
-      throw redirect({ to: '/403' })
-    }
-  },
-  component: SkillHubTags,
-})
+import {
+  SideDrawerSection,
+  SideDrawerSectionHeader,
+} from '@/components/drawer-layout'
+
+type ChannelBasicSectionProps = {
+  children: ReactNode
+}
+
+export function ChannelBasicSection(props: ChannelBasicSectionProps) {
+  const { t } = useTranslation()
+
+  return (
+    <SideDrawerSection>
+      <SideDrawerSectionHeader
+        title={t('Basic Information')}
+        description={t('Name, provider type, and availability.')}
+        icon={<Server className='h-4 w-4' aria-hidden='true' />}
+        iconTone='info'
+      />
+      {props.children}
+    </SideDrawerSection>
+  )
+}

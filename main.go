@@ -1,6 +1,10 @@
 package main
 
 import (
+	"syscall"
+	"os/signal"
+	"context"
+	"errors"
 	"bytes"
 	"embed"
 	"fmt"
@@ -97,6 +101,10 @@ func main() {
 		go model.SyncChannelCache(common.SyncFrequency)
 	}
 
+	// Warm pricing after channel cache initialization so Advanced Custom
+	// endpoint inference can read cached route settings on first request.
+	model.GetPricing()
+
 	// 热更新配置
 	go model.SyncOptions(common.SyncFrequency)
 
@@ -175,7 +183,7 @@ func main() {
 	// This will cause SSE not to work!!!
 	//server.Use(gzip.Gzip(gzip.DefaultCompression))
 	server.Use(middleware.RequestId())
-	server.Use(middleware.PoweredBy())
+	server.Use(middleware.Version())
 	server.Use(middleware.I18n())
 	middleware.SetUpLogger(server)
 	// Initialize session store
@@ -184,7 +192,7 @@ func main() {
 		Path:     "/",
 		MaxAge:   2592000, // 30 days
 		HttpOnly: true,
-		Secure:   false,
+		Secure:   common.SessionCookieSecure,
 		SameSite: http.SameSiteStrictMode,
 	})
 	server.Use(sessions.Sessions("session", store))
@@ -204,13 +212,36 @@ func main() {
 		port = strconv.Itoa(*common.Port)
 	}
 
-	// Log startup success message
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: server,
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			common.FatalLog("failed to start HTTP server: " + err.Error())
+		}
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+
 	common.LogStartupSuccess(startTime, port)
 
-	err = server.Run(":" + port)
-	if err != nil {
-		common.FatalLog("failed to start HTTP server: " + err.Error())
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	sig := <-quit
+	common.SysLog(fmt.Sprintf("received signal: %v, shutting down...", sig))
+
+	shutdownTimeout := time.Duration(common.GetEnvOrDefault("SHUTDOWN_TIMEOUT_SECONDS", 120)) * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		common.SysError(fmt.Sprintf("server forced to shutdown: %v", err))
 	}
+	if common.DataExportEnabled {
+		model.SaveQuotaDataCache()
+	}
+	common.SysLog("server exited")
 }
 
 func InjectUmamiAnalytics() {
@@ -294,9 +325,6 @@ func InitResources() error {
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()
-
-	// 初始化模型
-	model.GetPricing()
 
 	// Initialize SQL Database
 	err = model.InitLogDB()

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 import { formatTimestampToDate } from '@/lib/format'
 import { getLobeIcon } from '@/lib/lobe-icon'
@@ -128,16 +128,17 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
           />
         )
       },
-      size: 80,
+      size: 64,
     },
 
-    // Icon column
+    // Model Name column (with model icon)
     {
-      accessorKey: 'icon',
-      meta: { label: t('Icon'), mobileHidden: true },
-      header: t('Icon'),
+      accessorKey: 'model_name',
+      header: t('Model Name'),
+      meta: { mobileTitle: true },
       cell: ({ row }) => {
         const model = row.original
+        const name = row.getValue('model_name') as string
         const iconKey =
           model.icon ||
           vendorMap[model.vendor_id || 0]?.icon ||
@@ -145,31 +146,22 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
           'N'
         const icon = getLobeIcon(iconKey, 20)
 
-        return <div className='flex items-center justify-center'>{icon}</div>
-      },
-      size: 70,
-      enableSorting: false,
-    },
-
-    // Model Name column
-    {
-      accessorKey: 'model_name',
-      meta: { label: t('Model Name'), mobileTitle: true },
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Model Name')} />
-      ),
-      cell: ({ row }) => {
-        const name = row.getValue('model_name') as string
         return (
-          <StatusBadge
-            label={name}
-            variant='neutral'
-            copyText={name}
-            size='sm'
-            className='font-mono'
-          />
+          <div className='flex max-w-full min-w-0 items-center gap-2'>
+            <div className='flex size-5 shrink-0 items-center justify-center overflow-hidden'>
+              {icon}
+            </div>
+            <StatusBadge
+              label={name}
+              variant='neutral'
+              copyText={name}
+              size='sm'
+              className='-ml-1.5 font-mono'
+            />
+          </div>
         )
       },
+      size: 260,
       minSize: 200,
     },
 
@@ -192,7 +184,6 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
 
         const badge = (
           <StatusBadge
-            label={label}
             variant={
               (config.color === 'error' ? 'danger' : config.color) as
                 | 'neutral'
@@ -202,7 +193,10 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
                 | 'info'
             }
             size='sm'
-          />
+            className='-ml-1.5 max-w-none shrink-0'
+          >
+            {label}
+          </StatusBadge>
         )
 
         // Show tooltip with matched models for non-exact rules
@@ -211,14 +205,18 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
           model.matched_models &&
           model.matched_models.length > 0
         ) {
-          const matchedBadges = model.matched_models.map((m, idx) => (
-            <StatusBadge key={idx} label={m} autoColor={m} size='sm' />
+          const matchedBadges = model.matched_models.map((m) => (
+            <StatusBadge key={m} label={m} autoColor={m} size='sm' />
           ))
 
           return (
             <TooltipProvider>
               <Tooltip>
-                <TooltipTrigger render={<div />}>{badge}</TooltipTrigger>
+                <TooltipTrigger
+                  render={<div className='inline-flex max-w-full min-w-0' />}
+                >
+                  {badge}
+                </TooltipTrigger>
                 <TooltipContent
                   side='top'
                   className='border-border bg-popover max-h-48 max-w-[320px] overflow-y-auto p-2'
@@ -232,7 +230,7 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
 
         return badge
       },
-      size: 140,
+      size: 100,
       enableSorting: false,
     },
 
@@ -248,12 +246,14 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
 
         return (
           <StatusBadge
-            label={config.label}
             variant={config.variant}
             showDot={config.showDot}
             size='sm'
             copyable={false}
-          />
+            className='-ml-1.5 max-w-none shrink-0'
+          >
+            {config.label}
+          </StatusBadge>
         )
       },
       filterFn: (row, id, value) => {
@@ -263,7 +263,8 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
         if (value.includes('disabled')) return status !== 1
         return false
       },
-      size: 120,
+      size: 110,
+      minSize: 110,
       enableSorting: false,
     },
 
@@ -297,7 +298,7 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
         if (!value || value.length === 0 || value.includes('all')) return true
         return value.includes(String(row.getValue(id)))
       },
-      size: 150,
+      size: 130,
       enableSorting: false,
     },
 
@@ -336,24 +337,14 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
         ))
 
         return (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger render={<div />}>
-                {renderLimitedItems(tagBadges, 2)}
-              </TooltipTrigger>
-              {tagArray.length > 2 && (
-                <TooltipContent
-                  side='top'
-                  className='border-border bg-popover max-h-48 max-w-[320px] overflow-y-auto p-2'
-                >
-                  <div className='flex flex-wrap gap-1'>{tagBadges}</div>
-                </TooltipContent>
-              )}
-            </Tooltip>
-          </TooltipProvider>
+          <BadgeListCell
+            items={tagArray.map((tag) => (
+              <StatusBadge key={tag} label={tag} autoColor={tag} size='sm' />
+            ))}
+          />
         )
       },
-      size: 150,
+      size: 100,
       enableSorting: false,
     },
 
@@ -375,24 +366,15 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
         ))
 
         return (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger render={<div />}>
-                {renderLimitedItems(endpointBadges, 2)}
-              </TooltipTrigger>
-              {endpointArray.length > 2 && (
-                <TooltipContent
-                  side='top'
-                  className='border-border bg-popover max-h-48 max-w-[320px] overflow-y-auto p-2'
-                >
-                  <div className='flex flex-wrap gap-1'>{endpointBadges}</div>
-                </TooltipContent>
-              )}
-            </Tooltip>
-          </TooltipProvider>
+          <BadgeListCell
+            max={3}
+            items={endpointArray.map((ep) => (
+              <StatusBadge key={ep} label={ep} autoColor={ep} size='sm' />
+            ))}
+          />
         )
       },
-      size: 150,
+      size: 200,
       enableSorting: false,
     },
 
@@ -408,17 +390,16 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
           type?: number
           status?: number
         }>
-
-        if (!channels || channels.length === 0) {
-          return <span className='text-muted-foreground text-xs'>-</span>
-        }
-
-        const channelBadges = channels.map((c, idx) => (
-          <StatusBadge
-            key={idx}
-            label={`${c.name} (${c.type})`}
-            autoColor={c.name}
-            size='sm'
+        return (
+          <BadgeListCell
+            items={(channels ?? []).map((c) => (
+              <StatusBadge
+                key={c.id}
+                label={`${c.name} (${c.type})`}
+                autoColor={c.name}
+                size='sm'
+              />
+            ))}
           />
         ))
 
@@ -463,24 +444,15 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
         ))
 
         return (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger render={<div />}>
-                {renderLimitedItems(groupBadges, 2)}
-              </TooltipTrigger>
-              {groups.length > 2 && (
-                <TooltipContent
-                  side='top'
-                  className='border-border bg-popover max-h-48 max-w-[320px] overflow-y-auto p-2'
-                >
-                  <div className='flex flex-wrap gap-1'>{groupBadges}</div>
-                </TooltipContent>
-              )}
-            </Tooltip>
-          </TooltipProvider>
+          <BadgeListCell
+            max={3}
+            items={(groups ?? []).map((g) => (
+              <GroupBadge key={g} group={g} size='sm' />
+            ))}
+          />
         )
       },
-      size: 150,
+      size: 200,
       enableSorting: false,
     },
 
@@ -516,21 +488,26 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
         })
 
         return (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger render={<div />}>
-                {renderLimitedItems(quotaBadges, 2)}
-              </TooltipTrigger>
-              {quotaTypes.length > 2 && (
-                <TooltipContent
-                  side='top'
-                  className='border-border bg-popover max-h-48 max-w-[320px] overflow-y-auto p-2'
-                >
-                  <div className='flex flex-wrap gap-1'>{quotaBadges}</div>
-                </TooltipContent>
-              )}
-            </Tooltip>
-          </TooltipProvider>
+          <BadgeListCell
+            items={(quotaTypes ?? []).map((qt) => {
+              const config = QUOTA_TYPE_CONFIG[qt]
+              return (
+                <StatusBadge
+                  key={qt}
+                  label={config?.label || String(qt)}
+                  variant={
+                    (config?.color === 'error' ? 'danger' : config?.color) as
+                      | 'neutral'
+                      | 'success'
+                      | 'warning'
+                      | 'danger'
+                      | 'info'
+                  }
+                  size='sm'
+                />
+              )
+            })}
+          />
         )
       },
       size: 150,
@@ -546,11 +523,13 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
         const syncOfficial = row.getValue('sync_official') as number
         return (
           <StatusBadge
-            label={syncOfficial === 1 ? t('Official Sync') : t('No Sync')}
             variant={syncOfficial === 1 ? 'success' : 'warning'}
             size='sm'
             copyable={false}
-          />
+            className='-ml-1.5 max-w-none shrink-0'
+          >
+            {syncOfficial === 1 ? t('Official Sync') : t('No Sync')}
+          </StatusBadge>
         )
       },
       filterFn: (row, id, value) => {
@@ -560,7 +539,7 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
         if (value.includes('no')) return syncOfficial !== 1
         return false
       },
-      size: 120,
+      size: 100,
       enableSorting: false,
     },
 
@@ -574,12 +553,12 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
       cell: ({ row }) => {
         const timestamp = row.getValue('created_time') as number
         return (
-          <div className='min-w-[140px] font-mono text-sm'>
+          <div className='font-mono text-sm whitespace-nowrap'>
             {formatTimestampToDate(timestamp)}
           </div>
         )
       },
-      size: 180,
+      size: 140,
     },
 
     // Updated Time column
@@ -592,12 +571,12 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
       cell: ({ row }) => {
         const timestamp = row.getValue('updated_time') as number
         return (
-          <div className='min-w-[140px] font-mono text-sm'>
+          <div className='font-mono text-sm whitespace-nowrap'>
             {formatTimestampToDate(timestamp)}
           </div>
         )
       },
-      size: 180,
+      size: 140,
     },
 
     // Actions column

@@ -1,6 +1,9 @@
 package common
 
 import (
+	"runtime/debug"
+	"encoding/hex"
+	"crypto/sha256"
 	crand "crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -277,6 +280,18 @@ func Max(a int, b int) int {
 
 func MessageWithRequestId(message string, id string) string {
 	return fmt.Sprintf("%s (request id: %s)", message, id)
+}
+
+var requestIdPrefix = func() string {
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Path != "" {
+		h := sha256.Sum256([]byte(bi.Main.Path))
+		return hex.EncodeToString(h[:4])
+	}
+	return GetRandomString(8)
+}()
+
+func NewRequestId() string {
+	return GetTimeString() + requestIdPrefix + GetRandomString(8)
 }
 
 func RandomSleep() {

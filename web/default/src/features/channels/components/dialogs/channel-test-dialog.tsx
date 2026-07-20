@@ -16,17 +16,30 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  type ColumnDef,
-  type RowSelectionState,
-  type Table as TanStackTable,
-  flexRender,
-  getCoreRowModel,
-  getPaginationRowModel,
-  useReactTable,
+import { useQueryClient } from '@tanstack/react-query'
+import type {
+  ColumnDef,
+  RowSelectionState,
+  Table as TanStackTable,
 } from '@tanstack/react-table'
-import { Loader2, Settings } from 'lucide-react'
+import {
+  Check,
+  CheckCircle2,
+  Copy,
+  Gauge,
+  Info,
+  Loader2,
+  Settings,
+  Trash2,
+} from 'lucide-react'
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -114,12 +127,107 @@ const STREAM_INCOMPATIBLE_ENDPOINTS = new Set([
   'openai-response-compact',
 ])
 
+const MODEL_PRICE_ERROR_CODE = 'model_price_error'
+const FAILURE_SUMMARY_MAX_LENGTH = 96
+const BATCH_TEST_CONCURRENCY = 5
+const BATCH_TEST_DELAY_MS = 100
+
+type FailureStatusDisplay = {
+  summary: string
+  details?: string
+}
+
+type FailureDetailsState = {
+  model: string
+  summary: string
+  details: string
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, ms))
+}
+
+function normalizeInlineError(errorText: string) {
+  return errorText.replaceAll(/\s+/g, ' ').trim()
+}
+
+function getFirstErrorLine(errorText: string) {
+  return errorText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean)
+}
+
+function truncateFailureSummary(summary: string) {
+  if (summary.length <= FAILURE_SUMMARY_MAX_LENGTH) {
+    return summary
+  }
+
+  return `${summary.slice(0, FAILURE_SUMMARY_MAX_LENGTH).trimEnd()}...`
+}
+
+function getFailureStatusDisplay({
+  errorText,
+  fallbackSummary,
+  isModelPriceError,
+  modelPriceSummary,
+}: {
+  errorText?: string
+  fallbackSummary: string
+  isModelPriceError: boolean
+  modelPriceSummary: string
+}): FailureStatusDisplay {
+  const rawError = errorText?.trim()
+
+  if (!rawError) {
+    return { summary: fallbackSummary }
+  }
+
+  if (isModelPriceError) {
+    return {
+      summary: modelPriceSummary,
+      details: rawError === modelPriceSummary ? undefined : rawError,
+    }
+  }
+
+  const firstLine = getFirstErrorLine(rawError) ?? rawError
+  const summary = truncateFailureSummary(normalizeInlineError(firstLine))
+  const normalizedRawError = normalizeInlineError(rawError)
+
+  return {
+    summary,
+    details: summary === normalizedRawError ? undefined : rawError,
+  }
+}
+
+function getTestTableColumnClass(columnId: string) {
+  switch (columnId) {
+    case 'select':
+      return 'w-10 min-w-10'
+    case 'model':
+      return 'w-auto min-w-48 whitespace-nowrap'
+    case 'status':
+      return 'w-28 min-w-28 whitespace-nowrap'
+    case 'result':
+      return 'w-80 min-w-80 max-w-80 whitespace-normal'
+    case 'actions':
+      return 'bg-popover w-px whitespace-nowrap'
+    default:
+      return undefined
+  }
+}
+
 export function ChannelTestDialog({
   open,
   onOpenChange,
 }: ChannelTestDialogProps) {
   const { t } = useTranslation()
-  const { currentRow } = useChannels()
+  const queryClient = useQueryClient()
+  const currentChannelId = currentRow.id
+  const batchStopRequestedRef = useRef(false)
+  const batchProgressToastIdRef = useRef<ReturnType<
+    typeof toast.loading
+  > | null>(null)
   const [endpointType, setEndpointType] = useState('auto')
   const [isStreamTest, setIsStreamTest] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -133,6 +241,39 @@ export function ChannelTestDialog({
     pageIndex: 0,
     pageSize: 10,
   })
+
+  const dismissBatchProgressToast = useCallback(() => {
+    if (batchProgressToastIdRef.current === null) return
+
+    toast.dismiss(batchProgressToastIdRef.current)
+    batchProgressToastIdRef.current = null
+  }, [])
+
+  useEffect(() => {
+    if (!batchProgress) {
+      dismissBatchProgressToast()
+      return
+    }
+
+    const title = isBatchStopRequested
+      ? t('Stopping batch test...')
+      : t('Batch testing models...')
+    const completedText = t('{{completed}}/{{total}} completed', {
+      completed: batchProgress.completed,
+      total: batchProgress.total,
+    })
+    const resultText = t('{{success}} succeeded, {{failed}} failed', {
+      success: batchProgress.success,
+      failed: batchProgress.failed,
+    })
+
+    batchProgressToastIdRef.current = toast.loading(title, {
+      id: batchProgressToastIdRef.current ?? undefined,
+      description: `${completedText} · ${resultText}`,
+    })
+  }, [batchProgress, dismissBatchProgressToast, isBatchStopRequested, t])
+
+  useEffect(() => dismissBatchProgressToast, [dismissBatchProgressToast])
 
   const resetState = useCallback(() => {
     setEndpointType('auto')
@@ -243,19 +384,123 @@ export function ChannelTestDialog({
 
   const handleBatchTest = useCallback(
     async (modelsToTest: string[]) => {
-      if (!modelsToTest.length) return
+      const uniqueModels = [
+        ...new Set(modelsToTest.map((model) => model.trim()).filter(Boolean)),
+      ]
+      if (!uniqueModels.length) return
 
       setIsBatchTesting(true)
       try {
-        await Promise.allSettled(
-          modelsToTest.map((modelName) => testSingleModel(modelName))
-        )
+        const createFallbackResult = (error?: unknown): TestResult => ({
+          status: 'error',
+          completedAt: Date.now(),
+          error: error instanceof Error ? error.message : t('Test failed'),
+        })
+
+        const recordBatchResult = (result: TestResult) => {
+          results.push(result)
+          completedCount += 1
+          if (result.status === 'success') {
+            successCount += 1
+          }
+          failedCount = completedCount - successCount
+
+          setBatchProgress({
+            total: uniqueModels.length,
+            completed: completedCount,
+            success: successCount,
+            failed: failedCount,
+          })
+        }
+
+        for (
+          let startIndex = 0;
+          startIndex < uniqueModels.length;
+          startIndex += BATCH_TEST_CONCURRENCY
+        ) {
+          if (batchStopRequestedRef.current) {
+            break
+          }
+
+          const batch = uniqueModels.slice(
+            startIndex,
+            startIndex + BATCH_TEST_CONCURRENCY
+          )
+          const batchPromises = batch.map(async (modelName) => {
+            try {
+              const result = await testSingleModel(modelName, true, false)
+              const finalResult = result ?? createFallbackResult()
+              if (!result) {
+                updateTestResult(modelName, finalResult)
+              }
+              recordBatchResult(finalResult)
+              return finalResult
+            } catch (error: unknown) {
+              const fallbackResult = createFallbackResult(error)
+              updateTestResult(modelName, fallbackResult)
+              recordBatchResult(fallbackResult)
+              return fallbackResult
+            }
+          })
+
+          await Promise.allSettled(batchPromises)
+
+          if (
+            batchStopRequestedRef.current ||
+            startIndex + BATCH_TEST_CONCURRENCY >= uniqueModels.length
+          ) {
+            break
+          }
+
+          await sleep(BATCH_TEST_DELAY_MS)
+        }
+
+        resultPatch = getLatestChannelTestCachePatch(results)
+        const stopped =
+          batchStopRequestedRef.current && completedCount < uniqueModels.length
+
+        dismissBatchProgressToast()
+        if (stopped) {
+          toast.info(
+            t(
+              'Batch test stopped: {{completed}}/{{total}} completed, {{success}} succeeded, {{failed}} failed',
+              {
+                completed: completedCount,
+                total: uniqueModels.length,
+                success: successCount,
+                failed: failedCount,
+              }
+            )
+          )
+        } else if (failedCount > 0) {
+          toast.error(
+            t(
+              'Batch test completed: {{success}} succeeded, {{failed}} failed',
+              {
+                success: successCount,
+                failed: failedCount,
+              }
+            )
+          )
+        } else {
+          toast.success(
+            t('Batch test completed: {{count}} succeeded', {
+              count: successCount,
+            })
+          )
+        }
       } finally {
         setIsBatchTesting(false)
         setRowSelection({})
       }
     },
-    [testSingleModel]
+    [
+      dismissBatchProgressToast,
+      refreshChannelLists,
+      t,
+      testSingleModel,
+      updateTestResult,
+    ]
   )
 
   const handleClose = () => {
@@ -318,69 +563,27 @@ export function ChannelTestDialog({
         cell: ({ row }) => {
           const model = row.original.model
           const result = testResults[model]
-
-          if (!result || result.status === 'idle') {
-            return (
-              <StatusBadge
-                label={t('Not tested')}
-                variant='neutral'
-                copyable={false}
-              />
-            )
-          }
-
-          if (result.status === 'testing') {
-            return (
-              <div className='text-muted-foreground flex items-center gap-2 text-sm'>
-                <Loader2 className='h-4 w-4 animate-spin' />
-                Testing...
-              </div>
-            )
-          }
-
-          if (result.status === 'success') {
-            return (
-              <div className='flex flex-col gap-1 text-xs'>
-                <StatusBadge
-                  label='Success'
-                  variant='success'
-                  copyable={false}
-                />
-                {typeof result.responseTime === 'number' && (
-                  <span className='text-muted-foreground'>
-                    {formatResponseTime(result.responseTime, t)}
-                  </span>
-                )}
-              </div>
-            )
-          }
-
+          return <TestStatusCell result={result} />
+        },
+        enableSorting: false,
+        size: 112,
+      },
+      {
+        id: 'result',
+        header: t('Result'),
+        cell: ({ row }) => {
+          const model = row.original.model
+          const result = testResults[model]
           return (
-            <div className='flex flex-col gap-1 text-xs'>
-              <StatusBadge label='Failed' variant='danger' copyable={false} />
-              {result.error && (
-                <span className='text-muted-foreground break-all'>
-                  {result.error}
-                </span>
-              )}
-              {result.errorCode === 'model_price_error' && (
-                <Button
-                  variant='outline'
-                  size='sm'
-                  className='w-fit'
-                  onClick={() =>
-                    window.open('/console/setting?tab=ratio', '_blank')
-                  }
-                >
-                  <Settings className='mr-1 h-3 w-3' />
-                  {t('Go to Settings')}
-                </Button>
-              )}
-            </div>
+            <TestResultCell
+              result={result}
+              model={model}
+              onOpenDetails={setFailureDetails}
+            />
           )
         },
         enableSorting: false,
-        size: 220,
+        size: 320,
       },
       {
         id: 'actions',
@@ -390,17 +593,26 @@ export function ChannelTestDialog({
           const isTestingModel = testingModels.has(model)
 
           return (
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={() => testSingleModel(model)}
-              disabled={isTestingModel || isBatchTesting}
-            >
-              {isTestingModel && (
-                <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-              )}
-              Test
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant='ghost'
+                    size='icon-sm'
+                    onClick={() => testSingleModel(model)}
+                    disabled={isTestingModel || isBatchTesting}
+                    aria-label={t('Test Connection')}
+                  />
+                }
+              >
+                {isTestingModel ? (
+                  <Loader2 className='size-4 animate-spin' />
+                ) : (
+                  <Gauge className='size-4' />
+                )}
+              </TooltipTrigger>
+              <TooltipContent>{t('Test Connection')}</TooltipContent>
+            </Tooltip>
           )
         },
         enableSorting: false,
@@ -436,15 +648,25 @@ export function ChannelTestDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className='max-h-[90vh] overflow-hidden sm:max-w-3xl'>
-        <DialogHeader>
-          <DialogTitle>{t('Test Channel Connection')}</DialogTitle>
-          <DialogDescription>
-            {t('Test connectivity for:')} <strong>{currentRow.name}</strong>
-          </DialogDescription>
-        </DialogHeader>
-
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={handleDialogOpenChange}
+        title={
+          <span className='inline-flex max-w-full min-w-0 items-center gap-1.5'>
+            <span className='shrink-0'>{t('Test Channel Connection')}:</span>
+            <span className='min-w-0 truncate'>{currentRow.name}</span>
+          </span>
+        }
+        contentClassName='max-h-[90vh] overflow-hidden sm:max-w-4xl'
+        contentHeight='auto'
+        bodyClassName='space-y-4'
+        footer={
+          <Button variant='outline' onClick={handleClose}>
+            {t('Close')}
+          </Button>
+        }
+      >
         <div className='max-h-[78vh] space-y-4 overflow-y-auto py-4 pr-1'>
           <div className='grid gap-4 md:grid-cols-2'>
             <div className='grid gap-2'>
@@ -501,76 +723,107 @@ export function ChannelTestDialog({
           </div>
 
           <div className='space-y-3 max-sm:has-[div[role="toolbar"]]:pb-16'>
-            <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-              <div>
+            <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+              <div className='min-w-0 space-y-2'>
                 <p className='text-sm font-medium'>{t('Channel models')}</p>
                 <p className='text-muted-foreground text-xs'>
                   {t('Select models to run batch tests.')}
                 </p>
+                <div className='flex flex-wrap items-center gap-2'>
+                  {isBatchTesting ? (
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      onClick={handleStopBatchTest}
+                      disabled={isBatchStopRequested}
+                    >
+                      {isBatchStopRequested
+                        ? t('Stopping...')
+                        : t('Stop testing')}
+                    </Button>
+                  ) : (
+                    <>
+                      <Button
+                        size='sm'
+                        onClick={() => handleBatchTest(filteredModels)}
+                        disabled={isAnyTesting || filteredModels.length === 0}
+                      >
+                        {testAllButtonLabel}
+                      </Button>
+                      {successModels.length > 0 && (
+                        <Button
+                          variant='outline'
+                          size='sm'
+                          onClick={handleSelectSuccessfulModels}
+                        >
+                          <CheckCircle2 data-icon='inline-start' />
+                          {t('Select successful models ({{count}})', {
+                            count: successModels.length,
+                          })}
+                        </Button>
+                      )}
+                      {failedModels.length > 0 && (
+                        <Button
+                          variant='outline'
+                          size='sm'
+                          onClick={() => setIsDeleteFailedDialogOpen(true)}
+                        >
+                          <Trash2 data-icon='inline-start' />
+                          {t('Delete failed models ({{count}})', {
+                            count: failedModels.length,
+                          })}
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
-              <Input
-                placeholder={t('Filter models...')}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className='sm:w-64'
-              />
+              <div className='flex flex-col gap-2 sm:flex-row sm:items-center'>
+                <Input
+                  placeholder={t('Filter models...')}
+                  value={searchTerm}
+                  onChange={handleSearchTermChange}
+                  className='sm:w-64'
+                />
+              </div>
             </div>
 
             <div className='space-y-3'>
-              <div className='overflow-hidden rounded-md border' role='region'>
-                <div className='max-h-[360px] overflow-y-auto'>
-                  <Table>
-                    <TableHeader>
-                      {table.getHeaderGroups().map((headerGroup) => (
-                        <TableRow key={headerGroup.id}>
-                          {headerGroup.headers.map((header) => (
-                            <TableHead key={header.id}>
-                              {header.isPlaceholder
-                                ? null
-                                : flexRender(
-                                    header.column.columnDef.header,
-                                    header.getContext()
-                                  )}
-                            </TableHead>
-                          ))}
-                        </TableRow>
-                      ))}
-                    </TableHeader>
-                    <TableBody>
-                      {table.getRowModel().rows.length ? (
-                        table.getRowModel().rows.map((row) => (
-                          <TableRow
-                            key={row.id}
-                            data-state={
-                              row.getIsSelected() ? 'selected' : undefined
-                            }
-                          >
-                            {row.getVisibleCells().map((cell) => (
-                              <TableCell key={cell.id}>
-                                {flexRender(
-                                  cell.column.columnDef.cell,
-                                  cell.getContext()
-                                )}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                        ))
-                      ) : (
-                        <TableRow>
-                          <TableCell
-                            colSpan={table.getVisibleLeafColumns().length}
-                            className='text-muted-foreground h-16 text-center text-sm'
-                          >
-                            {models.length
-                              ? 'No models matched your search.'
-                              : 'This channel has no configured models.'}
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
+              <DataTableView
+                table={table}
+                containerClassName='rounded-md'
+                containerProps={{
+                  role: 'region',
+                  'aria-label': t('Channel models'),
+                }}
+                tableContainerClassName='max-h-90 overflow-auto **:data-[slot=table-container]:overflow-visible'
+                tableClassName='w-max min-w-full table-auto'
+                pinnedColumns={[
+                  {
+                    columnId: 'actions',
+                    side: 'right',
+                    cellClassName: 'bg-popover',
+                  },
+                ]}
+                colgroup={
+                  <colgroup>
+                    <col className='w-10 min-w-10' />
+                    <col className='w-auto' />
+                    <col className='w-28' />
+                    <col className='w-80' />
+                    <col className='w-px' />
+                  </colgroup>
+                }
+                getColumnClassName={(columnId) =>
+                  getTestTableColumnClass(columnId)
+                }
+                emptyContent={
+                  models.length
+                    ? t('No models matched your search.')
+                    : t('This channel has no configured models.')
+                }
+                emptyCellClassName='text-muted-foreground h-16 text-center text-sm'
+              />
 
               <DataTablePagination table={table} />
             </div>
@@ -583,9 +836,117 @@ export function ChannelTestDialog({
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant='outline' onClick={handleClose}>
-            {t('Close')}
+function TestStatusCell({ result }: { result?: TestResult }) {
+  const { t } = useTranslation()
+
+  if (!result || result.status === 'idle') {
+    return (
+      <StatusBadge label={t('Not tested')} variant='neutral' copyable={false} />
+    )
+  }
+
+  if (result.status === 'testing') {
+    return (
+      <StatusBadge variant='info' copyable={false}>
+        <Loader2 className='size-3.5 shrink-0 animate-spin' />
+        <span className='min-w-0 truncate leading-normal'>
+          {t('Testing...')}
+        </span>
+      </StatusBadge>
+    )
+  }
+
+  if (result.status === 'success') {
+    return (
+      <StatusBadge label={t('Success')} variant='success' copyable={false} />
+    )
+  }
+
+  return <StatusBadge label={t('Failed')} variant='danger' copyable={false} />
+}
+
+function TestResultCell({
+  result,
+  model,
+  onOpenDetails,
+}: {
+  result?: TestResult
+  model: string
+  onOpenDetails: (details: FailureDetailsState) => void
+}) {
+  const { t } = useTranslation()
+
+  if (!result || result.status === 'idle') {
+    return <span className='text-muted-foreground text-sm'>-</span>
+  }
+
+  if (result.status === 'testing') {
+    return (
+      <div className='text-muted-foreground flex min-w-0 items-center gap-2 text-sm'>
+        <Loader2 className='size-4 shrink-0 animate-spin' />
+        <span className='truncate'>{t('Testing...')}</span>
+      </div>
+    )
+  }
+
+  if (result.status === 'success') {
+    return typeof result.responseTime === 'number' ? (
+      <span className='text-muted-foreground text-sm'>
+        {formatResponseTime(result.responseTime, t)}
+      </span>
+    ) : (
+      <span className='text-muted-foreground text-sm'>-</span>
+    )
+  }
+
+  return (
+    <FailureResultContent
+      result={result}
+      model={model}
+      onOpenDetails={onOpenDetails}
+    />
+  )
+}
+
+function FailureResultContent({
+  result,
+  model,
+  onOpenDetails,
+}: {
+  result: TestResult
+  model: string
+  onOpenDetails: (details: FailureDetailsState) => void
+}) {
+  const { t } = useTranslation()
+  const errorText = result.error?.trim()
+  const isModelPriceError = result.errorCode === MODEL_PRICE_ERROR_CODE
+  const modelPriceSummary = t(
+    'Model price is not configured. Please complete model pricing in settings.'
+  )
+  const { summary, details } = getFailureStatusDisplay({
+    errorText,
+    fallbackSummary: t('Test failed'),
+    isModelPriceError,
+    modelPriceSummary,
+  })
+
+  return (
+    <div className='flex min-w-0 items-center gap-2 text-xs whitespace-normal'>
+      <p className='text-muted-foreground line-clamp-2 min-w-0 flex-1 leading-snug wrap-break-word'>
+        {summary}
+      </p>
+      <div className='flex shrink-0 flex-wrap items-center justify-end gap-1.5'>
+        {isModelPriceError && (
+          <Button
+            variant='outline'
+            size='sm'
+            className='h-7 w-fit px-2 text-xs'
+            onClick={() =>
+              window.open('/system-settings/billing/model-pricing', '_blank')
+            }
+          >
+            <Settings className='mr-1 h-3 w-3 shrink-0' />
+            {t('Go to Settings')}
           </Button>
         </DialogFooter>
       </DialogContent>

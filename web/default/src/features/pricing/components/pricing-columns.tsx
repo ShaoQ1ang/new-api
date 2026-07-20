@@ -16,18 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 import { getLobeIcon } from '@/lib/lobe-icon'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { DataTableColumnHeader } from '@/components/data-table/column-header'
-import { GroupBadge } from '@/components/group-badge'
-import { DEFAULT_TOKEN_UNIT, QUOTA_TYPE_VALUES } from '../constants'
+
+import { DEFAULT_TOKEN_UNIT } from '../constants'
 import {
   getDynamicDisplayGroupRatio,
   getDynamicPricingSummary,
@@ -40,6 +33,7 @@ import {
   stripTrailingZeros,
 } from '../lib/price'
 import type { PricingModel, TokenUnit } from '../types'
+import { ModelBillingModeBadge } from './model-billing-mode-badge'
 
 // ----------------------------------------------------------------------------
 // Pricing Table Columns
@@ -50,6 +44,7 @@ export interface PricingColumnsOptions {
   priceRate?: number
   usdExchangeRate?: number
   showRechargePrice?: boolean
+  selectedGroup?: string
 }
 
 function renderLimitedTags(
@@ -103,6 +98,7 @@ export function usePricingColumns(
     priceRate = 1,
     usdExchangeRate = 1,
     showRechargePrice = false,
+    selectedGroup,
   } = options
 
   const tokenUnitLabel = tokenUnit === 'K' ? '1K' : '1M'
@@ -138,15 +134,10 @@ export function usePricingColumns(
       accessorKey: 'quota_type',
       meta: { label: t('Type') },
       header: t('Type'),
-      cell: ({ row }) => {
-        const isTokenBased = row.original.quota_type === QUOTA_TYPE_VALUES.TOKEN
-        return (
-          <span className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
-            {isTokenBased ? t('Token') : t('Request')}
-          </span>
-        )
-      },
-      size: 80,
+      cell: ({ row }) => (
+        <ModelBillingModeBadge model={row.original} className='-ml-1.5' />
+      ),
+      size: 110,
       enableSorting: false,
     },
 
@@ -164,7 +155,10 @@ export function usePricingColumns(
           showRechargePrice,
           priceRate,
           usdExchangeRate,
-          groupRatioMultiplier: getDynamicDisplayGroupRatio(model),
+          groupRatioMultiplier: getDynamicDisplayGroupRatio(
+            model,
+            selectedGroup
+          ),
         })
 
         if (dynamicSummary) {
@@ -226,7 +220,8 @@ export function usePricingColumns(
               tokenUnit,
               showRechargePrice,
               priceRate,
-              usdExchangeRate
+              usdExchangeRate,
+              selectedGroup
             )
           )
           const outputPrice = stripTrailingZeros(
@@ -236,7 +231,8 @@ export function usePricingColumns(
               tokenUnit,
               showRechargePrice,
               priceRate,
-              usdExchangeRate
+              usdExchangeRate,
+              selectedGroup
             )
           )
 
@@ -259,7 +255,8 @@ export function usePricingColumns(
             model,
             showRechargePrice,
             priceRate,
-            usdExchangeRate
+            usdExchangeRate,
+            selectedGroup
           )
         )
 
@@ -288,7 +285,10 @@ export function usePricingColumns(
           showRechargePrice,
           priceRate,
           usdExchangeRate,
-          groupRatioMultiplier: getDynamicDisplayGroupRatio(model),
+          groupRatioMultiplier: getDynamicDisplayGroupRatio(
+            model,
+            selectedGroup
+          ),
         })
 
         if (dynamicSummary) {
@@ -332,7 +332,8 @@ export function usePricingColumns(
             tokenUnit,
             showRechargePrice,
             priceRate,
-            usdExchangeRate
+            usdExchangeRate,
+            selectedGroup
           )
         )
 

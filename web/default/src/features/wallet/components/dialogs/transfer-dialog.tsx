@@ -31,7 +31,15 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { QUOTA_PER_DOLLAR } from '../../constants'
+import {
+  formatQuota,
+  parseQuotaFromDollars,
+  quotaUnitsToDollars,
+} from '@/lib/format'
+import {
+  DEFAULT_CURRENCY_CONFIG,
+  useSystemConfigStore,
+} from '@/stores/system-config-store'
 
 interface TransferDialogProps {
   open: boolean
@@ -49,17 +57,34 @@ export function TransferDialog({
   transferring,
 }: TransferDialogProps) {
   const { t } = useTranslation()
-  const [amount, setAmount] = useState(QUOTA_PER_DOLLAR)
+  const currencyConfig = useSystemConfigStore(
+    (state) => state.config.currency
+  )
+  const minimumQuota = Math.ceil(
+    currencyConfig.quotaPerUnit > 0
+      ? currencyConfig.quotaPerUnit
+      : DEFAULT_CURRENCY_CONFIG.quotaPerUnit
+  )
+  const minimumAmount = quotaUnitsToDollars(minimumQuota)
+  const maximumAmount = quotaUnitsToDollars(availableQuota)
+  const [amount, setAmount] = useState(minimumAmount)
+  const transferQuota = parseQuotaFromDollars(amount)
+  const canTransfer =
+    Number.isFinite(amount) &&
+    transferQuota >= minimumQuota &&
+    transferQuota <= availableQuota
 
   useEffect(() => {
     if (open) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setAmount(QUOTA_PER_DOLLAR)
+      setAmount(minimumAmount)
     }
-  }, [open])
+  }, [minimumAmount, open])
 
   const handleConfirm = async () => {
-    const success = await onConfirm(amount)
+    if (!canTransfer) return
+
+    const success = await onConfirm(transferQuota)
     if (success) {
       onOpenChange(false)
     }
@@ -118,12 +143,48 @@ export function TransferDialog({
           >
             {t('Cancel')}
           </Button>
-          <Button onClick={handleConfirm} disabled={transferring}>
+          <Button
+            onClick={handleConfirm}
+            disabled={transferring || !canTransfer}
+          >
             {transferring && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
             {t('Transfer')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
+        </>
+      }
+    >
+      <div className='space-y-4 py-3 sm:space-y-6 sm:py-4'>
+        <div className='space-y-2'>
+          <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
+            {t('Available Rewards')}
+          </Label>
+          <div className='text-2xl font-semibold'>
+            {formatQuota(availableQuota)}
+          </div>
+        </div>
+
+        <div className='space-y-3'>
+          <Label
+            htmlFor='transfer-amount'
+            className='text-muted-foreground text-xs font-medium tracking-wider uppercase'
+          >
+            {t('Transfer Amount')}
+          </Label>
+          <Input
+            id='transfer-amount'
+            type='number'
+            value={amount}
+            onChange={(e) => setAmount(Number(e.target.value))}
+            min={minimumAmount}
+            max={maximumAmount}
+            step={minimumAmount}
+            className='font-mono text-lg'
+          />
+          <p className='text-muted-foreground text-xs'>
+            {t('Minimum:')} {formatQuota(minimumQuota)}
+          </p>
+        </div>
+      </div>
     </Dialog>
   )
 }

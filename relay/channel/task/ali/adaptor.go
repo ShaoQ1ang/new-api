@@ -295,7 +295,20 @@ func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relay
 		}
 	}
 
-	aliReq.Parameters.Duration = resolveTaskDuration(req, 5)
+	// 处理时长
+	if req.Duration > 0 {
+		aliReq.Parameters.Duration = req.Duration
+	} else if req.Seconds != "" {
+		seconds, err := strconv.Atoi(req.Seconds)
+		if err != nil {
+			return nil, errors.Wrap(err, "convert seconds to int failed")
+		} else {
+			aliReq.Parameters.Duration = seconds
+		}
+	}
+	if aliReq.Parameters.Duration <= 0 {
+		aliReq.Parameters.Duration = 5 // 默认5秒
+	}
 
 	if req.Metadata != nil {
 		if metadataBytes, err := common.Marshal(req.Metadata); err == nil {
@@ -325,8 +338,10 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		return nil
 	}
 
+	// metadata can override Duration past standard request validation;
+	// cap it because it is used as a billing multiplier.
 	otherRatios := map[string]float64{
-		"seconds": float64(aliReq.Parameters.Duration),
+		"seconds": float64(min(aliReq.Parameters.Duration, relaycommon.MaxTaskDurationSeconds)),
 	}
 	ratios, err := ProcessAliOtherRatios(aliReq)
 	if err != nil {

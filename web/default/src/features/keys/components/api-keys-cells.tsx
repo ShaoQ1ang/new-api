@@ -19,7 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useCallback } from 'react'
 import { Check, Copy, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { copyToClipboard } from '@/lib/copy-to-clipboard'
+
+import { BadgeCell } from '@/components/data-table'
+import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import {
   Popover,
@@ -31,8 +33,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { StatusBadge } from '@/components/status-badge'
-import { type ApiKey } from '../types'
+import { copyToClipboard } from '@/lib/copy-to-clipboard'
+
+import type { ApiKey } from '../types'
 import { useApiKeys } from './api-keys-provider'
 
 export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
@@ -63,11 +66,21 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
 
   const handleCopy = useCallback(async () => {
     const realKey = resolvedFullKey || (await resolveRealKey(apiKey.id))
-    if (realKey) {
-      const ok = await copyToClipboard(realKey)
-      if (ok) markKeyCopied(apiKey.id)
-    }
+    if (!realKey) return
+
+    const ok = await copyToClipboard(realKey)
+    if (ok) markKeyCopied(apiKey.id)
   }, [resolvedFullKey, resolveRealKey, apiKey.id, markKeyCopied])
+
+  let copyIcon = <Copy className='size-3.5' />
+  let copyTooltip = t('Copy API key')
+  if (isLoading) {
+    copyIcon = <Loader2 className='size-3.5 animate-spin' />
+    copyTooltip = t('Loading...')
+  } else if (isCopied) {
+    copyIcon = <Check className='size-3.5 text-green-600' />
+    copyTooltip = t('Copied!')
+  }
 
   return (
     <div className='flex items-center'>
@@ -120,21 +133,9 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
             />
           }
         >
-          {isLoading ? (
-            <Loader2 className='size-3.5 animate-spin' />
-          ) : isCopied ? (
-            <Check className='size-3.5 text-green-600' />
-          ) : (
-            <Copy className='size-3.5' />
-          )}
+          {copyIcon}
         </TooltipTrigger>
-        <TooltipContent>
-          {isLoading
-            ? t('Loading...')
-            : isCopied
-              ? t('Copied!')
-              : t('Copy API key')}
-        </TooltipContent>
+        <TooltipContent>{copyTooltip}</TooltipContent>
       </Tooltip>
     </div>
   )

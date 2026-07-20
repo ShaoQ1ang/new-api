@@ -2,7 +2,6 @@ package openai
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -42,10 +42,13 @@ type Adaptor struct {
 }
 
 func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeminiChatRequest) (any, error) {
-	// 使用 service.GeminiToOpenAIRequest 转换请求格式
-	openaiRequest, err := service.GeminiToOpenAIRequest(request, info)
+	result, err := service.ConvertRequest(c, info, types.RelayFormatOpenAI, request)
 	if err != nil {
 		return nil, err
+	}
+	openaiRequest, ok := result.Value.(*dto.GeneralOpenAIRequest)
+	if !ok {
+		return nil, fmt.Errorf("expected OpenAI chat completions request, got %T", result.Value)
 	}
 	return a.ConvertOpenAIRequest(c, info, openaiRequest)
 }
@@ -61,9 +64,13 @@ func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayIn
 	//		println(fmt.Sprintf("failed to save request body to file: %v", err))
 	//	}
 	//}
-	aiRequest, err := service.ClaudeToOpenAIRequest(*request, info)
+	result, err := service.ConvertRequest(c, info, types.RelayFormatOpenAI, request)
 	if err != nil {
 		return nil, err
+	}
+	aiRequest, ok := result.Value.(*dto.GeneralOpenAIRequest)
+	if !ok {
+		return nil, fmt.Errorf("expected OpenAI chat completions request, got %T", result.Value)
 	}
 	//if common.DebugEnabled {
 	//	println(fmt.Sprintf("convert claude to openai request result: %s", common.GetJsonString(aiRequest)))
@@ -311,18 +318,20 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		}
 
 	}
-	if strings.HasPrefix(info.UpstreamModelName, "o") || strings.HasPrefix(info.UpstreamModelName, "gpt-5") {
+	isOModel := dto.IsOpenAIReasoningOModel(info.UpstreamModelName)
+	isGPT5Model := dto.IsOpenAIGPT5Model(info.UpstreamModelName)
+	if isOModel || isGPT5Model {
 		if lo.FromPtrOr(request.MaxCompletionTokens, uint(0)) == 0 && lo.FromPtrOr(request.MaxTokens, uint(0)) != 0 {
 			request.MaxCompletionTokens = request.MaxTokens
 			request.MaxTokens = nil
 		}
 
-		if strings.HasPrefix(info.UpstreamModelName, "o") {
+		if isOModel {
 			request.Temperature = nil
 		}
 
 		// gpt-5系列模型适配 归零不再支持的参数
-		if strings.HasPrefix(info.UpstreamModelName, "gpt-5") {
+		if isGPT5Model {
 			request.Temperature = nil
 			request.TopP = nil
 			request.LogProbs = nil
@@ -367,11 +376,6 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 		}
 		return bytes.NewReader(jsonData), nil
 	} else {
-		if info.ChannelType == constant.ChannelTypeOpenRouter &&
-			info.RelayMode == relayconstant.RelayModeAudioTranscription {
-			return convertOpenRouterAudioTranscriptionRequest(c, request)
-		}
-
 		var requestBody bytes.Buffer
 		writer := multipart.NewWriter(&requestBody)
 
@@ -383,7 +387,7 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 		}
 
 		// 打印类似 curl 命令格式的信息
-		logger.LogDebug(c.Request.Context(), fmt.Sprintf("--form 'model=\"%s\"'", request.Model))
+		logger.LogDebug(c.Request.Context(), "--form 'model=\"%s\"'", request.Model)
 
 		// 遍历表单字段并打印输出
 		for key, values := range formData.Value {
@@ -392,7 +396,7 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 			}
 			for _, value := range values {
 				writer.WriteField(key, value)
-				logger.LogDebug(c.Request.Context(), fmt.Sprintf("--form '%s=\"%s\"'", key, value))
+				logger.LogDebug(c.Request.Context(), "--form '%s=\"%s\"'", key, value)
 			}
 		}
 
@@ -404,8 +408,8 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 
 		// 使用 formData 中的第一个文件
 		fileHeader := fileHeaders[0]
-		logger.LogDebug(c.Request.Context(), fmt.Sprintf("--form 'file=@\"%s\"' (size: %d bytes, content-type: %s)",
-			fileHeader.Filename, fileHeader.Size, fileHeader.Header.Get("Content-Type")))
+		logger.LogDebug(c.Request.Context(), "--form 'file=@\"%s\"' (size: %d bytes, content-type: %s)",
+			fileHeader.Filename, fileHeader.Size, fileHeader.Header.Get("Content-Type"))
 
 		file, err := fileHeader.Open()
 		if err != nil {
@@ -424,68 +428,12 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 		// 关闭 multipart 编写器以设置分界线
 		writer.Close()
 		c.Request.Header.Set("Content-Type", writer.FormDataContentType())
-		logger.LogDebug(c.Request.Context(), fmt.Sprintf("--header 'Content-Type: %s'", writer.FormDataContentType()))
+		logger.LogDebug(c.Request.Context(), "--header 'Content-Type: %s'", writer.FormDataContentType())
 		return &requestBody, nil
 	}
 }
 
-func convertOpenRouterAudioTranscriptionRequest(c *gin.Context, request dto.AudioRequest) (io.Reader, error) {
-	formData, err := common.ParseMultipartFormReusable(c)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing multipart form: %w", err)
-	}
-
-	fileHeaders := formData.File["file"]
-	if len(fileHeaders) == 0 {
-		return nil, errors.New("file is required")
-	}
-
-	fileHeader := fileHeaders[0]
-	file, err := fileHeader.Open()
-	if err != nil {
-		return nil, fmt.Errorf("error opening audio file: %w", err)
-	}
-	defer file.Close()
-
-	audioBytes, err := io.ReadAll(file)
-	if err != nil {
-		return nil, fmt.Errorf("error reading audio file: %w", err)
-	}
-
-	audioFormat := detectAudioFormat(fileHeader.Filename, fileHeader.Header.Get("Content-Type"))
-	payload := map[string]any{
-		"model": request.Model,
-		"input_audio": map[string]any{
-			"data":   base64.StdEncoding.EncodeToString(audioBytes),
-			"format": audioFormat,
-		},
-	}
-
-	for key, values := range formData.Value {
-		if key == "model" || len(values) == 0 {
-			continue
-		}
-		if len(values) == 1 {
-			payload[key] = values[0]
-		} else {
-			payload[key] = values
-		}
-	}
-
-	jsonData, err := common.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("error marshalling object: %w", err)
-	}
-	c.Request.Header.Set("Content-Type", "application/json")
-	return bytes.NewReader(jsonData), nil
-}
-
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
-	if info.ChannelType == constant.ChannelTypeOpenAI && request.Model == "gpt-image-2" {
-		// OpenAI's gpt-image-2 rejects response_format on image generations.
-		request.ResponseFormat = ""
-	}
-
 	switch info.RelayMode {
 	case relayconstant.RelayModeImagesEdits:
 		if isJSONRequest(c) {
@@ -499,33 +447,19 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		// 使用已解析的 multipart 表单，避免重复解析
 		mf := c.Request.MultipartForm
 		if mf == nil {
-			if _, err := c.MultipartForm(); err != nil {
-				return nil, errors.New("failed to parse multipart form")
+			form, err := common.ParseMultipartFormReusable(c)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse multipart form: %w", err)
 			}
-			mf = c.Request.MultipartForm
+			c.Request.MultipartForm = form
+			c.Request.PostForm = url.Values(form.Value)
+			mf = form
 		}
 
 		// 写入所有非文件字段
 		if mf != nil {
-			allowedMultipartImageEditFields := map[string]struct{}{
-				"prompt":             {},
-				"n":                  {},
-				"size":               {},
-				"quality":            {},
-				"output_format":      {},
-				"output_compression": {},
-				"background":         {},
-				"moderation":         {},
-				"partial_images":     {},
-				"stream":             {},
-				"user":               {},
-				"input_fidelity":     {},
-			}
 			for key, values := range mf.Value {
 				if key == "model" {
-					continue
-				}
-				if _, ok := allowedMultipartImageEditFields[key]; !ok {
 					continue
 				}
 				for _, value := range values {
@@ -660,41 +594,6 @@ func detectImageMimeType(filename string) string {
 	}
 }
 
-func detectAudioFormat(filename string, contentType string) string {
-	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(filename)), ".")
-	switch ext {
-	case "wav", "mp3", "webm", "ogg", "flac", "m4a":
-		return ext
-	case "mp4":
-		return "m4a"
-	case "mpeg", "mpga":
-		return "mp3"
-	}
-
-	if contentType != "" {
-		if mediaType := strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0])); mediaType != "" {
-			switch mediaType {
-			case "audio/wav", "audio/x-wav":
-				return "wav"
-			case "audio/mpeg", "audio/mp3":
-				return "mp3"
-			case "audio/webm":
-				return "webm"
-			case "audio/ogg":
-				return "ogg"
-			case "audio/flac":
-				return "flac"
-			case "audio/mp4", "audio/x-m4a":
-				return "m4a"
-			}
-			if parts := strings.Split(mediaType, "/"); len(parts) == 2 && parts[1] != "" {
-				return strings.TrimPrefix(parts[1], "x-")
-			}
-		}
-	}
-	return "wav"
-}
-
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
 	//  转换模型推理力度后缀
 	effort, originModel := reasoning.ParseOpenAIReasoningEffortFromModelSuffix(request.Model)
@@ -737,7 +636,11 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	case relayconstant.RelayModeAudioTranscription:
 		err, usage = OpenaiSTTHandler(c, resp, info, a.ResponseFormat)
 	case relayconstant.RelayModeImagesGenerations, relayconstant.RelayModeImagesEdits:
-		usage, err = OpenaiHandlerWithUsage(c, info, resp)
+		if info.IsStream {
+			usage, err = OpenaiImageStreamHandler(c, info, resp)
+		} else {
+			usage, err = OpenaiImageHandler(c, info, resp)
+		}
 	case relayconstant.RelayModeRerank:
 		usage, err = common_handler.RerankHandler(c, info, resp)
 	case relayconstant.RelayModeResponses:

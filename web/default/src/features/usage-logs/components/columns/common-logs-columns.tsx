@@ -16,17 +16,30 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { ColumnDef } from '@tanstack/react-table'
+import { GitBranch, Sparkles, KeyRound } from 'lucide-react'
 import { useState } from 'react'
 import { type ColumnDef } from '@tanstack/react-table'
 import { CircleAlert, Sparkles, KeyRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+
+import { GroupBadge } from '@/components/group-badge'
+import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
-import {
-  formatUseTime,
-  formatLogQuota,
-  formatTimestampToDate,
-} from '@/lib/format'
+import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -40,8 +53,6 @@ import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import type { UsageLog } from '../../data/schema'
 import {
   formatModelName,
-  getFirstResponseTimeColor,
-  getResponseTimeColor,
   getTieredBillingSummary,
   hasAnyCacheTokens,
   parseLogOther,
@@ -57,6 +68,7 @@ import {
 import type { LogOtherData } from '../../types'
 import { DetailsDialog } from '../dialogs/details-dialog'
 import { ModelBadge } from '../model-badge'
+import { TimingMetricsCell, StreamTpsCell } from '../timing-metrics-cell'
 import { useUsageLogsContext } from '../usage-logs-provider'
 
 interface DetailSegment {
@@ -72,25 +84,42 @@ function formatRatioCompact(ratio: number | undefined): string {
     : ratio.toFixed(4).replace(/\.?0+$/, '')
 }
 
-function getGroupRatioText(other: LogOtherData | null): string | null {
+function getGroupRatio(other: LogOtherData | null): number | null {
   const userGroupRatio = other?.user_group_ratio
   if (
     userGroupRatio != null &&
     userGroupRatio !== -1 &&
     Number.isFinite(userGroupRatio)
   ) {
-    return `${formatRatioCompact(userGroupRatio)}x`
+    return userGroupRatio
   }
 
   const groupRatio = other?.group_ratio
   if (groupRatio != null && groupRatio !== 1 && Number.isFinite(groupRatio)) {
-    return `${formatRatioCompact(groupRatio)}x`
+    return groupRatio
   }
 
   return null
 }
 
 function buildDetailSegments(
+  log: UsageLog,
+  other: LogOtherData | null,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+  isAdmin: boolean
+): DetailSegment[] {
+  const segments = buildTypeDetailSegments(log, other, t)
+  // Quota saturation is a rare, admin-only anomaly marker; surface it first
+  // and in danger styling so it stands out on the related billing log. The
+  // backend already strips admin_info for non-admins; gate on isAdmin too as
+  // defense in depth so the marker never leaks if that changes.
+  if (isAdmin && other?.admin_info?.quota_saturation) {
+    return [{ text: t('Quota clamped'), danger: true }, ...segments]
+  }
+  return segments
+}
+
+function buildTypeDetailSegments(
   log: UsageLog,
   other: LogOtherData | null,
   t: (key: string, opts?: Record<string, unknown>) => string
@@ -192,10 +221,11 @@ function buildDetailSegments(
       })
     }
   } else {
-    const isPerCall = isPerCallBilling(other.model_price)
-    if (isPerCall) {
+    const modelPrice = other.model_price
+    const isPerCall = isPerCallBilling(modelPrice)
+    if (isPerCall && modelPrice != null) {
       segments.push({
-        text: `${t('Per-call')} · ${formatBillingCurrencyFromUSD(other.model_price!, priceOpts)}`,
+        text: `${t('Per-call')} · ${formatBillingCurrencyFromUSD(modelPrice, priceOpts)}`,
       })
     } else if (other.model_ratio != null) {
       const inputPriceUSD = other.model_ratio * 2.0
@@ -283,6 +313,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
               variant={config.color as StatusBadgeProps['variant']}
               size='sm'
               copyable={false}
+              className='-ml-1.5 !text-xs [&_span]:!text-xs'
             />
           </div>
         )
@@ -466,27 +497,46 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
       const displayName = sensitiveVisible ? tokenName : '••••'
       let group = log.group
       if (!group) group = other?.group || ''
-
-      const metaParts: string[] = []
-      const groupRatioText = getGroupRatioText(other)
-      if (group) {
-        metaParts.push(sensitiveVisible ? group : '••••')
-      }
-      if (groupRatioText) metaParts.push(groupRatioText)
+      const groupRatio = getGroupRatio(other)
 
       return (
-        <div className='flex max-w-[150px] flex-col gap-0.5'>
-          <StatusBadge
-            label={displayName}
-            icon={KeyRound}
-            copyText={sensitiveVisible ? tokenName : undefined}
-            size='sm'
-            showDot={false}
-            className='border-border/60 bg-muted/30 text-foreground max-w-full overflow-hidden rounded-md border px-1.5 py-0.5 font-mono'
-          />
-          {metaParts.length > 0 && (
-            <span className='text-muted-foreground/60 truncate text-[11px]'>
-              {metaParts.join(' · ')}
+        <div className='flex max-w-[200px] flex-col gap-0.5'>
+          <TooltipProvider delay={300}>
+            <Tooltip>
+              <TooltipTrigger render={<div className='max-w-full' />}>
+                <StatusBadge
+                  label={displayName}
+                  icon={KeyRound}
+                  copyText={sensitiveVisible ? tokenName : undefined}
+                  size='sm'
+                  showDot={false}
+                  className='border-border/60 bg-muted/30 text-foreground h-6 max-w-full gap-1.5 overflow-hidden rounded-md border px-2 py-0.5 [font-family:var(--font-body)]'
+                />
+              </TooltipTrigger>
+              {sensitiveVisible && tokenName.length > 16 && (
+                <TooltipContent side='top' className='max-w-xs break-all'>
+                  {tokenName}
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
+          {(group || groupRatio != null) && (
+            <span className='block max-w-full truncate text-xs leading-none'>
+              {group ? (
+                <GroupBadge
+                  group={group}
+                  label={sensitiveVisible ? undefined : '••••'}
+                  type='text'
+                  size='sm'
+                  className='inline align-baseline text-xs leading-none [&>span]:leading-none'
+                />
+              ) : null}
+              {group && groupRatio != null ? ' ' : null}
+              {groupRatio != null ? (
+                <span className='text-muted-foreground/60 relative top-px align-baseline tabular-nums'>
+                  {formatRatioCompact(groupRatio)}x
+                </span>
+              ) : null}
             </span>
           )}
         </div>
@@ -521,124 +571,29 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
     },
 
     {
-      accessorKey: 'use_time',
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title={t('Timing')} />
-      ),
+      accessorKey: 'is_stream',
+      header: t('Stream'),
       cell: ({ row }) => {
         const log = row.original
         if (!isTimingLogType(log.type)) return null
 
         const useTime = row.getValue('use_time') as number
         const other = parseLogOther(log.other)
-        const frt = other?.frt
         const tokensPerSecond =
           useTime > 0 && log.completion_tokens > 0
             ? log.completion_tokens / useTime
             : null
-        const timeVariant = getResponseTimeColor(useTime, log.completion_tokens)
-        const frtVariant = frt ? getFirstResponseTimeColor(frt / 1000) : null
-
-        const pillBg: Record<string, string> = {
-          success:
-            'border border-emerald-200/40 bg-emerald-50/35 dark:border-emerald-900/40 dark:bg-emerald-950/15',
-          warning:
-            'border border-amber-200/45 bg-amber-50/35 dark:border-amber-900/40 dark:bg-amber-950/15',
-          danger:
-            'border border-rose-200/50 bg-rose-50/35 dark:border-rose-900/40 dark:bg-rose-950/15',
-        }
-        const pillText: Record<string, string> = {
-          success: 'text-emerald-700/85 dark:text-emerald-400/85',
-          warning: 'text-amber-700/85 dark:text-amber-400/85',
-          danger: 'text-rose-700/85 dark:text-rose-400/85',
-        }
-        const pillDot: Record<string, string> = {
-          success: 'bg-emerald-500/80',
-          warning: 'bg-amber-500/80',
-          danger: 'bg-rose-500/80',
-        }
 
         return (
-          <div className='flex flex-col gap-1'>
-            <div className='flex items-center gap-1.5'>
-              <span
-                className={cn(
-                  'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-xs font-medium',
-                  pillBg[timeVariant],
-                  pillText[timeVariant]
-                )}
-              >
-                <span
-                  className={cn(
-                    'size-1.5 shrink-0 rounded-full',
-                    pillDot[timeVariant]
-                  )}
-                  aria-hidden='true'
-                />
-                {formatUseTime(useTime)}
-              </span>
-              {log.is_stream &&
-                (frt != null && frt > 0 ? (
-                  <span
-                    className={cn(
-                      'inline-flex items-center rounded-md px-1.5 py-0.5 font-mono text-xs font-medium',
-                      pillBg[frtVariant!],
-                      pillText[frtVariant!]
-                    )}
-                  >
-                    {formatUseTime(frt / 1000)}
-                  </span>
-                ) : (
-                  <span className='border-border/60 text-muted-foreground/50 inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px]'>
-                    N/A
-                  </span>
-                ))}
-            </div>
-            <div className='flex items-center gap-1 text-[11px]'>
-              <span className='text-muted-foreground/60'>
-                {log.is_stream ? t('Stream') : t('Non-stream')}
-                {tokensPerSecond != null && (
-                  <>
-                    {' · '}
-                    <span className='font-mono tabular-nums'>
-                      {Math.round(tokensPerSecond)}
-                    </span>
-                    {' t/s'}
-                  </>
-                )}
-              </span>
-              {log.is_stream &&
-                other?.stream_status &&
-                other.stream_status.status !== 'ok' && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={<CircleAlert className='size-3 text-red-500' />}
-                      ></TooltipTrigger>
-                      <TooltipContent>
-                        <div className='space-y-0.5 text-xs'>
-                          <p>
-                            {t('Stream Status')}: {t('Error')}
-                          </p>
-                          <p>{other.stream_status.end_reason || 'unknown'}</p>
-                          {(other.stream_status.error_count ?? 0) > 0 && (
-                            <p>
-                              {t('Soft Errors')}:{' '}
-                              {other.stream_status.error_count}
-                            </p>
-                          )}
-                        </div>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-            </div>
-          </div>
+          <StreamTpsCell
+            isStream={log.is_stream}
+            tokensPerSecond={tokensPerSecond}
+            streamStatus={other?.stream_status}
+          />
         )
       },
-      meta: { label: t('Timing'), mobileHidden: true },
+      meta: { label: t('Stream') },
     },
-
     {
       accessorKey: 'prompt_tokens',
       header: ({ column }) => (
@@ -689,7 +644,6 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
       },
       meta: { label: 'Tokens', mobileHidden: true },
     },
-
     {
       accessorKey: 'quota',
       header: ({ column }) => (
@@ -742,6 +696,27 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
     },
 
     {
+      accessorKey: 'use_time',
+      header: t('Timing'),
+      cell: ({ row }) => {
+        const log = row.original
+        if (!isTimingLogType(log.type)) return null
+
+        const useTime = row.getValue('use_time') as number
+        const other = parseLogOther(log.other)
+
+        return (
+          <TimingMetricsCell
+            useTimeSec={useTime}
+            completionTokens={log.completion_tokens}
+            frtMs={other?.frt}
+            isStream={log.is_stream}
+          />
+        )
+      },
+    },
+
+    {
       accessorKey: 'content',
       header: t('Details'),
       cell: function DetailsCell({ row }) {
@@ -749,9 +724,39 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const log = row.original
         const other = parseLogOther(log.other)
 
-        const segments = buildDetailSegments(log, other, t)
+        const segments = buildDetailSegments(log, other, t, isAdmin)
         const primary = segments[0]
         const hasMore = segments.length > 1
+        let primaryTextClass = 'text-foreground'
+        if (primary?.muted) {
+          primaryTextClass = 'text-muted-foreground/60'
+        } else if (primary?.danger) {
+          primaryTextClass = 'text-red-600 dark:text-red-400'
+        }
+        let detailPreview = <span className='text-muted-foreground/40'>—</span>
+        if (primary) {
+          detailPreview = (
+            <span
+              className={cn(
+                'truncate leading-snug group-hover:underline',
+                primaryTextClass
+              )}
+            >
+              {primary.text}
+              {hasMore && (
+                <span className='text-muted-foreground/40 ml-0.5'>
+                  +{segments.length - 1}
+                </span>
+              )}
+            </span>
+          )
+        } else if (log.content) {
+          detailPreview = (
+            <span className='text-muted-foreground truncate group-hover:underline'>
+              {log.content}
+            </span>
+          )
+        }
 
         return (
           <>
@@ -761,31 +766,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
               onClick={() => setDialogOpen(true)}
               title={t('Click to view full details')}
             >
-              {primary ? (
-                <span
-                  className={cn(
-                    'truncate leading-snug group-hover:underline',
-                    primary.muted
-                      ? 'text-muted-foreground/60'
-                      : primary.danger
-                        ? 'text-red-600 dark:text-red-400'
-                        : 'text-foreground'
-                  )}
-                >
-                  {primary.text}
-                  {hasMore && (
-                    <span className='text-muted-foreground/40 ml-0.5'>
-                      +{segments.length - 1}
-                    </span>
-                  )}
-                </span>
-              ) : log.content ? (
-                <span className='text-muted-foreground truncate group-hover:underline'>
-                  {log.content}
-                </span>
-              ) : (
-                <span className='text-muted-foreground/40'>—</span>
-              )}
+              {detailPreview}
             </button>
             <DetailsDialog
               log={log}

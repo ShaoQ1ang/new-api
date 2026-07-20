@@ -38,14 +38,19 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { DataTableToolbar } from '@/components/data-table'
-import { LOG_TYPES } from '../constants'
+
+import { LOG_TYPE_ALL_VALUE, LOG_TYPE_FILTERS } from '../constants'
 import { buildSearchParams } from '../lib/filter'
 import { getDefaultTimeRange } from '../lib/utils'
 import type { CommonLogFilters } from '../types'
 import { CommonLogsStats } from './common-logs-stats'
 import { CompactDateTimeRangePicker } from './compact-date-time-range-picker'
-import { useUsageLogsContext } from './usage-logs-provider'
+import {
+  LogsFilterField,
+  LogsFilterInput,
+  LogsFilterToolbar,
+} from './logs-filter-toolbar'
+import { useLogsViewScope, useUsageLogsContext } from './usage-logs-provider'
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
 const logTypeValues = ['0', '1', '2', '3', '4', '5', '6'] as const
@@ -67,7 +72,7 @@ export function CommonLogsFilterBar<TData>(
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const searchParams = route.useSearch()
-  const isAdmin = useIsAdmin()
+  const { isAdminView: isAdmin } = useLogsViewScope()
   const { sensitiveVisible, setSensitiveVisible } = useUsageLogsContext()
   const fetchingLogs = useIsFetching({ queryKey: ['logs'] })
 

@@ -80,7 +80,7 @@ func Login(c *gin.Context) {
 	}
 
 	// 检查是否启用2FA
-	if model.IsTwoFAEnabled(user.Id) {
+	if enabled, _ := model.IsTwoFAEnabled(user.Id); enabled {
 		// 设置pending session，等待2FA验证
 		session := sessions.Default(c)
 		session.Set("pending_username", user.Username)
@@ -205,7 +205,7 @@ func SmsLogin(c *gin.Context) {
 		return
 	}
 
-	if model.IsTwoFAEnabled(user.Id) {
+	if enabled, _ := model.IsTwoFAEnabled(user.Id); enabled {
 		session := sessions.Default(c)
 		session.Set("pending_username", user.Username)
 		session.Set("pending_user_id", user.Id)
@@ -457,7 +457,8 @@ func SearchUsers(c *gin.Context) {
 	keyword := c.Query("keyword")
 	group := c.Query("group")
 	pageInfo := common.GetPageQuery(c)
-	users, total, err := model.SearchUsers(keyword, group, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	sortOptions := model.NewUserSortOptions(c.Query("sort_by"), c.Query("sort_order"))
+	users, total, err := model.SearchUsers(keyword, group, nil, nil, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), sortOptions)
 	if err != nil {
 		common.ApiError(c, err)
 		return
