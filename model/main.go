@@ -267,6 +267,11 @@ func migrateDB() error {
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
 	}
+	// Phone unique index must be normalized before AutoMigrate(User), otherwise
+	// GORM may issue DROP CONSTRAINT on a name that does not exist on Postgres.
+	if err := ensureUsersPhoneSchema(); err != nil {
+		return err
+	}
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -308,6 +313,7 @@ func migrateDB() error {
 		&ClientRelease{},
 		&ChatModelOption{},
 		&AlipayPendingTask{},
+		&BillingSubscription{},
 		&PlaygroundConversation{},
 	)
 	if err != nil {
@@ -326,6 +332,9 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
+	if err := ensureUsersPhoneSchema(); err != nil {
+		return err
+	}
 
 	var wg sync.WaitGroup
 
@@ -369,6 +378,7 @@ func migrateDBFast() error {
 		{&ClientRelease{}, "ClientRelease"},
 		{&ChatModelOption{}, "ChatModelOption"},
 		{&AlipayPendingTask{}, "AlipayPendingTask"},
+		{&BillingSubscription{}, "BillingSubscription"},
 		{&PlaygroundConversation{}, "PlaygroundConversation"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
@@ -599,6 +609,168 @@ PRIMARY KEY (` + "`id`" + `)
 		if err := DB.Exec("ALTER TABLE `" + tableName + "` ADD COLUMN " + col.DDL).Error; err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// usersPhoneUniqueIndex is the stable unique index name for users.phone.
+// Existing installs may also have users_phone_key / uni_users_phone; ensureUsersPhoneSchema
+// collapses them to this single name without requiring data loss.
+const usersPhoneUniqueIndex = "idx_users_phone_unique"
+
+// ensureUsersPhoneSchema is idempotent and production-safe:
+// 1) add users.phone if missing
+// 2) drop alternate unique constraint/index names on phone (IF EXISTS)
+// 3) create the canonical unique index IF NOT EXISTS
+//
+// Why this exists: GORM AutoMigrate renames unique indexes with
+// `ALTER TABLE ... DROP CONSTRAINT "name"`, which fails on PostgreSQL when the
+// object is a UNIQUE INDEX (DROP INDEX needed) or when the constraint name
+// never existed. Online upgrades must not wipe the database to work around that.
+func ensureUsersPhoneSchema() error {
+	if DB == nil {
+		return nil
+	}
+	if !DB.Migrator().HasTable(&User{}) {
+		return nil
+	}
+
+	if !DB.Migrator().HasColumn(&User{}, "Phone") {
+		if err := DB.Migrator().AddColumn(&User{}, "Phone"); err != nil {
+			return fmt.Errorf("add users.phone column: %w", err)
+		}
+		common.SysLog("added users.phone column")
+	}
+
+	if err := dropAlternateUsersPhoneUniques(); err != nil {
+		return err
+	}
+	if err := createUsersPhoneUniqueIndexIfMissing(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func dropAlternateUsersPhoneUniques() error {
+	// Known historical names from GORM default / Postgres unique / earlier tags.
+	// Never drop the canonical index here.
+	alternateConstraints := []string{
+		"uni_users_phone",
+		"users_phone_key",
+	}
+	alternateIndexes := []string{
+		"uni_users_phone",
+		"users_phone_key",
+	}
+
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		for _, name := range alternateConstraints {
+			if name == usersPhoneUniqueIndex {
+				continue
+			}
+			sql := fmt.Sprintf(`ALTER TABLE users DROP CONSTRAINT IF EXISTS "%s"`, name)
+			if err := DB.Exec(sql).Error; err != nil {
+				return fmt.Errorf("drop phone constraint %s: %w", name, err)
+			}
+		}
+		for _, name := range alternateIndexes {
+			if name == usersPhoneUniqueIndex {
+				continue
+			}
+			sql := fmt.Sprintf(`DROP INDEX IF EXISTS "%s"`, name)
+			if err := DB.Exec(sql).Error; err != nil {
+				return fmt.Errorf("drop phone index %s: %w", name, err)
+			}
+		}
+		return nil
+	}
+
+	if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
+		// MySQL: drop index by name if present (constraints are indexes).
+		for _, name := range append(alternateConstraints, alternateIndexes...) {
+			if name == usersPhoneUniqueIndex {
+				continue
+			}
+			var cnt int64
+			if err := DB.Raw(
+				`SELECT COUNT(1) FROM information_schema.statistics
+				 WHERE table_schema = DATABASE() AND table_name = 'users' AND index_name = ?`,
+				name,
+			).Scan(&cnt).Error; err != nil {
+				return fmt.Errorf("query phone index %s: %w", name, err)
+			}
+			if cnt == 0 {
+				continue
+			}
+			sql := fmt.Sprintf("ALTER TABLE users DROP INDEX `%s`", name)
+			if err := DB.Exec(sql).Error; err != nil {
+				return fmt.Errorf("drop phone index %s: %w", name, err)
+			}
+		}
+		return nil
+	}
+
+	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+		// SQLite has limited ALTER; only drop alternate indexes by name when present.
+		for _, name := range append(alternateConstraints, alternateIndexes...) {
+			if name == usersPhoneUniqueIndex {
+				continue
+			}
+			// IF EXISTS supported since SQLite 3.7+
+			if err := DB.Exec(fmt.Sprintf("DROP INDEX IF EXISTS `%s`", name)).Error; err != nil {
+				return fmt.Errorf("drop phone index %s: %w", name, err)
+			}
+		}
+		return nil
+	}
+	return nil
+}
+
+func createUsersPhoneUniqueIndexIfMissing() error {
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		// Concurrent-safe for online deploy: IF NOT EXISTS avoids rebuild when already present.
+		sql := fmt.Sprintf(
+			`CREATE UNIQUE INDEX IF NOT EXISTS "%s" ON users (phone)`,
+			usersPhoneUniqueIndex,
+		)
+		if err := DB.Exec(sql).Error; err != nil {
+			return fmt.Errorf("create %s: %w", usersPhoneUniqueIndex, err)
+		}
+		return nil
+	}
+
+	if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
+		var cnt int64
+		if err := DB.Raw(
+			`SELECT COUNT(1) FROM information_schema.statistics
+			 WHERE table_schema = DATABASE() AND table_name = 'users' AND index_name = ?`,
+			usersPhoneUniqueIndex,
+		).Scan(&cnt).Error; err != nil {
+			return fmt.Errorf("query %s: %w", usersPhoneUniqueIndex, err)
+		}
+		if cnt > 0 {
+			return nil
+		}
+		sql := fmt.Sprintf("CREATE UNIQUE INDEX `%s` ON users (`phone`)", usersPhoneUniqueIndex)
+		if err := DB.Exec(sql).Error; err != nil {
+			// Duplicate index race or already exists under another check.
+			if strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+				return nil
+			}
+			return fmt.Errorf("create %s: %w", usersPhoneUniqueIndex, err)
+		}
+		return nil
+	}
+
+	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+		sql := fmt.Sprintf(
+			"CREATE UNIQUE INDEX IF NOT EXISTS `%s` ON `users` (`phone`)",
+			usersPhoneUniqueIndex,
+		)
+		if err := DB.Exec(sql).Error; err != nil {
+			return fmt.Errorf("create %s: %w", usersPhoneUniqueIndex, err)
+		}
+		return nil
 	}
 	return nil
 }
