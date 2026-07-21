@@ -21,6 +21,7 @@ import { Activity, RotateCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { IconBadge } from '@/components/ui/icon-badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { getUptimeStatus } from '@/features/dashboard/api'
 import type {
@@ -51,7 +52,7 @@ export function UptimePanel() {
   useEffect(() => {
     const abortController = new AbortController()
 
-    getUptimeStatus()
+    void getUptimeStatus()
       .then((res) => {
         if (abortController.signal.aborted) return
         setGroups(res?.data || [])
@@ -75,7 +76,7 @@ export function UptimePanel() {
     const abortController = new AbortController()
     setRefreshing(true)
 
-    getUptimeStatus()
+    void getUptimeStatus()
       .then((res) => {
         if (abortController.signal.aborted) return
         setGroups(res?.data || [])
@@ -95,7 +96,9 @@ export function UptimePanel() {
     <PanelWrapper
       title={
         <span className='flex items-center gap-2'>
-          <Activity className='text-muted-foreground/60 size-4' />
+          <IconBadge tone='success' size='sm'>
+            <Activity />
+          </IconBadge>
           {t('Uptime')}
         </span>
       }
