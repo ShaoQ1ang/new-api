@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	"gorm.io/gorm"
 )
 
 type Option struct {
@@ -63,12 +64,9 @@ func InitOptionMap() {
 	common.OptionMap["SMTPAccount"] = ""
 	common.OptionMap["SMTPToken"] = ""
 	common.OptionMap["SMTPSSLEnabled"] = strconv.FormatBool(common.SMTPSSLEnabled)
+	common.OptionMap["SMTPStartTLSEnabled"] = strconv.FormatBool(common.SMTPStartTLSEnabled)
+	common.OptionMap["SMTPInsecureSkipVerify"] = strconv.FormatBool(common.SMTPInsecureSkipVerify)
 	common.OptionMap["SMTPForceAuthLogin"] = strconv.FormatBool(common.SMTPForceAuthLogin)
-	common.OptionMap["AliyunSmsAccessKeyId"] = ""
-	common.OptionMap["AliyunSmsAccessKeySecret"] = ""
-	common.OptionMap["AliyunSmsSignName"] = common.AliyunSmsSignName
-	common.OptionMap["AliyunSmsTemplateCode"] = common.AliyunSmsTemplateCode
-	common.OptionMap["AliyunSmsEndpoint"] = common.AliyunSmsEndpoint
 	common.OptionMap["Notice"] = ""
 	common.OptionMap["About"] = ""
 	common.OptionMap["HomePageContent"] = ""
@@ -92,20 +90,6 @@ func InitOptionMap() {
 	common.OptionMap["StripePriceId"] = setting.StripePriceId
 	common.OptionMap["StripeUnitPrice"] = strconv.FormatFloat(setting.StripeUnitPrice, 'f', -1, 64)
 	common.OptionMap["StripePromotionCodesEnabled"] = strconv.FormatBool(setting.StripePromotionCodesEnabled)
-	common.OptionMap["AlipayEnabled"] = strconv.FormatBool(setting.AlipayEnabled)
-	common.OptionMap["AlipaySandbox"] = strconv.FormatBool(setting.AlipaySandbox)
-	common.OptionMap["AlipayAppID"] = setting.AlipayAppID
-	common.OptionMap["AlipayPrivateKey"] = setting.AlipayPrivateKey
-	common.OptionMap["AlipayPublicKey"] = setting.AlipayPublicKey
-	common.OptionMap["AlipayGateway"] = setting.AlipayGateway
-	common.OptionMap["AlipayNotifyURL"] = setting.AlipayNotifyURL
-	common.OptionMap["AlipayReturnURL"] = setting.AlipayReturnURL
-	common.OptionMap["AlipaySellerID"] = setting.AlipaySellerID
-	common.OptionMap["AlipayMinTopUp"] = strconv.Itoa(setting.AlipayMinTopUp)
-	common.OptionMap["AlipayCyclePayEnabled"] = strconv.FormatBool(setting.AlipayCyclePayEnabled)
-	common.OptionMap["AlipayCyclePayPersonalProductCode"] = setting.AlipayCyclePayPersonalProductCode
-	common.OptionMap["AlipayCyclePayProductCode"] = setting.AlipayCyclePayProductCode
-	common.OptionMap["AlipayCyclePaySignScene"] = setting.AlipayCyclePaySignScene
 	common.OptionMap["CreemApiKey"] = setting.CreemApiKey
 	common.OptionMap["CreemProducts"] = setting.CreemProducts
 	common.OptionMap["CreemTestMode"] = strconv.FormatBool(setting.CreemTestMode)
@@ -126,21 +110,15 @@ func InitOptionMap() {
 	common.OptionMap["WaffoUnitPrice"] = strconv.FormatFloat(setting.WaffoUnitPrice, 'f', -1, 64)
 	common.OptionMap["WaffoMinTopUp"] = strconv.Itoa(setting.WaffoMinTopUp)
 	common.OptionMap["WaffoPayMethods"] = setting.WaffoPayMethods2JsonString()
-	common.OptionMap["WaffoPancakeEnabled"] = strconv.FormatBool(setting.WaffoPancakeEnabled)
-	common.OptionMap["WaffoPancakeSandbox"] = strconv.FormatBool(setting.WaffoPancakeSandbox)
 	common.OptionMap["WaffoPancakeMerchantID"] = setting.WaffoPancakeMerchantID
 	common.OptionMap["WaffoPancakePrivateKey"] = setting.WaffoPancakePrivateKey
-	common.OptionMap["WaffoPancakeWebhookPublicKey"] = setting.WaffoPancakeWebhookPublicKey
-	common.OptionMap["WaffoPancakeWebhookTestKey"] = setting.WaffoPancakeWebhookTestKey
-	common.OptionMap["WaffoPancakeStoreID"] = setting.WaffoPancakeStoreID
-	common.OptionMap["WaffoPancakeProductID"] = setting.WaffoPancakeProductID
 	common.OptionMap["WaffoPancakeReturnURL"] = setting.WaffoPancakeReturnURL
-	common.OptionMap["WaffoPancakeCurrency"] = setting.WaffoPancakeCurrency
 	common.OptionMap["WaffoPancakeUnitPrice"] = strconv.FormatFloat(setting.WaffoPancakeUnitPrice, 'f', -1, 64)
 	common.OptionMap["WaffoPancakeMinTopUp"] = strconv.Itoa(setting.WaffoPancakeMinTopUp)
+	common.OptionMap["WaffoPancakeStoreID"] = setting.WaffoPancakeStoreID
+	common.OptionMap["WaffoPancakeProductID"] = setting.WaffoPancakeProductID
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
-	common.OptionMap["PlaygroundModelRules"] = "[]"
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
 	common.OptionMap["DefaultUseAutoGroup"] = strconv.FormatBool(setting.DefaultUseAutoGroup)
 	common.OptionMap["PayMethods"] = operation_setting.PayMethods2JsonString()
@@ -164,8 +142,6 @@ func InitOptionMap() {
 	common.OptionMap["ModelRequestRateLimitGroup"] = setting.ModelRequestRateLimitGroup2JSONString()
 	common.OptionMap["ModelRatio"] = ratio_setting.ModelRatio2JSONString()
 	common.OptionMap["ModelPrice"] = ratio_setting.ModelPrice2JSONString()
-	common.OptionMap["TaskConditionPrice"] = ratio_setting.TaskConditionPrice2JSONString()
-	common.OptionMap["VideoSecondsPrice"] = ratio_setting.VideoSecondsPrice2JSONString()
 	common.OptionMap["CacheRatio"] = ratio_setting.CacheRatio2JSONString()
 	common.OptionMap["CreateCacheRatio"] = ratio_setting.CreateCacheRatio2JSONString()
 	common.OptionMap["GroupRatio"] = ratio_setting.GroupRatio2JSONString()
@@ -214,21 +190,7 @@ func InitOptionMap() {
 func loadOptionsFromDatabase() {
 	options, _ := AllOption()
 	for _, option := range options {
-		if option.Key == "AlipayEncryptKey" {
-			continue
-		}
-		valueToApply := option.Value
-		if common.IsAlipaySensitiveOptionKey(option.Key) {
-			decryptedValue, err := common.DecryptAlipayOptionValue(option.Key, option.Value)
-			if err != nil {
-				common.SysLog("failed to decrypt option value: " + err.Error())
-				valueToApply = ""
-			} else {
-				valueToApply = decryptedValue
-			}
-		}
-
-		err := updateOptionMap(option.Key, valueToApply)
+		err := updateOptionMap(option.Key, option.Value)
 		if err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
 		}
@@ -244,36 +206,52 @@ func SyncOptions(frequency int) {
 }
 
 func UpdateOption(key string, value string) error {
-	if key == "AlipayEncryptKey" {
-		return DB.Delete(&Option{}, "key = ?", key).Error
-	}
-
-	valueToPersist := value
-	if common.IsAlipaySensitiveOptionKey(key) {
-		encryptedValue, err := common.EncryptAlipayOptionValue(key, value)
-		if err != nil {
-			return err
-		}
-		valueToPersist = encryptedValue
-	}
-
 	// Save to database first
 	option := Option{
 		Key: key,
 	}
 	// https://gorm.io/docs/update.html#Save-All-Fields
-	if err := DB.FirstOrCreate(&option, Option{Key: key}).Error; err != nil {
-		return err
-	}
-	option.Value = valueToPersist
+	DB.FirstOrCreate(&option, Option{Key: key})
+	option.Value = value
 	// Save is a combination function.
 	// If save value does not contain primary key, it will execute Create,
 	// otherwise it will execute Update (with all fields).
-	if err := DB.Save(&option).Error; err != nil {
-		return err
-	}
+	DB.Save(&option)
 	// Update OptionMap
 	return updateOptionMap(key, value)
+}
+
+// UpdateOptionsBulk persists multiple key/value pairs in a single database
+// transaction, then dispatches them through updateOptionMap in one pass. If
+// any DB write fails the whole transaction rolls back and no in-memory state
+// is touched — safe for callers that must commit a set of related options
+// atomically (e.g. payment gateway binding).
+func UpdateOptionsBulk(values map[string]string) error {
+	if len(values) == 0 {
+		return nil
+	}
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		for k, v := range values {
+			option := Option{Key: k}
+			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
+				return err
+			}
+			option.Value = v
+			if err := tx.Save(&option).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	for k, v := range values {
+		if err := updateOptionMap(k, v); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func updateOptionMap(key string, value string) (err error) {
@@ -300,7 +278,7 @@ func updateOptionMap(key string, value string) (err error) {
 			common.ImageDownloadPermission = intValue
 		}
 	}
-	if strings.HasSuffix(key, "Enabled") || key == "DefaultCollapseSidebar" || key == "DefaultUseAutoGroup" || key == "SMTPForceAuthLogin" {
+	if strings.HasSuffix(key, "Enabled") || key == "DefaultCollapseSidebar" || key == "DefaultUseAutoGroup" || key == "SMTPForceAuthLogin" || key == "SMTPInsecureSkipVerify" {
 		boolValue := value == "true"
 		switch key {
 		case "PasswordRegisterEnabled":
@@ -377,6 +355,10 @@ func updateOptionMap(key string, value string) (err error) {
 			setting.StopOnSensitiveEnabled = boolValue
 		case "SMTPSSLEnabled":
 			common.SMTPSSLEnabled = boolValue
+		case "SMTPStartTLSEnabled":
+			common.SMTPStartTLSEnabled = boolValue
+		case "SMTPInsecureSkipVerify":
+			common.SMTPInsecureSkipVerify = boolValue
 		case "SMTPForceAuthLogin":
 			common.SMTPForceAuthLogin = boolValue
 		case "WorkerAllowHttpImageRequestEnabled":
@@ -447,34 +429,6 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.StripeMinTopUp, _ = strconv.Atoi(value)
 	case "StripePromotionCodesEnabled":
 		setting.StripePromotionCodesEnabled = value == "true"
-	case "AlipayEnabled":
-		setting.AlipayEnabled = value == "true"
-	case "AlipaySandbox":
-		setting.AlipaySandbox = value == "true"
-	case "AlipayAppID":
-		setting.AlipayAppID = value
-	case "AlipayPrivateKey":
-		setting.AlipayPrivateKey = value
-	case "AlipayPublicKey":
-		setting.AlipayPublicKey = value
-	case "AlipayGateway":
-		setting.AlipayGateway = value
-	case "AlipayNotifyURL":
-		setting.AlipayNotifyURL = value
-	case "AlipayReturnURL":
-		setting.AlipayReturnURL = value
-	case "AlipaySellerID":
-		setting.AlipaySellerID = value
-	case "AlipayMinTopUp":
-		setting.AlipayMinTopUp, _ = strconv.Atoi(value)
-	case "AlipayCyclePayEnabled":
-		setting.AlipayCyclePayEnabled = value == "true"
-	case "AlipayCyclePayPersonalProductCode":
-		setting.AlipayCyclePayPersonalProductCode = value
-	case "AlipayCyclePayProductCode":
-		setting.AlipayCyclePayProductCode = value
-	case "AlipayCyclePaySignScene":
-		setting.AlipayCyclePaySignScene = value
 	case "CreemApiKey":
 		setting.CreemApiKey = value
 	case "CreemProducts":
@@ -513,26 +467,16 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.WaffoUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "WaffoMinTopUp":
 		setting.WaffoMinTopUp, _ = strconv.Atoi(value)
-	case "WaffoPancakeEnabled":
-		setting.WaffoPancakeEnabled = value == "true"
-	case "WaffoPancakeSandbox":
-		setting.WaffoPancakeSandbox = value == "true"
 	case "WaffoPancakeMerchantID":
 		setting.WaffoPancakeMerchantID = value
 	case "WaffoPancakePrivateKey":
 		setting.WaffoPancakePrivateKey = value
-	case "WaffoPancakeWebhookPublicKey":
-		setting.WaffoPancakeWebhookPublicKey = value
-	case "WaffoPancakeWebhookTestKey":
-		setting.WaffoPancakeWebhookTestKey = value
+	case "WaffoPancakeReturnURL":
+		setting.WaffoPancakeReturnURL = value
 	case "WaffoPancakeStoreID":
 		setting.WaffoPancakeStoreID = value
 	case "WaffoPancakeProductID":
 		setting.WaffoPancakeProductID = value
-	case "WaffoPancakeReturnURL":
-		setting.WaffoPancakeReturnURL = value
-	case "WaffoPancakeCurrency":
-		setting.WaffoPancakeCurrency = value
 	case "WaffoPancakeUnitPrice":
 		setting.WaffoPancakeUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "WaffoPancakeMinTopUp":
@@ -605,10 +549,6 @@ func updateOptionMap(key string, value string) (err error) {
 		err = ratio_setting.UpdateCompletionRatioByJSONString(value)
 	case "ModelPrice":
 		err = ratio_setting.UpdateModelPriceByJSONString(value)
-	case "TaskConditionPrice":
-		err = ratio_setting.UpdateTaskConditionPriceByJSONString(value)
-	case "VideoSecondsPrice":
-		err = ratio_setting.UpdateVideoSecondsPriceByJSONString(value)
 	case "CacheRatio":
 		err = ratio_setting.UpdateCacheRatioByJSONString(value)
 	case "CreateCacheRatio":

@@ -18,7 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Shield, AlertTriangle, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useDialogs } from '@/hooks/use-dialog'
+
+import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -29,7 +30,8 @@ import {
 } from '@/components/ui/card'
 import { IconBadge } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { StatusBadge } from '@/components/status-badge'
+import { useDialogs } from '@/hooks/use-dialog'
+
 import { useTwoFA } from '../hooks'
 import { TwoFABackupDialog } from './dialogs/two-fa-backup-dialog'
 import { TwoFADisableDialog } from './dialogs/two-fa-disable-dialog'
@@ -52,7 +54,7 @@ export function TwoFACard({ loading: pageLoading }: TwoFACardProps) {
 
   if (pageLoading || loading) {
     return (
-      <Card className='gap-0 overflow-hidden py-0'>
+      <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
         <CardHeader className='p-3 sm:p-5'>
           <Skeleton className='h-6 w-48' />
           <Skeleton className='mt-2 h-4 w-64' />
@@ -66,7 +68,7 @@ export function TwoFACard({ loading: pageLoading }: TwoFACardProps) {
 
   return (
     <>
-      <Card className='gap-0 overflow-hidden py-0'>
+      <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
         <CardHeader className='p-3 sm:p-5'>
           <CardTitle className='text-lg tracking-tight sm:text-xl'>
             {t('Two-Factor Authentication')}

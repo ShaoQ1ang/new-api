@@ -6,11 +6,6 @@ go 1.25.1
 require (
 	github.com/Calcium-Ion/go-epay v0.0.4
 	github.com/abema/go-mp4 v1.4.1
-	github.com/alibabacloud-go/darabonba-openapi/v2 v2.1.14
-	github.com/alibabacloud-go/dysmsapi-20170525/v5 v5.5.1
-	github.com/alibabacloud-go/tea v1.3.13
-	github.com/alibabacloud-go/tea-utils/v2 v2.0.7
-	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/andybalholm/brotli v1.1.1
 	github.com/anknown/ahocorasick v0.0.0-20190904063843-d75dbd5169c0
 	github.com/aws/aws-sdk-go-v2 v1.41.5
@@ -32,7 +27,7 @@ require (
 	github.com/go-webauthn/webauthn v0.14.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
-	github.com/gorilla/websocket v1.5.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/grafana/pyroscope-go v1.2.7
 	github.com/jfreymuth/oggvorbis v1.0.5
 	github.com/jinzhu/copier v0.4.0
@@ -45,9 +40,6 @@ require (
 	github.com/samber/lo v1.52.0
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/shopspring/decimal v1.4.0
-	github.com/smartwalle/alipay/v3 v3.2.29
-	github.com/smartwalle/ncrypto v1.0.4
-	github.com/smartwalle/nsign v1.0.9
 	github.com/stretchr/testify v1.11.1
 	github.com/stripe/stripe-go/v81 v81.4.0
 	github.com/tcolgate/mp3 v0.0.0-20170426193717-e79c5a46d300
@@ -55,7 +47,7 @@ require (
 	github.com/tidwall/gjson v1.18.0
 	github.com/tidwall/sjson v1.2.5
 	github.com/tiktoken-go/tokenizer v0.6.2
-	github.com/waffo-com/waffo-go v1.3.1
+	github.com/waffo-com/waffo-go v1.3.2
 	github.com/yapingcat/gomedia v0.0.0-20240906162731-17feea57090c
 	golang.org/x/crypto v0.52.0
 	golang.org/x/image v0.41.0
@@ -66,20 +58,49 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.4.3
 	gorm.io/driver/postgres v1.5.2
-	gorm.io/gorm v1.25.2
+	gorm.io/gorm v1.30.0
 )
 
+require github.com/waffo-com/waffo-pancake-sdk-go v0.3.1
+
 require (
+	github.com/ClickHouse/ch-go v0.61.5 // indirect
+	github.com/ClickHouse/clickhouse-go/v2 v2.30.0 // indirect
 	github.com/alibabacloud-go/alibabacloud-gateway-spi v0.0.5 // indirect
 	github.com/alibabacloud-go/debug v1.0.1 // indirect
 	github.com/aliyun/credentials-go v1.4.5 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.6.1 // indirect
-	github.com/casbin/govaluate v1.3.0 // indirect
+	github.com/casbin/govaluate v1.10.0 // indirect
 	github.com/clbanning/mxj/v2 v2.7.0 // indirect
-	github.com/smartwalle/ngx v1.1.0 // indirect
+	github.com/fsnotify/fsnotify v1.6.0 // indirect
+	github.com/go-faster/city v1.0.1 // indirect
+	github.com/go-faster/errors v0.7.1 // indirect
+	github.com/golang/mock v1.6.0 // indirect
+	github.com/hashicorp/go-version v1.6.0 // indirect
+	github.com/onsi/gomega v1.24.2 // indirect
+	github.com/paulmach/orb v0.11.1 // indirect
+	github.com/pierrec/lz4/v4 v4.1.21 // indirect
+	github.com/rogpeppe/go-internal v1.13.1 // indirect
+	github.com/segmentio/asm v1.2.0 // indirect
+	github.com/smartwalle/ngx v1.1.1 // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect
-	golang.org/x/time v0.15.0 // indirect
+	go.opentelemetry.io/otel v1.26.0 // indirect
+	go.opentelemetry.io/otel/trace v1.26.0 // indirect
+	golang.org/x/time v0.3.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
+)
+
+require (
+	github.com/Azure/go-ntlmssp v0.1.1
+	github.com/alibabacloud-go/darabonba-openapi/v2 v2.2.4
+	github.com/alibabacloud-go/dysmsapi-20170525/v5 v5.6.0
+	github.com/alibabacloud-go/tea v1.5.2
+	github.com/alibabacloud-go/tea-utils/v2 v2.0.9
+	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
+	github.com/smartwalle/alipay/v3 v3.2.30
+	github.com/smartwalle/ncrypto v1.0.4
+	github.com/smartwalle/nsign v1.0.9
+	gorm.io/driver/clickhouse v0.7.0
 )
 
 require (

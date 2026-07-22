@@ -128,8 +128,9 @@ func main() {
 
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
+
+	// Product whitelist: Alipay pending top-up reconciliation + auto-renew due charge.
 	service.StartAlipayPendingTopUpTask()
-	// Alipay auto-renew: light due-period charge (no mid-cycle polling)
 	service.StartAlipayAutoRenewChargeTask()
 
 	// Report this process as a system instance so the System Info page can show

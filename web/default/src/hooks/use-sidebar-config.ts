@@ -17,9 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo } from 'react'
-import { useAuthStore } from '@/stores/auth-store'
-import { useStatus } from '@/hooks/use-status'
+
 import type { NavGroup, NavItem } from '@/components/layout/types'
+import { useStatus } from '@/hooks/use-status'
+import { useAuthStore } from '@/stores/auth-store'
 
 type SidebarSectionConfig = {
   enabled: boolean
@@ -58,8 +59,6 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
     enabled: true,
     channel: true,
     models: true,
-    skillHub: true,
-    clientRelease: true,
     redemption: true,
     user: true,
     setting: true,
@@ -112,9 +111,6 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/models': { section: 'admin', module: 'models' },
   '/models/metadata': { section: 'admin', module: 'models' },
   '/models/deployments': { section: 'admin', module: 'models' },
-  '/skill-hub': { section: 'admin', module: 'skillHub' },
-  '/skill-hub/tags': { section: 'admin', module: 'skillHub' },
-  '/client-releases': { section: 'admin', module: 'clientRelease' },
   '/users': { section: 'admin', module: 'user' },
   '/redemption-codes': { section: 'admin', module: 'redemption' },
   '/subscriptions': { section: 'admin', module: 'subscription' },
@@ -312,4 +308,24 @@ export function useSidebarConfig(navGroups: NavGroup[]): NavGroup[] {
   )
 
   return filteredNavGroups
+}
+
+/**
+ * Check whether a single route is visible under the current sidebar_modules
+ * config. Used by entries living outside the sidebar (e.g. the profile
+ * dropdown's wallet link) so they honour the same "wallet display" toggle.
+ */
+export function useIsSidebarModuleVisible(url: string): boolean {
+  const { status } = useStatus()
+  const { auth } = useAuthStore()
+
+  const adminConfig = parseSidebarConfig(
+    status?.SidebarModulesAdmin as string | null | undefined
+  )
+  const userConfig =
+    auth?.user?.permissions?.sidebar_settings === false
+      ? null
+      : parseUserSidebarConfig(auth?.user?.sidebar_modules)
+
+  return isModuleEnabled(url, adminConfig, userConfig)
 }

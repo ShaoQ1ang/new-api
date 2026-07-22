@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
@@ -30,19 +31,6 @@ type LoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
-
-type SmsVerificationRequest struct {
-	Phone string `json:"phone"`
-}
-
-type SmsLoginRequest struct {
-	Phone string `json:"phone"`
-	Code  string `json:"code"`
-}
-
-var errDefaultTokenKey = errors.New("failed to generate default token key")
-
-const smsVerificationSendFailedMessage = "验证码发送失败，请稍后重试"
 
 var (
 	errUserPasswordUnset    = errors.New("user password is not set")
@@ -115,140 +103,41 @@ func Login(c *gin.Context) {
 	setupLogin(&user, c)
 }
 
-func SendSmsVerification(c *gin.Context) {
-	if !common.SmsLoginEnabled {
-		common.ApiErrorMsg(c, "短信登录未启用")
-		return
+// loginMethodFromContext 根据请求路径推导登录方式，用于登录审计日志。
+func loginMethodFromContext(c *gin.Context) string {
+	switch c.FullPath() {
+	case "/api/user/login":
+		return "password"
+	case "/api/user/login/2fa":
+		return "2fa"
+	case "/api/user/passkey/login/finish":
+		return "passkey"
+	case "/api/oauth/wechat":
+		return "wechat"
+	case "/api/oauth/telegram/login":
+		return "telegram"
+	case "/api/oauth/:provider":
+		if provider := c.Param("provider"); provider != "" {
+			return "oauth:" + provider
+		}
+		return "oauth"
+	default:
+		return "unknown"
 	}
-	var req SmsVerificationRequest
-	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-		return
-	}
-	phone, err := common.NormalizeMainlandPhone(req.Phone)
-	if err != nil {
-		common.ApiErrorMsg(c, "手机号格式不正确")
-		return
-	}
-	shouldSend, err := shouldSendSmsVerification(phone)
-	if err != nil {
-		common.SysLog(fmt.Sprintf("failed to check SMS verification target %s: %v", common.MaskMainlandPhone(phone), err))
-		common.ApiErrorMsg(c, smsVerificationSendFailedMessage)
-		return
-	}
-	if !shouldSend {
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "",
-		})
-		return
-	}
-
-	code, err := common.GenerateNumericVerificationCode(6)
-	if err != nil {
-		common.SysLog(fmt.Sprintf("failed to generate SMS verification code for phone %s: %v", common.MaskMainlandPhone(phone), err))
-		common.ApiErrorMsg(c, smsVerificationSendFailedMessage)
-		return
-	}
-	if err := service.SendSmsLoginCode(phone, code); err != nil {
-		common.SysLog(fmt.Sprintf("failed to send SMS verification code to phone %s: %s", common.MaskMainlandPhone(phone), common.MaskSensitiveInfo(err.Error())))
-		common.ApiErrorMsg(c, smsVerificationSendFailedMessage)
-		return
-	}
-	common.RegisterVerificationCodeWithKey(phone, code, common.SmsLoginPurpose)
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-	})
 }
 
-func shouldSendSmsVerification(phone string) (bool, error) {
-	user, err := model.GetUserByPhone(phone)
-	if err == nil {
-		return user.Status == common.UserStatusEnabled, nil
+// recordLoginAudit 记录登录成功审计日志（对所有用户启用，仅记录成功，不记录失败）。
+func recordLoginAudit(user *model.User, c *gin.Context) {
+	method := loginMethodFromContext(c)
+	ip := c.ClientIP()
+	extra := map[string]interface{}{
+		"login_method": method,
+		"user_agent":   c.Request.UserAgent(),
 	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return false, err
-	}
-	return common.RegisterEnabled, nil
-}
-
-func SmsLogin(c *gin.Context) {
-	if !common.SmsLoginEnabled {
-		common.ApiErrorMsg(c, "短信登录未启用")
-		return
-	}
-	var req SmsLoginRequest
-	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-		return
-	}
-	phone, err := common.NormalizeMainlandPhone(req.Phone)
-	code := strings.TrimSpace(req.Code)
-	if err != nil || !isSmsVerificationCodeFormatValid(code) {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-		return
-	}
-	if !common.VerifyAndDeleteCodeWithKey(phone, code, common.SmsLoginPurpose) {
-		common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
-		return
-	}
-
-	user, err := model.GetUserByPhone(phone)
-	if err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			common.ApiErrorI18n(c, i18n.MsgDatabaseError)
-			return
-		}
-		if !common.RegisterEnabled {
-			common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
-			return
-		}
-		user, err = createUserFromSmsPhone(phone)
-		if err != nil {
-			common.SysLog(fmt.Sprintf("failed to create user from SMS phone %s: %v", common.MaskMainlandPhone(phone), err))
-			common.ApiErrorI18n(c, i18n.MsgUserRegisterFailed)
-			return
-		}
-	}
-	if user.Status != common.UserStatusEnabled {
-		common.ApiErrorI18n(c, i18n.MsgUserDisabled)
-		return
-	}
-
-	if model.IsTwoFAEnabled(user.Id) {
-		session := sessions.Default(c)
-		session.Set("pending_username", user.Username)
-		session.Set("pending_user_id", user.Id)
-		err := session.Save()
-		if err != nil {
-			common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"message": i18n.T(c, i18n.MsgUserRequire2FA),
-			"success": true,
-			"data": map[string]interface{}{
-				"require_2fa": true,
-			},
-		})
-		return
-	}
-
-	setupLogin(user, c)
-}
-
-func isSmsVerificationCodeFormatValid(code string) bool {
-	if len(code) != 6 {
-		return false
-	}
-	for _, ch := range code {
-		if ch < '0' || ch > '9' {
-			return false
-		}
-	}
-	return true
+	content := fmt.Sprintf("Logged in successfully via %s", method)
+	model.RecordLoginLog(user.Id, user.Username, content, ip, "login", map[string]interface{}{
+		"method": method,
+	}, extra)
 }
 
 // setup session & cookies and then return user info
@@ -265,6 +154,7 @@ func setupLogin(user *model.User, c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
 		return
 	}
+	recordLoginAudit(user, c)
 	c.JSON(http.StatusOK, gin.H{
 		"message": "",
 		"success": true,
@@ -380,13 +270,33 @@ func Register(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserRegisterFailed)
 		return
 	}
-	if err := createDefaultTokenForUser(insertedUser.Id, cleanUser.Username); err != nil {
-		if errors.Is(err, errDefaultTokenKey) {
+	// 生成默认令牌
+	if constant.GenerateDefaultToken {
+		key, err := common.GenerateKey()
+		if err != nil {
 			common.ApiErrorI18n(c, i18n.MsgUserDefaultTokenFailed)
+			common.SysLog("failed to generate token key: " + err.Error())
 			return
 		}
-		common.ApiErrorI18n(c, i18n.MsgCreateDefaultTokenErr)
-		return
+		// 生成默认令牌
+		token := model.Token{
+			UserId:             insertedUser.Id, // 使用插入后的用户ID
+			Name:               cleanUser.Username + "的初始令牌",
+			Key:                key,
+			CreatedTime:        common.GetTimestamp(),
+			AccessedTime:       common.GetTimestamp(),
+			ExpiredTime:        -1,     // 永不过期
+			RemainQuota:        500000, // 示例额度
+			UnlimitedQuota:     true,
+			ModelLimitsEnabled: false,
+		}
+		if setting.DefaultUseAutoGroup {
+			token.Group = "auto"
+		}
+		if err := token.Insert(); err != nil {
+			common.ApiErrorI18n(c, i18n.MsgCreateDefaultTokenErr)
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -394,81 +304,6 @@ func Register(c *gin.Context) {
 		"message": "",
 	})
 	return
-}
-
-func createUserFromSmsPhone(phone string) (*model.User, error) {
-	if model.IsPhoneAlreadyTaken(phone) {
-		return nil, errors.New("手机号已被使用")
-	}
-
-	username, err := generateSmsUsername(phone)
-	if err != nil {
-		return nil, err
-	}
-	user := &model.User{
-		Username:    username,
-		DisplayName: username,
-		Phone:       &phone,
-		Role:        common.RoleCommonUser,
-	}
-	if err := user.Insert(0); err != nil {
-		return nil, err
-	}
-	var insertedUser model.User
-	if err := model.DB.Where("phone = ?", phone).First(&insertedUser).Error; err != nil {
-		return nil, err
-	}
-	if err := createDefaultTokenForUser(insertedUser.Id, insertedUser.Username); err != nil {
-		return nil, err
-	}
-	return &insertedUser, nil
-}
-
-func generateSmsUsername(phone string) (string, error) {
-	suffix := phone
-	if len(suffix) > 4 {
-		suffix = suffix[len(suffix)-4:]
-	}
-	for i := 0; i < 10; i++ {
-		username := fmt.Sprintf("u%s%s", suffix, common.GetRandomString(6))
-		exists, err := model.CheckUserExistOrDeleted(username, "")
-		if err != nil {
-			return "", err
-		}
-		if !exists {
-			return username, nil
-		}
-	}
-	return "", errors.New("failed to generate unique username")
-}
-
-func createDefaultTokenForUser(userId int, username string) error {
-	if !constant.GenerateDefaultToken {
-		return nil
-	}
-	key, err := common.GenerateKey()
-	if err != nil {
-		common.SysLog("failed to generate token key: " + err.Error())
-		return errDefaultTokenKey
-	}
-	token := model.Token{
-		UserId:             userId,
-		Name:               username + "的初始令牌",
-		Key:                key,
-		CreatedTime:        common.GetTimestamp(),
-		AccessedTime:       common.GetTimestamp(),
-		ExpiredTime:        -1,
-		RemainQuota:        500000,
-		UnlimitedQuota:     true,
-		ModelLimitsEnabled: false,
-	}
-	if setting.DefaultUseAutoGroup {
-		token.Group = "auto"
-	}
-	if err := token.Insert(); err != nil {
-		return err
-	}
-	return nil
 }
 
 func GetAllUsers(c *gin.Context) {
@@ -490,21 +325,19 @@ func GetAllUsers(c *gin.Context) {
 func SearchUsers(c *gin.Context) {
 	keyword := c.Query("keyword")
 	group := c.Query("group")
-	roleStr := c.Query("role")
-	statusStr := c.Query("status")
-	pageInfo := common.GetPageQuery(c)
 	var role *int
-	if roleStr != "" {
+	if roleStr := c.Query("role"); roleStr != "" {
 		if parsed, err := strconv.Atoi(roleStr); err == nil {
 			role = &parsed
 		}
 	}
 	var status *int
-	if statusStr != "" {
+	if statusStr := c.Query("status"); statusStr != "" {
 		if parsed, err := strconv.Atoi(statusStr); err == nil {
 			status = &parsed
 		}
 	}
+	pageInfo := common.GetPageQuery(c)
 	sortOptions := model.NewUserSortOptions(c.Query("sort_by"), c.Query("sort_order"))
 	users, total, err := model.SearchUsers(keyword, group, role, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), sortOptions)
 	if err != nil {
@@ -516,6 +349,10 @@ func SearchUsers(c *gin.Context) {
 	pageInfo.SetItems(users)
 	common.ApiSuccess(c, pageInfo)
 	return
+}
+
+func canManageTargetRole(myRole int, targetRole int) bool {
+	return myRole == common.RoleRootUser || myRole > targetRole
 }
 
 func GetUser(c *gin.Context) {
@@ -530,10 +367,11 @@ func GetUser(c *gin.Context) {
 		return
 	}
 	myRole := c.GetInt("role")
-	if myRole <= user.Role && myRole != common.RoleRootUser {
+	if !canManageTargetRole(myRole, user.Role) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
 		return
 	}
+	user.AdminPermissions = authz.Capabilities(user.Id, user.Role)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -643,6 +481,7 @@ func GetSelf(c *gin.Context) {
 
 	// 计算用户权限信息
 	permissions := calculateUserPermissions(userRole)
+	permissions["admin_permissions"] = authz.Capabilities(id, userRole)
 
 	// 获取用户设置并提取sidebar_modules
 	userSetting := user.GetSetting()
@@ -785,6 +624,25 @@ func GetUserModels(c *gin.Context) {
 		return
 	}
 	groups := service.GetUserUsableGroups(user.Group)
+	group := c.Query("group")
+	if group != "" {
+		if _, ok := groups[group]; !ok {
+			c.JSON(http.StatusOK, gin.H{
+				"success": true,
+				"message": "",
+				"data":    []string{},
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+			"data":    model.GetGroupEnabledModels(group),
+		})
+		return
+	}
+
 	var models []string
 	for group := range groups {
 		for _, g := range model.GetGroupEnabledModels(group) {
@@ -825,23 +683,45 @@ func UpdateUser(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	myRole := c.GetInt("role")
-	if myRole <= originUser.Role && myRole != common.RoleRootUser {
-		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
+	if updatedUser.Role != common.RoleGuestUser && updatedUser.Role != originUser.Role {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	if myRole <= updatedUser.Role && myRole != common.RoleRootUser {
-		common.ApiErrorI18n(c, i18n.MsgUserCannotCreateHigherLevel)
+	updatedUser.Role = originUser.Role
+	myRole := c.GetInt("role")
+	if !canManageTargetRole(myRole, originUser.Role) {
+		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
 	}
 	if updatedUser.Password == "$I_LOVE_U" {
 		updatedUser.Password = "" // rollback to what it should be
 	}
 	updatePassword := updatedUser.Password != ""
-	if err := updatedUser.Edit(updatePassword); err != nil {
+	authzTouched := false
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := updatedUser.EditWithTx(tx, updatePassword); err != nil {
+			return err
+		}
+		touched, err := updateAdminPermissionsForUserInTx(c, tx, updatedUser.Id, originUser.Role, updatedUser.AdminPermissions)
+		authzTouched = touched
+		return err
+	}); err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	if authzTouched {
+		if err := authz.ReloadPolicy(); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
+	if err := model.InvalidateUserCache(updatedUser.Id); err != nil {
+		common.SysLog(fmt.Sprintf("failed to invalidate user cache for user %d: %s", updatedUser.Id, err.Error()))
+	}
+	recordManageAuditFor(c, updatedUser.Id, "user.update", map[string]interface{}{
+		"username": originUser.Username,
+		"id":       updatedUser.Id,
+	})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -869,7 +749,7 @@ func AdminClearUserBinding(c *gin.Context) {
 	}
 
 	myRole := c.GetInt("role")
-	if myRole <= user.Role && myRole != common.RoleRootUser {
+	if !canManageTargetRole(myRole, user.Role) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
 		return
 	}
@@ -879,7 +759,10 @@ func AdminClearUserBinding(c *gin.Context) {
 		return
 	}
 
-	model.RecordLog(user.Id, model.LogTypeManage, fmt.Sprintf("admin cleared %s binding for user %s", bindingType, user.Username))
+	recordManageAuditFor(c, user.Id, "user.binding_clear", map[string]interface{}{
+		"bindingType": bindingType,
+		"username":    user.Username,
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -889,8 +772,7 @@ func AdminClearUserBinding(c *gin.Context) {
 
 func UpdateSelf(c *gin.Context) {
 	var requestData map[string]interface{}
-	err := json.NewDecoder(c.Request.Body).Decode(&requestData)
-	if err != nil {
+	if err := common.DecodeJson(c.Request.Body, &requestData); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
@@ -912,9 +794,7 @@ func UpdateSelf(c *gin.Context) {
 			currentSetting.SidebarModules = sidebarModulesStr
 		}
 
-		// 保存更新后的设置
-		user.SetSetting(currentSetting)
-		if err := user.Update(false); err != nil {
+		if err := model.UpdateUserSetting(user.Id, currentSetting); err != nil {
 			common.ApiErrorI18n(c, i18n.MsgUpdateFailed)
 			return
 		}
@@ -940,9 +820,7 @@ func UpdateSelf(c *gin.Context) {
 			currentSetting.Language = langStr
 		}
 
-		// 保存更新后的设置
-		user.SetSetting(currentSetting)
-		if err := user.Update(false); err != nil {
+		if err := model.UpdateUserSetting(user.Id, currentSetting); err != nil {
 			common.ApiErrorI18n(c, i18n.MsgUpdateFailed)
 			return
 		}
@@ -953,13 +831,12 @@ func UpdateSelf(c *gin.Context) {
 
 	// 原有的用户信息更新逻辑
 	var user model.User
-	requestDataBytes, err := json.Marshal(requestData)
+	requestDataBytes, err := common.Marshal(requestData)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	err = json.Unmarshal(requestDataBytes, &user)
-	if err != nil {
+	if err = common.Unmarshal(requestDataBytes, &user); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
@@ -1048,12 +925,18 @@ func DeleteUser(c *gin.Context) {
 	}
 	err = model.HardDeleteUserById(id)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "",
-		})
+		common.ApiError(c, err)
 		return
 	}
+	recordManageAuditFor(c, originUser.Id, "user.delete", map[string]interface{}{
+		"username": originUser.Username,
+		"id":       originUser.Id,
+	})
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+	})
+	return
 }
 
 func DeleteSelf(c *gin.Context) {
@@ -1104,16 +987,51 @@ func CreateUser(c *gin.Context) {
 		DisplayName: user.DisplayName,
 		Role:        user.Role, // 保持管理员设置的角色
 	}
-	if err := cleanUser.Insert(0); err != nil {
+	authzTouched := false
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := cleanUser.InsertWithTx(tx, 0); err != nil {
+			return err
+		}
+		touched, err := updateAdminPermissionsForUserInTx(c, tx, cleanUser.Id, cleanUser.Role, user.AdminPermissions)
+		authzTouched = touched
+		return err
+	}); err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	if authzTouched {
+		if err := authz.ReloadPolicy(); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
+	cleanUser.FinishInsert(0)
 
+	recordManageAuditFor(c, cleanUser.Id, "user.create", map[string]interface{}{
+		"username": cleanUser.Username,
+		"role":     cleanUser.Role,
+	})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
 	})
 	return
+}
+
+func updateAdminPermissionsForUserInTx(c *gin.Context, tx *gorm.DB, userID int, userRole int, permissions map[string]map[string]bool) (bool, error) {
+	if permissions == nil {
+		if userRole < common.RoleAdminUser && c.GetInt("role") == common.RoleRootUser {
+			return true, authz.ClearUserAuthorizationInTx(tx, userID)
+		}
+		return false, nil
+	}
+	if c.GetInt("role") != common.RoleRootUser {
+		return false, fmt.Errorf("only root can update admin permissions")
+	}
+	if userRole < common.RoleAdminUser {
+		return true, authz.ClearUserAuthorizationInTx(tx, userID)
+	}
+	return true, authz.SetUserPermissionsInTx(tx, userID, permissions)
 }
 
 type ManageRequest struct {
@@ -1142,7 +1060,7 @@ func ManageUser(c *gin.Context) {
 		return
 	}
 	myRole := c.GetInt("role")
-	if myRole <= user.Role && myRole != common.RoleRootUser {
+	if !canManageTargetRole(myRole, user.Role) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
 	}
@@ -1193,12 +1111,6 @@ func ManageUser(c *gin.Context) {
 		}
 		user.Role = common.RoleCommonUser
 	case "add_quota":
-		adminName := c.GetString("username")
-		adminId := c.GetInt("id")
-		adminInfo := map[string]interface{}{
-			"admin_id":       adminId,
-			"admin_username": adminName,
-		}
 		switch req.Mode {
 		case "add":
 			if req.Value <= 0 {
@@ -1209,8 +1121,9 @@ func ManageUser(c *gin.Context) {
 				common.ApiError(c, err)
 				return
 			}
-			model.RecordLogWithAdminInfo(user.Id, model.LogTypeManage,
-				fmt.Sprintf("管理员增加用户额度 %s", logger.LogQuota(req.Value)), adminInfo)
+			recordManageAuditFor(c, user.Id, "user.quota_add", map[string]interface{}{
+				"quota": logger.LogQuota(req.Value),
+			})
 		case "subtract":
 			if req.Value <= 0 {
 				common.ApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
@@ -1220,16 +1133,19 @@ func ManageUser(c *gin.Context) {
 				common.ApiError(c, err)
 				return
 			}
-			model.RecordLogWithAdminInfo(user.Id, model.LogTypeManage,
-				fmt.Sprintf("管理员减少用户额度 %s", logger.LogQuota(req.Value)), adminInfo)
+			recordManageAuditFor(c, user.Id, "user.quota_subtract", map[string]interface{}{
+				"quota": logger.LogQuota(req.Value),
+			})
 		case "override":
 			oldQuota := user.Quota
 			if err := model.DB.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", req.Value).Error; err != nil {
 				common.ApiError(c, err)
 				return
 			}
-			model.RecordLogWithAdminInfo(user.Id, model.LogTypeManage,
-				fmt.Sprintf("管理员覆盖用户额度从 %s 为 %s", logger.LogQuota(oldQuota), logger.LogQuota(req.Value)), adminInfo)
+			recordManageAuditFor(c, user.Id, "user.quota_override", map[string]interface{}{
+				"from": logger.LogQuota(oldQuota),
+				"to":   logger.LogQuota(req.Value),
+			})
 		default:
 			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 			return
@@ -1241,9 +1157,29 @@ func ManageUser(c *gin.Context) {
 		return
 	}
 
-	if err := user.Update(false); err != nil {
-		common.ApiError(c, err)
-		return
+	authzTouched := false
+	if req.Action == "demote" {
+		if err := model.DB.Transaction(func(tx *gorm.DB) error {
+			if err := user.UpdateWithTx(tx, false); err != nil {
+				return err
+			}
+			authzTouched = true
+			return authz.ClearUserAuthorizationInTx(tx, user.Id)
+		}); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if authzTouched {
+			if err := authz.ReloadPolicy(); err != nil {
+				common.ApiError(c, err)
+				return
+			}
+		}
+	} else {
+		if err := user.Update(false); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 	// 禁用 / 角色调整后，强制失效用户缓存与其全部令牌缓存，
 	// 避免在 Redis TTL 过期前仍使用旧状态（尤其是禁用后仍可发起请求的问题）。
@@ -1257,6 +1193,11 @@ func ManageUser(c *gin.Context) {
 			common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
 		}
 	}
+	recordManageAuditFor(c, user.Id, "user.manage", map[string]interface{}{
+		"action":   req.Action,
+		"username": user.Username,
+		"id":       user.Id,
+	})
 	clearUser := model.User{
 		Role:   user.Role,
 		Status: user.Status,
@@ -1538,11 +1479,226 @@ func UpdateUserSetting(c *gin.Context) {
 	}
 
 	// 更新用户设置
-	user.SetSetting(settings)
-	if err := user.Update(false); err != nil {
+	if err := model.UpdateUserSetting(user.Id, settings); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUpdateFailed)
 		return
 	}
 
 	common.ApiSuccessI18n(c, i18n.MsgSettingSaved, nil)
 }
+
+// --- SMS login (ported from feat/merge-before-main) ---
+
+type SmsLoginRequest struct {
+	Phone string `json:"phone"`
+	Code  string `json:"code"`
+}
+type SmsVerificationRequest struct {
+	Phone string `json:"phone"`
+}
+
+const smsVerificationSendFailedMessage = "verification code send failed, please try again later"
+
+func SendSmsVerification(c *gin.Context) {
+	if !common.SmsLoginEnabled {
+		common.ApiErrorMsg(c, "短信登录未启用")
+		return
+	}
+	var req SmsVerificationRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	phone, err := common.NormalizeMainlandPhone(req.Phone)
+	if err != nil {
+		common.ApiErrorMsg(c, "手机号格式不正确")
+		return
+	}
+	shouldSend, err := shouldSendSmsVerification(phone)
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to check SMS verification target %s: %v", common.MaskMainlandPhone(phone), err))
+		common.ApiErrorMsg(c, smsVerificationSendFailedMessage)
+		return
+	}
+	if !shouldSend {
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+		})
+		return
+	}
+
+	code, err := common.GenerateNumericVerificationCode(6)
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to generate SMS verification code for phone %s: %v", common.MaskMainlandPhone(phone), err))
+		common.ApiErrorMsg(c, smsVerificationSendFailedMessage)
+		return
+	}
+	if err := service.SendSmsLoginCode(phone, code); err != nil {
+		common.SysLog(fmt.Sprintf("failed to send SMS verification code to phone %s: %s", common.MaskMainlandPhone(phone), common.MaskSensitiveInfo(err.Error())))
+		common.ApiErrorMsg(c, smsVerificationSendFailedMessage)
+		return
+	}
+	common.RegisterVerificationCodeWithKey(phone, code, common.SmsLoginPurpose)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+	})
+}
+
+func shouldSendSmsVerification(phone string) (bool, error) {
+	user, err := model.GetUserByPhone(phone)
+	if err == nil {
+		return user.Status == common.UserStatusEnabled, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, err
+	}
+	return common.RegisterEnabled, nil
+}
+
+func SmsLogin(c *gin.Context) {
+	if !common.SmsLoginEnabled {
+		common.ApiErrorMsg(c, "短信登录未启用")
+		return
+	}
+	var req SmsLoginRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	phone, err := common.NormalizeMainlandPhone(req.Phone)
+	code := strings.TrimSpace(req.Code)
+	if err != nil || !isSmsVerificationCodeFormatValid(code) {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if !common.VerifyAndDeleteCodeWithKey(phone, code, common.SmsLoginPurpose) {
+		common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
+		return
+	}
+
+	user, err := model.GetUserByPhone(phone)
+	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+			return
+		}
+		if !common.RegisterEnabled {
+			common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
+			return
+		}
+		user, err = createUserFromSmsPhone(phone)
+		if err != nil {
+			common.SysLog(fmt.Sprintf("failed to create user from SMS phone %s: %v", common.MaskMainlandPhone(phone), err))
+			common.ApiErrorI18n(c, i18n.MsgUserRegisterFailed)
+			return
+		}
+	}
+	if user.Status != common.UserStatusEnabled {
+		common.ApiErrorI18n(c, i18n.MsgUserDisabled)
+		return
+	}
+
+	if enabled, err := model.IsTwoFAEnabled(user.Id); err == nil && enabled {
+		session := sessions.Default(c)
+		session.Set("pending_username", user.Username)
+		session.Set("pending_user_id", user.Id)
+		err := session.Save()
+		if err != nil {
+			common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": i18n.T(c, i18n.MsgUserRequire2FA),
+			"success": true,
+			"data": map[string]interface{}{
+				"require_2fa": true,
+			},
+		})
+		return
+	}
+
+	setupLogin(user, c)
+}
+
+func isSmsVerificationCodeFormatValid(code string) bool {
+	if len(code) != 6 {
+		return false
+	}
+	for _, ch := range code {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// setup session & cookies and then return user info
+
+func createUserFromSmsPhone(phone string) (*model.User, error) {
+	if model.IsPhoneAlreadyTaken(phone) {
+		return nil, errors.New("手机号已被使用")
+	}
+
+	username, err := generateSmsUsername(phone)
+	if err != nil {
+		return nil, err
+	}
+	user := &model.User{
+		Username:    username,
+		DisplayName: username,
+		Phone:       &phone,
+		Role:        common.RoleCommonUser,
+	}
+	if err := user.Insert(0); err != nil {
+		return nil, err
+	}
+	var insertedUser model.User
+	if err := model.DB.Where("phone = ?", phone).First(&insertedUser).Error; err != nil {
+		return nil, err
+	}
+	if err := createDefaultTokenForUser(insertedUser.Id, insertedUser.Username); err != nil {
+		return nil, err
+	}
+	return &insertedUser, nil
+}
+
+func generateSmsUsername(phone string) (string, error) {
+	suffix := phone
+	if len(suffix) > 4 {
+		suffix = suffix[len(suffix)-4:]
+	}
+	for i := 0; i < 10; i++ {
+		username := fmt.Sprintf("u%s%s", suffix, common.GetRandomString(6))
+		exists, err := model.CheckUserExistOrDeleted(username, "")
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			return username, nil
+		}
+	}
+	return "", errors.New("failed to generate unique username")
+}
+
+func createDefaultTokenForUser(userId int, username string) error {
+	key, err := common.GenerateKey()
+	if err != nil {
+		return err
+	}
+	token := model.Token{
+		UserId:         userId,
+		Name:           username + " default",
+		Key:            key,
+		CreatedTime:    common.GetTimestamp(),
+		AccessedTime:   common.GetTimestamp(),
+		ExpiredTime:    -1,
+		RemainQuota:    0,
+		UnlimitedQuota: true,
+		ModelLimitsEnabled: false,
+	}
+	return token.Insert()
+}
+

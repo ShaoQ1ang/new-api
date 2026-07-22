@@ -25,29 +25,7 @@ func isStripeWebhookConfigured() bool {
 }
 
 func isStripeWebhookEnabled() bool {
-	return isStripeWebhookConfigured()
-}
-
-func isAlipayTopUpEnabled() bool {
-	if !isPaymentComplianceConfirmed() {
-		return false
-	}
-	return setting.AlipayEnabled &&
-		strings.TrimSpace(setting.AlipayAppID) != "" &&
-		strings.TrimSpace(setting.AlipayPrivateKey) != "" &&
-		strings.TrimSpace(setting.AlipayPublicKey) != "" &&
-		strings.TrimSpace(setting.AlipayGateway) != ""
-}
-
-func isAlipayWebhookConfigured() bool {
-	return strings.TrimSpace(setting.AlipayAppID) != "" &&
-		strings.TrimSpace(setting.AlipayPrivateKey) != "" &&
-		strings.TrimSpace(setting.AlipayPublicKey) != "" &&
-		strings.TrimSpace(setting.AlipayGateway) != ""
-}
-
-func isAlipayWebhookEnabled() bool {
-	return isAlipayWebhookConfigured()
+	return isStripeTopUpEnabled()
 }
 
 func isCreemTopUpEnabled() bool {
@@ -99,24 +77,15 @@ func isWaffoPancakeTopUpEnabled() bool {
 	if !isPaymentComplianceConfirmed() {
 		return false
 	}
-	if !setting.WaffoPancakeEnabled {
-		return false
-	}
-
-	return isWaffoPancakeWebhookConfigured() &&
-		strings.TrimSpace(setting.WaffoPancakeMerchantID) != "" &&
+	// Presence-of-credentials = enabled. Webhook public keys ship inside
+	// the SDK; mode (test/prod) is read from each event.
+	return strings.TrimSpace(setting.WaffoPancakeMerchantID) != "" &&
 		strings.TrimSpace(setting.WaffoPancakePrivateKey) != "" &&
-		strings.TrimSpace(setting.WaffoPancakeStoreID) != "" &&
 		strings.TrimSpace(setting.WaffoPancakeProductID) != ""
 }
 
 func isWaffoPancakeWebhookConfigured() bool {
-	currentWebhookKey := strings.TrimSpace(setting.WaffoPancakeWebhookPublicKey)
-	if setting.WaffoPancakeSandbox {
-		currentWebhookKey = strings.TrimSpace(setting.WaffoPancakeWebhookTestKey)
-	}
-
-	return currentWebhookKey != ""
+	return isWaffoPancakeTopUpEnabled()
 }
 
 func isWaffoPancakeWebhookEnabled() bool {
@@ -138,4 +107,26 @@ func isEpayWebhookConfigured() bool {
 
 func isEpayWebhookEnabled() bool {
 	return isEpayTopUpEnabled()
+}
+
+func isAlipayTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() {
+		return false
+	}
+	return setting.AlipayEnabled &&
+		strings.TrimSpace(setting.AlipayAppID) != "" &&
+		strings.TrimSpace(setting.AlipayPrivateKey) != "" &&
+		strings.TrimSpace(setting.AlipayPublicKey) != "" &&
+		strings.TrimSpace(setting.AlipayGateway) != ""
+}
+
+func isAlipayWebhookConfigured() bool {
+	return strings.TrimSpace(setting.AlipayAppID) != "" &&
+		strings.TrimSpace(setting.AlipayPrivateKey) != "" &&
+		strings.TrimSpace(setting.AlipayPublicKey) != "" &&
+		strings.TrimSpace(setting.AlipayGateway) != ""
+}
+
+func isAlipayWebhookEnabled() bool {
+	return isAlipayWebhookConfigured()
 }

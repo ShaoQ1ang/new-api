@@ -17,9 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
+
 import type {
   LoginPayload,
-  SmsLoginPayload,
   LoginResponse,
   Login2FAResponse,
   TwoFAPayload,
@@ -43,19 +43,6 @@ export async function login(payload: LoginPayload) {
     {
       username: payload.username,
       password: payload.password,
-    }
-  )
-  return res.data
-}
-
-// User login with SMS verification code
-export async function smsLogin(payload: SmsLoginPayload) {
-  const turnstile = payload.turnstile ?? ''
-  const res = await api.post<LoginResponse>(
-    `/api/user/phone/login?turnstile=${turnstile}`,
-    {
-      phone: payload.phone,
-      code: payload.code,
     }
   )
   return res.data
@@ -133,19 +120,6 @@ export async function sendEmailVerification(
   const res = await api.get('/api/verification', {
     params: { email, turnstile },
   })
-  return res.data
-}
-
-// Send SMS verification code
-export async function sendSmsVerification(
-  phone: string,
-  turnstile?: string
-): Promise<ApiResponse> {
-  const res = await api.post(
-    '/api/sms/verification',
-    { phone },
-    { params: { turnstile } }
-  )
   return res.data
 }
 

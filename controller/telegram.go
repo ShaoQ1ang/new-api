@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-contrib/sessions"
@@ -29,7 +28,10 @@ const (
 
 func TelegramBind(c *gin.Context) {
 	if !common.TelegramOAuthEnabled {
-		common.ApiErrorI18n(c, i18n.MsgOAuthNotEnabled, providerParams("Telegram"))
+		c.JSON(200, gin.H{
+			"message": "管理员未开启通过 Telegram 登录以及注册",
+			"success": false,
+		})
 		return
 	}
 	params := c.Request.URL.Query()
@@ -43,7 +45,10 @@ func TelegramBind(c *gin.Context) {
 		return
 	}
 	if model.IsTelegramIdAlreadyTaken(telegramId) {
-		common.ApiErrorI18n(c, i18n.MsgOAuthAlreadyBound, providerParams("Telegram"))
+		c.JSON(200, gin.H{
+			"message": "该 Telegram 账户已被绑定",
+			"success": false,
+		})
 		return
 	}
 
@@ -58,7 +63,10 @@ func TelegramBind(c *gin.Context) {
 		return
 	}
 	if user.Id == 0 {
-		common.ApiErrorI18n(c, i18n.MsgOAuthUserDeleted)
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "用户已注销",
+		})
 		return
 	}
 	user.TelegramId = telegramId
@@ -75,7 +83,10 @@ func TelegramBind(c *gin.Context) {
 
 func TelegramLogin(c *gin.Context) {
 	if !common.TelegramOAuthEnabled {
-		common.ApiErrorI18n(c, i18n.MsgOAuthNotEnabled, providerParams("Telegram"))
+		c.JSON(200, gin.H{
+			"message": "管理员未开启通过 Telegram 登录以及注册",
+			"success": false,
+		})
 		return
 	}
 	params := c.Request.URL.Query()

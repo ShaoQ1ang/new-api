@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
@@ -38,7 +37,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 	c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgInvalidParams)})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "参数错误"})
 		return
 	}
 
@@ -48,19 +47,15 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		return
 	}
 	if !plan.Enabled {
-		common.ApiErrorI18n(c, i18n.MsgSubscriptionNotEnabled)
-		return
-	}
-	if err := validateOneTimeSubscriptionPlan(plan); err != nil {
-		common.ApiErrorMsg(c, err.Error())
+		common.ApiErrorMsg(c, "套餐未启用")
 		return
 	}
 	if plan.CreemProductId == "" {
-		common.ApiErrorI18n(c, i18n.MsgPaymentCreemNotConfig)
+		common.ApiErrorMsg(c, "该套餐未配置 CreemProductId")
 		return
 	}
 	if setting.CreemWebhookSecret == "" && !setting.CreemTestMode {
-		common.ApiErrorI18n(c, i18n.MsgPaymentWebhookNotConfig)
+		common.ApiErrorMsg(c, "Creem Webhook 未配置")
 		return
 	}
 
@@ -71,7 +66,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		return
 	}
 	if user == nil {
-		common.ApiErrorI18n(c, i18n.MsgUserNotExists)
+		common.ApiErrorMsg(c, "用户不存在")
 		return
 	}
 
@@ -82,23 +77,13 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 			return
 		}
 		if count >= int64(plan.MaxPurchasePerUser) {
-			common.ApiErrorI18n(c, i18n.MsgSubscriptionPurchaseMax)
+			common.ApiErrorMsg(c, "已达到该套餐购买上限")
 			return
 		}
 	}
 
 	reference := "sub-creem-ref-" + randstr.String(6)
 	referenceId := "sub_ref_" + common.Sha1([]byte(reference+time.Now().String()+user.Username))
-
-	currency := "USD"
-	switch operation_setting.GetGeneralSetting().QuotaDisplayType {
-	case operation_setting.QuotaDisplayTypeCNY:
-		currency = "CNY"
-	case operation_setting.QuotaDisplayTypeUSD:
-		currency = "USD"
-	default:
-		currency = "USD"
-	}
 
 	// create pending order first
 	order := &model.SubscriptionOrder{
@@ -111,13 +96,21 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
-	order.ApplyPaymentSnapshot(buildPaymentSnapshot(plan.PriceAmount, plan.PriceAmount, currency))
 	if err := order.Insert(); err != nil {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentCreateFailed)})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
 		return
 	}
 
 	// Reuse Creem checkout generator by building a lightweight product reference.
+	currency := "USD"
+	switch operation_setting.GetGeneralSetting().QuotaDisplayType {
+	case operation_setting.QuotaDisplayTypeCNY:
+		currency = "CNY"
+	case operation_setting.QuotaDisplayTypeUSD:
+		currency = "USD"
+	default:
+		currency = "USD"
+	}
 	product := &CreemProduct{
 		ProductId: plan.CreemProductId,
 		Name:      plan.Title,
@@ -129,7 +122,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 	checkoutUrl, err := genCreemLink(c.Request.Context(), referenceId, product, user.Email, user.Username)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Creem 订阅支付链接创建失败 trade_no=%s product_id=%s error=%q", referenceId, product.ProductId, err.Error()))
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": i18n.T(c, i18n.MsgPaymentStartFailed)})
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
 		return
 	}
 

@@ -25,6 +25,23 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// applyUpstreamContentLength populates req.ContentLength when the upstream
+// body is wrapped in a BodyStorage (see relay/common/outbound_body.go).
+//
+// net/http.NewRequest only auto-detects ContentLength for *bytes.Reader,
+// *bytes.Buffer and *strings.Reader. When the body is a type-erased io.Reader
+// (which is the case for ReaderOnly(BodyStorage)), the Content-Length header
+// would otherwise be omitted, forcing chunked transfer encoding and breaking
+// some upstreams that require an explicit Content-Length.
+func applyUpstreamContentLength(req *http.Request, info *common.RelayInfo) {
+	if info == nil {
+		return
+	}
+	if info.UpstreamRequestBodySize > 0 && req.ContentLength <= 0 {
+		req.ContentLength = info.UpstreamRequestBodySize
+	}
+}
+
 func SetupApiRequestHeader(info *common.RelayInfo, c *gin.Context, req *http.Header) {
 	if info.RelayMode == constant.RelayModeAudioTranscription || info.RelayMode == constant.RelayModeAudioTranslation {
 		// multipart/form-data
@@ -388,13 +405,9 @@ func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.Can
 		defer func() {
 			// 增加panic恢复处理
 			if r := recover(); r != nil {
-				if common2.DebugEnabled {
-					println("SSE ping goroutine panic recovered:", fmt.Sprintf("%v", r))
-				}
+				logger.LogDebug(c, "SSE ping goroutine panic recovered: %v", r)
 			}
-			if common2.DebugEnabled {
-				println("SSE ping goroutine stopped.")
-			}
+			logger.LogDebug(c, "SSE ping goroutine stopped")
 		}()
 
 		if pingInterval <= 0 {
@@ -405,15 +418,11 @@ func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.Can
 		// 确保在任何情况下都清理ticker
 		defer func() {
 			ticker.Stop()
-			if common2.DebugEnabled {
-				println("SSE ping ticker stopped")
-			}
+			logger.LogDebug(c, "SSE ping ticker stopped")
 		}()
 
 		var pingMutex sync.Mutex
-		if common2.DebugEnabled {
-			println("SSE ping goroutine started")
-		}
+		logger.LogDebug(c, "SSE ping goroutine started")
 
 		// 增加超时控制，防止goroutine长时间运行
 		maxPingDuration := 120 * time.Minute // 最大ping持续时间
@@ -425,9 +434,7 @@ func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.Can
 			// 发送 ping 数据
 			case <-ticker.C:
 				if err := sendPingData(c, &pingMutex); err != nil {
-					if common2.DebugEnabled {
-						println("SSE ping error, stopping goroutine:", err.Error())
-					}
+					logger.LogDebug(c, "SSE ping error, stopping goroutine: %s", err.Error())
 					return
 				}
 			// 收到退出信号
@@ -438,9 +445,7 @@ func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.Can
 				return
 			// 超时保护，防止goroutine无限运行
 			case <-pingTimeout.C:
-				if common2.DebugEnabled {
-					println("SSE ping goroutine timeout, stopping")
-				}
+				logger.LogDebug(c, "SSE ping goroutine timeout, stopping")
 				return
 			}
 		}
@@ -452,6 +457,7 @@ func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.Can
 func sendPingData(c *gin.Context, mutex *sync.Mutex) error {
 	mutex.Lock()
 	defer mutex.Unlock()
+
 	// Bound the write so a slow client cannot block this goroutine forever;
 	// doRequest's defer waits for the pinger to exit before returning.
 	helper.ExtendWriteDeadline(c)
@@ -527,6 +533,7 @@ func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, req
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
+	applyUpstreamContentLength(req, info)
 	req.GetBody = func() (io.ReadCloser, error) {
 		return io.NopCloser(requestBody), nil
 	}

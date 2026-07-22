@@ -457,10 +457,6 @@ func TestCollectPendingApplyUpstreamModelChanges(t *testing.T) {
 	require.Equal(t, []string{"old-model"}, pendingRemoveModels)
 }
 
-func TestChannelUpstreamModelUpdateSelectFieldsIncludeModelMapping(t *testing.T) {
-	require.Contains(t, channelUpstreamModelUpdateSelectFields, "model_mapping")
-}
-
 func TestNormalizeChannelModelMapping(t *testing.T) {
 	modelMapping := `{
 		" alias-model ": " upstream-model ",
@@ -556,4 +552,22 @@ func TestShouldSendUpstreamModelUpdateNotification(t *testing.T) {
 	require.True(t, shouldSendUpstreamModelUpdateNotification(baseTime+10000, 0, 4))
 	require.True(t, shouldSendUpstreamModelUpdateNotification(baseTime+90000, 7, 0))
 	require.True(t, shouldSendUpstreamModelUpdateNotification(baseTime+90001, 0, 0))
+}
+
+func TestDetectAllChannelUpstreamModelUpdatesRejectsExistingActiveTask(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.SystemTask{}, &model.SystemTaskLock{}))
+
+	existing, err := model.CreateSystemTask(model.SystemTaskTypeModelUpdate, nil, nil)
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/upstream-models/detect-all", nil)
+
+	DetectAllChannelUpstreamModelUpdates(ctx)
+
+	require.Equal(t, http.StatusConflict, recorder.Code)
+	require.Contains(t, recorder.Body.String(), existing.TaskID)
+	require.Contains(t, recorder.Body.String(), "已有模型更新任务正在运行或等待中")
 }

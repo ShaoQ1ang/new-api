@@ -1,16 +1,16 @@
 package setting
 
 import (
+	"encoding/json"
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
 )
 
 var userUsableGroups = map[string]string{
-	"default": "Default",
-	"vip":     "VIP",
+	"default": "默认分组",
+	"vip":     "vip分组",
 }
-
 var userUsableGroupsMutex sync.RWMutex
 
 func GetUserUsableGroupsCopy() map[string]string {
@@ -28,7 +28,7 @@ func UserUsableGroups2JSONString() string {
 	userUsableGroupsMutex.RLock()
 	defer userUsableGroupsMutex.RUnlock()
 
-	jsonBytes, err := common.Marshal(userUsableGroups)
+	jsonBytes, err := json.Marshal(userUsableGroups)
 	if err != nil {
 		common.SysLog("error marshalling user groups: " + err.Error())
 	}
@@ -40,7 +40,7 @@ func UpdateUserUsableGroupsByJSONString(jsonStr string) error {
 	defer userUsableGroupsMutex.Unlock()
 
 	userUsableGroups = make(map[string]string)
-	return common.UnmarshalJsonStr(jsonStr, &userUsableGroups)
+	return json.Unmarshal([]byte(jsonStr), &userUsableGroups)
 }
 
 func GetUsableGroupDescription(groupName string) string {

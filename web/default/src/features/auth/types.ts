@@ -28,12 +28,6 @@ export interface LoginPayload {
   turnstile?: string
 }
 
-export interface SmsLoginPayload {
-  phone: string
-  code: string
-  turnstile?: string
-}
-
 export interface TwoFAPayload {
   code: string
 }
@@ -43,7 +37,7 @@ export interface RegisterPayload {
   password: string
   email?: string
   verification_code?: string
-  aff?: string
+  aff_code?: string
   turnstile?: string
 }
 
@@ -54,11 +48,6 @@ export interface PasswordResetPayload {
 
 export interface EmailVerificationPayload {
   email: string
-  turnstile?: string
-}
-
-export interface SmsVerificationPayload {
-  phone: string
   turnstile?: string
 }
 
@@ -114,7 +103,6 @@ export interface SystemStatus {
     linuxdo_client_id?: string
     telegram_oauth?: boolean
     passkey_login?: boolean
-    sms_login?: boolean
     wechat_login?: boolean
     wechat_qrcode?: string
     wechat_qr_code?: string
@@ -138,6 +126,7 @@ export interface SystemStatus {
     privacy_policy_enabled?: boolean
     oauth_register_enabled?: boolean
     register_enabled?: boolean
+    password_login_enabled?: boolean
     password_register_enabled?: boolean
     custom_oauth_providers?: CustomOAuthProviderInfo[]
     [key: string]: unknown
@@ -157,7 +146,6 @@ export interface SystemStatus {
   linuxdo_client_id?: string
   telegram_oauth?: boolean
   passkey_login?: boolean
-  sms_login?: boolean
   wechat_login?: boolean
   wechat_qrcode?: string
   wechat_qr_code?: string
@@ -181,6 +169,7 @@ export interface SystemStatus {
   privacy_policy_enabled?: boolean
   oauth_register_enabled?: boolean
   register_enabled?: boolean
+  password_login_enabled?: boolean
   password_register_enabled?: boolean
   custom_oauth_providers?: CustomOAuthProviderInfo[]
   [key: string]: unknown

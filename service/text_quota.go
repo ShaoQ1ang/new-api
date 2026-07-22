@@ -485,9 +485,6 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	if tieredBillingApplied {
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
 	}
-	other = model.AttachLogEvent(other, model.LogEventConsumeText, map[string]interface{}{
-		"mode": usageSemanticFromUsage(relayInfo, originUsage),
-	})
 
 	attachQuotaSaturation(ctx, relayInfo, other)
 

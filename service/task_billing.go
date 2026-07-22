@@ -37,32 +37,11 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 		}
 	}
 	other := make(map[string]interface{})
-	other["event_code"] = model.LogEventConsumeTask
-	other["event_params"] = map[string]interface{}{
-		"action":   info.Action,
-		"per_call": common.StringsContains(constant.TaskPricePatches, info.OriginModelName),
-	}
 	other["is_task"] = true
 	other["request_path"] = c.Request.URL.Path
 	other["model_price"] = info.PriceData.ModelPrice
-	if info.PriceData.VideoSecondsUnitPrice > 0 {
-		other["billing_mode"] = "video_seconds"
-		other["video_seconds_unit_price"] = info.PriceData.VideoSecondsUnitPrice
-	}
-	if info.PriceData.VideoSecondsTier != "" {
-		other["video_seconds_tier"] = info.PriceData.VideoSecondsTier
-	}
-	if info.PriceData.VideoDurationSeconds > 0 {
-		other["video_duration_seconds"] = info.PriceData.VideoDurationSeconds
-	}
-	if info.PriceData.VideoAudioEnabled != nil {
-		other["video_audio_enabled"] = *info.PriceData.VideoAudioEnabled
-	}
 	if info.PriceData.ModelRatio > 0 {
 		other["model_ratio"] = info.PriceData.ModelRatio
-	}
-	if info.PriceData.ConditionalInputPrice > 0 {
-		other["conditional_input_price"] = info.PriceData.ConditionalInputPrice
 	}
 	other["group_ratio"] = info.PriceData.GroupRatioInfo.GroupRatio
 	if info.PriceData.GroupRatioInfo.HasSpecialRatio {
@@ -147,9 +126,6 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 		if bc.ModelRatio > 0 {
 			other["model_ratio"] = bc.ModelRatio
 		}
-		if bc.ConditionalInputPrice > 0 {
-			other["conditional_input_price"] = bc.ConditionalInputPrice
-		}
 		other["group_ratio"] = bc.GroupRatio
 		if priceData := taskBillingContextPriceData(bc); priceData != nil {
 			for k, v := range priceData.OtherRatios() {
@@ -203,10 +179,6 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 
 	// 3. 记录日志
 	other := taskBillingOther(task)
-	other = model.AttachLogEvent(other, model.LogEventTaskRefund, map[string]interface{}{
-		"task_id": task.TaskID,
-		"reason":  reason,
-	})
 	other["task_id"] = task.TaskID
 	other["reason"] = reason
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
@@ -273,17 +245,6 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		logQuota = -quotaDelta
 	}
 	other := taskBillingOther(task)
-	eventCode := model.LogEventTaskSettlementCharge
-	if logType == model.LogTypeRefund {
-		eventCode = model.LogEventTaskSettlementRefund
-	}
-	other = model.AttachLogEvent(other, eventCode, map[string]interface{}{
-		"task_id":            task.TaskID,
-		"reason":             reason,
-		"pre_consumed_quota": preConsumedQuota,
-		"actual_quota":       actualQuota,
-		"delta_quota":        quotaDelta,
-	})
 	other["task_id"] = task.TaskID
 	other["pre_consumed_quota"] = preConsumedQuota
 	other["actual_quota"] = actualQuota
@@ -300,6 +261,7 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		TokenId:   task.PrivateData.TokenId,
 		Group:     task.Group,
 		Other:     other,
+		NodeName:  task.PrivateData.NodeName,
 	})
 }
 
@@ -315,11 +277,9 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 
 	// 获取模型价格和倍率
 	modelRatio, hasRatioSetting, _ := ratio_setting.GetModelRatio(modelName)
-	// 只有配置了倍率(非固定价格)或显式条件价格时才按 token 重新计费
+	// 只有配置了倍率(非固定价格)时才按 token 重新计费
 	if !hasRatioSetting || modelRatio <= 0 {
-		if bc := task.PrivateData.BillingContext; bc == nil || bc.ConditionalInputPrice <= 0 {
-			return
-		}
+		return
 	}
 
 	// 获取用户和组的倍率信息
@@ -350,16 +310,9 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		otherMultiplier = priceData.OtherRatioMultiplier()
 	}
 
-	actualQuota := 0
-	var clamp *common.QuotaClamp
-	reason := ""
-	if bc := task.PrivateData.BillingContext; bc != nil && bc.ConditionalInputPrice > 0 {
-		actualQuota, clamp = common.QuotaFromFloatChecked(bc.ConditionalInputPrice / 1000000 * float64(totalTokens) * finalGroupRatio * common.QuotaPerUnit)
-		reason = fmt.Sprintf("token重算：tokens=%d, conditionalInputPrice=%.2f, groupRatio=%.2f", totalTokens, bc.ConditionalInputPrice, finalGroupRatio)
-	} else {
-		// 计算实际应扣费额度: totalTokens * modelRatio * groupRatio * otherMultiplier（饱和转换，防止溢出成负数）
-		actualQuota, clamp = common.QuotaFromFloatChecked(float64(totalTokens) * modelRatio * finalGroupRatio * otherMultiplier)
-		reason = fmt.Sprintf("token重算：tokens=%d, modelRatio=%.2f, groupRatio=%.2f, otherMultiplier=%.4f", totalTokens, modelRatio, finalGroupRatio, otherMultiplier)
-	}
+	// 计算实际应扣费额度: totalTokens * modelRatio * groupRatio * otherMultiplier（饱和转换，防止溢出成负数）
+	actualQuota, clamp := common.QuotaFromFloatChecked(float64(totalTokens) * modelRatio * finalGroupRatio * otherMultiplier)
+
+	reason := fmt.Sprintf("token重算：tokens=%d, modelRatio=%.2f, groupRatio=%.2f, otherMultiplier=%.4f", totalTokens, modelRatio, finalGroupRatio, otherMultiplier)
 	RecalculateTaskQuota(ctx, task, actualQuota, reason, clamp)
 }

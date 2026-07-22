@@ -1,7 +1,6 @@
 package claude
 
 import (
-	"encoding/base64"
 	"strings"
 	"testing"
 
@@ -97,6 +96,7 @@ func TestFormatClaudeResponseInfo_MessageStart(t *testing.T) {
 }
 
 func TestFormatClaudeResponseInfo_MessageDelta_FullUsage(t *testing.T) {
+	// message_start 先积累 usage
 	claudeInfo := &ClaudeResponseInfo{
 		Usage: &dto.Usage{
 			PromptTokens: 100,
@@ -108,6 +108,7 @@ func TestFormatClaudeResponseInfo_MessageDelta_FullUsage(t *testing.T) {
 		},
 	}
 
+	// message_delta 带完整 usage（原生 Anthropic 场景）
 	claudeResponse := &dto.ClaudeResponse{
 		Type: "message_delta",
 		Usage: &dto.ClaudeUsage{
@@ -137,6 +138,7 @@ func TestFormatClaudeResponseInfo_MessageDelta_FullUsage(t *testing.T) {
 }
 
 func TestFormatClaudeResponseInfo_MessageDelta_OnlyOutputTokens(t *testing.T) {
+	// 模拟 Bedrock: message_start 已积累 usage
 	claudeInfo := &ClaudeResponseInfo{
 		Usage: &dto.Usage{
 			PromptTokens: 100,
@@ -150,10 +152,12 @@ func TestFormatClaudeResponseInfo_MessageDelta_OnlyOutputTokens(t *testing.T) {
 		},
 	}
 
+	// Bedrock 的 message_delta 只有 output_tokens，缺少 input_tokens 和 cache 字段
 	claudeResponse := &dto.ClaudeResponse{
 		Type: "message_delta",
 		Usage: &dto.ClaudeUsage{
 			OutputTokens: 200,
+			// InputTokens, CacheCreationInputTokens, CacheReadInputTokens 都是 0
 		},
 	}
 
@@ -161,6 +165,7 @@ func TestFormatClaudeResponseInfo_MessageDelta_OnlyOutputTokens(t *testing.T) {
 	if !ok {
 		t.Fatal("expected true")
 	}
+	// PromptTokens 应保持 message_start 的值（因为 message_delta 的 InputTokens=0，不更新）
 	if claudeInfo.Usage.PromptTokens != 100 {
 		t.Errorf("PromptTokens = %d, want 100", claudeInfo.Usage.PromptTokens)
 	}
@@ -170,6 +175,7 @@ func TestFormatClaudeResponseInfo_MessageDelta_OnlyOutputTokens(t *testing.T) {
 	if claudeInfo.Usage.TotalTokens != 300 {
 		t.Errorf("TotalTokens = %d, want 300", claudeInfo.Usage.TotalTokens)
 	}
+	// cache 字段应保持 message_start 的值
 	if claudeInfo.Usage.PromptTokensDetails.CachedTokens != 30 {
 		t.Errorf("CachedTokens = %d, want 30", claudeInfo.Usage.PromptTokensDetails.CachedTokens)
 	}
@@ -366,110 +372,4 @@ func TestOpenAIChatRequestToClaudeMessages_ClaudeOpus48ThinkingUsesAdaptiveHighE
 	require.Nil(t, claudeRequest.Temperature)
 	require.Nil(t, claudeRequest.TopP)
 	require.Nil(t, claudeRequest.TopK)
-}
-
-func TestRequestOpenAI2ClaudeMessage_IgnoresUnsupportedFileContent(t *testing.T) {
-	request := dto.GeneralOpenAIRequest{
-		Model: "claude-3-5-sonnet",
-		Messages: []dto.Message{
-			{
-				Role: "user",
-				Content: []any{
-					dto.MediaContent{
-						Type: dto.ContentTypeText,
-						Text: "see attachment",
-					},
-					dto.MediaContent{
-						Type: dto.ContentTypeFile,
-						File: &dto.MessageFile{
-							FileName: "blob.bin",
-							FileData: "JVBERi0xLjQK",
-						},
-					},
-				},
-			},
-		},
-	}
-
-	claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
-	require.NoError(t, err)
-	require.Len(t, claudeRequest.Messages, 1)
-
-	content, ok := claudeRequest.Messages[0].Content.([]dto.ClaudeMediaMessage)
-	require.True(t, ok)
-	require.Len(t, content, 1)
-	require.Equal(t, "text", content[0].Type)
-	require.NotNil(t, content[0].Text)
-	require.Equal(t, "see attachment", *content[0].Text)
-}
-
-func TestRequestOpenAI2ClaudeMessage_SupportsPDFFileContent(t *testing.T) {
-	request := dto.GeneralOpenAIRequest{
-		Model: "claude-3-5-sonnet",
-		Messages: []dto.Message{
-			{
-				Role: "user",
-				Content: []any{
-					dto.MediaContent{
-						Type: dto.ContentTypeFile,
-						File: &dto.MessageFile{
-							FileName: "spec.pdf",
-							FileData: "JVBERi0xLjQK",
-						},
-					},
-					dto.MediaContent{
-						Type: dto.ContentTypeText,
-						Text: "summarize it",
-					},
-				},
-			},
-		},
-	}
-
-	claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
-	require.NoError(t, err)
-	require.Len(t, claudeRequest.Messages, 1)
-
-	content, ok := claudeRequest.Messages[0].Content.([]dto.ClaudeMediaMessage)
-	require.True(t, ok)
-	require.Len(t, content, 2)
-	require.Equal(t, "document", content[0].Type)
-	require.NotNil(t, content[0].Source)
-	require.Equal(t, "base64", content[0].Source.Type)
-	require.Equal(t, "application/pdf", content[0].Source.MediaType)
-	require.Equal(t, "JVBERi0xLjQK", content[0].Source.Data)
-	require.Equal(t, "text", content[1].Type)
-	require.NotNil(t, content[1].Text)
-	require.Equal(t, "summarize it", *content[1].Text)
-}
-
-func TestRequestOpenAI2ClaudeMessage_ConvertsTextFileContentToText(t *testing.T) {
-	request := dto.GeneralOpenAIRequest{
-		Model: "claude-3-5-sonnet",
-		Messages: []dto.Message{
-			{
-				Role: "user",
-				Content: []any{
-					dto.MediaContent{
-						Type: dto.ContentTypeFile,
-						File: &dto.MessageFile{
-							FileName: "notes.txt",
-							FileData: base64.StdEncoding.EncodeToString([]byte("alpha\nbeta")),
-						},
-					},
-				},
-			},
-		},
-	}
-
-	claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
-	require.NoError(t, err)
-	require.Len(t, claudeRequest.Messages, 1)
-
-	content, ok := claudeRequest.Messages[0].Content.([]dto.ClaudeMediaMessage)
-	require.True(t, ok)
-	require.Len(t, content, 1)
-	require.Equal(t, "text", content[0].Type)
-	require.NotNil(t, content[0].Text)
-	require.Equal(t, "alpha\nbeta", *content[0].Text)
 }

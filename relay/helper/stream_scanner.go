@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	InitialScannerBufferSize    = 64 << 10 // 64KB (64*1024)
-	DefaultMaxScannerBufferSize = 64 << 20 // 64MB (64*1024*1024) default SSE buffer size
+	InitialScannerBufferSize    = 64 << 10  // 64KB (64*1024)
+	DefaultMaxScannerBufferSize = 128 << 20 // 64MB (64*1024*1024) default SSE buffer size
 	DefaultPingInterval         = 10 * time.Second
 	// streamWriteTimeout bounds a single blocked write to a slow client so the
 	// unconditional wg.Wait() in cleanup can always finish. Without it, a slow
@@ -73,6 +73,7 @@ func ExtendWriteDeadline(c *gin.Context) {
 	}
 	_ = http.NewResponseController(c.Writer).SetWriteDeadline(time.Now().Add(streamWriteTimeout))
 }
+
 func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, dataHandler func(data string, sr *StreamResult)) {
 
 	if resp == nil || dataHandler == nil {
@@ -80,16 +81,11 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	}
 
 	// 无条件新建 StreamStatus
-	if info.StreamStatus == nil {
-		info.StreamStatus = relaycommon.NewStreamStatus()
-	}
+	info.StreamStatus = relaycommon.NewStreamStatus()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	streamingTimeout := time.Duration(constant.StreamingTimeout) * time.Second
-	if streamingTimeout <= 0 {
-		streamingTimeout = DefaultPingInterval
-	}
 
 	var (
 		stopChan    = make(chan bool, 3) // 增加缓冲区避免阻塞
@@ -119,14 +115,11 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		pingTicker = time.NewTicker(pingInterval)
 	}
 
-	if common.DebugEnabled {
-		// print timeout and ping interval for debugging
-		println("relay timeout seconds:", common.RelayTimeout)
-		println("relay max idle conns:", common.RelayMaxIdleConns)
-		println("relay max idle conns per host:", common.RelayMaxIdleConnsPerHost)
-		println("streaming timeout seconds:", int64(streamingTimeout.Seconds()))
-		println("ping interval seconds:", int64(pingInterval.Seconds()))
-	}
+	logger.LogDebug(c, "relay timeout seconds: %d", common.RelayTimeout)
+	logger.LogDebug(c, "relay max idle conns: %d", common.RelayMaxIdleConns)
+	logger.LogDebug(c, "relay max idle conns per host: %d", common.RelayMaxIdleConnsPerHost)
+	logger.LogDebug(c, "streaming timeout seconds: %d", int64(streamingTimeout.Seconds()))
+	logger.LogDebug(c, "ping interval seconds: %d", int64(pingInterval.Seconds()))
 
 	cleanup := func() {
 		cleanupOnce.Do(func() {
@@ -256,9 +249,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 
 			ticker.Reset(streamingTimeout)
 			data := scanner.Text()
-			if common.DebugEnabled {
-				println(data)
-			}
+			logger.LogDebug(c, "stream scanner data: %s", data)
 
 			if len(data) < 6 {
 				continue
@@ -284,9 +275,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 				}
 			} else {
 				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
-				if common.DebugEnabled {
-					println("received [DONE], stopping scanner")
-				}
+				logger.LogDebug(c, "received [DONE], stopping scanner")
 				return
 			}
 		}

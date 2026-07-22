@@ -7,6 +7,8 @@ import (
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 
 	"github.com/samber/lo"
 	"gorm.io/gorm"
@@ -103,7 +105,7 @@ func getChannelQuery(group string, model string, retry int) (*gorm.DB, error) {
 	return channelQuery, nil
 }
 
-func GetChannel(group string, model string, retry int) (*Channel, error) {
+func GetChannel(group string, model string, retry int, requestPath string) (*Channel, error) {
 	var abilities []Ability
 
 	var err error = nil
@@ -111,7 +113,7 @@ func GetChannel(group string, model string, retry int) (*Channel, error) {
 	if err != nil {
 		return nil, err
 	}
-	if common.UsingSQLite || common.UsingPostgreSQL {
+	if common.UsingMainDatabase(common.DatabaseTypeSQLite) || common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		err = channelQuery.Order("weight DESC").Find(&abilities).Error
 	} else {
 		err = channelQuery.Order("weight DESC").Find(&abilities).Error
@@ -190,6 +192,7 @@ func filterAbilitiesByRequestPathAndModel(abilities []Ability, requestPath strin
 	}
 	return filtered
 }
+
 func (channel *Channel) AddAbilities(tx *gorm.DB) error {
 	models_ := strings.Split(channel.Models, ",")
 	groups_ := strings.Split(channel.Group, ",")
@@ -339,7 +342,7 @@ func FixAbility() (int, int, error) {
 	defer fixLock.Unlock()
 
 	// truncate abilities table
-	if common.UsingSQLite {
+	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
 		err := DB.Exec("DELETE FROM abilities").Error
 		if err != nil {
 			common.SysLog(fmt.Sprintf("Delete abilities failed: %s", err.Error()))

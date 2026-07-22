@@ -25,4 +25,3 @@ dist-ssr
 *.sln
 *.sw?
 .tanstack/*
-bun.lock

@@ -53,8 +53,8 @@ func GetStatus(c *gin.Context) {
 	data := gin.H{
 		"version":                     common.Version,
 		"start_time":                  common.StartTime,
-		"email_verification":          common.EmailVerificationEnabled,
 		"sms_login":                   common.SmsLoginEnabled,
+		"email_verification":          common.EmailVerificationEnabled,
 		"github_oauth":                common.GitHubOAuthEnabled,
 		"github_client_id":            common.GitHubClientId,
 		"discord_oauth":               system_setting.GetDiscordSettings().Enabled,
@@ -90,8 +90,10 @@ func GetStatus(c *gin.Context) {
 		"chats":                         setting.Chats,
 		"demo_site_enabled":             operation_setting.DemoSiteEnabled,
 		"self_use_mode_enabled":         operation_setting.SelfUseModeEnabled,
+		"register_enabled":              common.RegisterEnabled,
+		"password_login_enabled":        common.PasswordLoginEnabled,
+		"password_register_enabled":     common.PasswordRegisterEnabled,
 		"default_use_auto_group":        setting.DefaultUseAutoGroup,
-		"playground_model_rules":        common.OptionMap["PlaygroundModelRules"],
 
 		"usd_exchange_rate": operation_setting.USDExchangeRate,
 		"price":             operation_setting.Price,
@@ -240,7 +242,10 @@ func SendEmailVerification(c *gin.Context) {
 	}
 	parts := strings.Split(email, "@")
 	if len(parts) != 2 {
-		common.ApiErrorI18n(c, i18n.MsgInvalidEmailAddress)
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "无效的邮箱地址",
+		})
 		return
 	}
 	localPart := parts[0]
@@ -254,14 +259,20 @@ func SendEmailVerification(c *gin.Context) {
 			}
 		}
 		if !allowed {
-			common.ApiErrorI18n(c, i18n.MsgEmailDomainWhitelistRestricted)
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "The administrator has enabled the email domain name whitelist, and your email address is not allowed due to special symbols or it's not in the whitelist.",
+			})
 			return
 		}
 	}
 	if common.EmailAliasRestrictionEnabled {
 		containsSpecialSymbols := strings.Contains(localPart, "+") || strings.Contains(localPart, ".")
 		if containsSpecialSymbols {
-			common.ApiErrorI18n(c, i18n.MsgEmailAliasRestricted)
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "管理员已启用邮箱地址别名限制，您的邮箱地址由于包含特殊符号而被拒绝。",
+			})
 			return
 		}
 	}
@@ -272,7 +283,10 @@ func SendEmailVerification(c *gin.Context) {
 	}
 	code := common.GenerateVerificationCode(6)
 	common.RegisterVerificationCodeWithKey(email, code, common.EmailVerificationPurpose)
-	subject, content := buildVerificationEmail(common.SystemName, code)
+	subject := fmt.Sprintf("%s邮箱验证邮件", common.SystemName)
+	content := fmt.Sprintf("<p>您好，你正在进行%s邮箱验证。</p>"+
+		"<p>您的验证码为: <strong>%s</strong></p>"+
+		"<p>验证码 %d 分钟内有效，如果不是本人操作，请忽略。</p>", common.SystemName, code, common.VerificationValidMinutes)
 	err := common.SendEmail(subject, email, content)
 	if err != nil {
 		common.ApiError(c, err)
@@ -295,7 +309,11 @@ func SendPasswordResetEmail(c *gin.Context) {
 		code := common.GenerateVerificationCode(0)
 		common.RegisterVerificationCodeWithKey(email, code, common.PasswordResetPurpose)
 		link := fmt.Sprintf("%s/user/reset?email=%s&token=%s", system_setting.ServerAddress, email, code)
-		subject, content := buildPasswordResetEmail(common.SystemName, link)
+		subject := fmt.Sprintf("%s密码重置", common.SystemName)
+		content := fmt.Sprintf("<p>您好，你正在进行%s密码重置。</p>"+
+			"<p>点击 <a href='%s'>此处</a> 进行密码重置。</p>"+
+			"<p>如果链接无法点击，请尝试点击下面的链接或将其复制到浏览器中打开：<br> %s </p>"+
+			"<p>重置链接 %d 分钟内有效，如果不是本人操作，请忽略。</p>", common.SystemName, link, link, common.VerificationValidMinutes)
 		err := common.SendEmail(subject, email, content)
 		if err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("failed to send password reset email to %s: %s", email, err.Error()))
@@ -347,23 +365,4 @@ func ResetPassword(c *gin.Context) {
 		"data":    password,
 	})
 	return
-}
-
-func buildVerificationEmail(systemName, code string) (string, string) {
-	subject := fmt.Sprintf("%s Email Verification", systemName)
-	content := fmt.Sprintf("<p>Hello, you are verifying your email for %s.</p>"+
-		"<p>Your verification code is: <strong>%s</strong></p>"+
-		"<p>This code is valid for %d minutes. If you did not request this, please ignore this email.</p>",
-		systemName, code, common.VerificationValidMinutes)
-	return subject, content
-}
-
-func buildPasswordResetEmail(systemName, link string) (string, string) {
-	subject := fmt.Sprintf("%s Password Reset", systemName)
-	content := fmt.Sprintf("<p>Hello, you are resetting your password for %s.</p>"+
-		"<p>Click <a href='%s'>here</a> to reset your password.</p>"+
-		"<p>If the link is not clickable, open or copy this URL in your browser:<br> %s </p>"+
-		"<p>This reset link is valid for %d minutes. If you did not request this, please ignore this email.</p>",
-		systemName, link, link, common.VerificationValidMinutes)
-	return subject, content
 }

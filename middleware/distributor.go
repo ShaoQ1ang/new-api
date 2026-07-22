@@ -3,6 +3,7 @@ package middleware
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"slices"
 	"strconv"
@@ -20,6 +21,7 @@ import (
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 type ModelRequest struct {
@@ -100,38 +102,32 @@ func Distribute() func(c *gin.Context) {
 				}
 
 				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
+					affinityUsable := false
 					preferred, err := model.CacheGetChannel(preferredChannelID)
-					if err == nil && preferred != nil {
-						if preferred.Status != common.ChannelStatusEnabled {
-							if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
-								abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorAffinityChannelDisabled))
-								return
-							}
-						} else if channelSupportsRequestPath(preferred, c.Request.URL.Path, modelRequest.Model) {
-							affinityUsable := false
-							if usingGroup == "auto" {
-								userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-								autoGroups := service.GetUserAutoGroup(userGroup)
-								for _, g := range autoGroups {
-									if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
-										selectGroup = g
-										common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
-										channel = preferred
-										affinityUsable = true
-										service.MarkChannelAffinityUsed(c, g, preferred.Id)
-										break
-									}
+					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled &&
+						channelSupportsRequestPath(preferred, c.Request.URL.Path, modelRequest.Model) {
+						if usingGroup == "auto" {
+							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+							autoGroups := service.GetUserAutoGroup(userGroup)
+							for _, g := range autoGroups {
+								if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
+									selectGroup = g
+									common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
+									channel = preferred
+									affinityUsable = true
+									service.MarkChannelAffinityUsed(c, g, preferred.Id)
+									break
 								}
-							} else if model.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
-								channel = preferred
-								selectGroup = usingGroup
-								affinityUsable = true
-								service.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
 							}
-							if !affinityUsable && !service.ShouldKeepChannelAffinityOnChannelDisabled() {
-								service.ClearCurrentChannelAffinityCache(c)
-							}
+						} else if model.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
+							channel = preferred
+							selectGroup = usingGroup
+							affinityUsable = true
+							service.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
 						}
+					}
+					if !affinityUsable && !service.ShouldKeepChannelAffinityOnChannelDisabled() {
+						service.ClearCurrentChannelAffinityCache(c)
 					}
 				}
 
@@ -193,6 +189,14 @@ func channelSupportsRequestPath(channel *model.Channel, requestPath string, requ
 // - application/x-www-form-urlencoded
 // - multipart/form-data
 func getModelFromRequest(c *gin.Context) (*ModelRequest, error) {
+	if strings.HasPrefix(c.Request.Header.Get("Content-Type"), "application/json") {
+		modelRequest, err := getModelFromJSONBody(c)
+		if err != nil {
+			return nil, errors.New(i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
+		}
+		return modelRequest, nil
+	}
+
 	var modelRequest ModelRequest
 	err := common.UnmarshalBodyReusable(c, &modelRequest)
 	if err != nil {
@@ -201,30 +205,48 @@ func getModelFromRequest(c *gin.Context) (*ModelRequest, error) {
 	return &modelRequest, nil
 }
 
-func fillModelRequestFromTask(c *gin.Context, modelRequest *ModelRequest) error {
-	if modelRequest == nil || modelRequest.Model != "" {
-		return nil
-	}
-
-	taskID := c.Param("task_id")
-	if taskID == "" {
-		taskID = c.GetString("task_id")
-	}
-	if taskID == "" {
-		return nil
-	}
-
-	userID := common.GetContextKeyInt(c, constant.ContextKeyUserId)
-	task, exist, err := model.GetByTaskId(userID, taskID)
+func getModelFromJSONBody(c *gin.Context) (*ModelRequest, error) {
+	storage, err := common.GetBodyStorage(c)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if !exist || task == nil {
-		return nil
+	requestBody, err := storage.Bytes()
+	if err != nil {
+		return nil, err
+	}
+	if !gjson.ValidBytes(requestBody) {
+		return nil, errors.New("invalid JSON request body")
 	}
 
-	modelRequest.Model = task.Properties.OriginModelName
-	return nil
+	values := gjson.GetManyBytes(requestBody, "model", "group")
+	model, err := getJSONStringValue(values[0], "model")
+	if err != nil {
+		return nil, err
+	}
+	group, err := getJSONStringValue(values[1], "group")
+	if err != nil {
+		return nil, err
+	}
+
+	if _, seekErr := storage.Seek(0, io.SeekStart); seekErr != nil {
+		return nil, seekErr
+	}
+	c.Request.Body = io.NopCloser(storage)
+
+	return &ModelRequest{
+		Model: model,
+		Group: group,
+	}, nil
+}
+
+func getJSONStringValue(result gjson.Result, field string) (string, error) {
+	if !result.Exists() || result.Type == gjson.Null {
+		return "", nil
+	}
+	if result.Type != gjson.String {
+		return "", fmt.Errorf("field %s must be a string", field)
+	}
+	return result.String(), nil
 }
 
 func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
@@ -293,6 +315,7 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		} else if c.Request.Method == http.MethodGet {
 			relayMode = relayconstant.RelayModeVideoFetchByID
 			shouldSelectChannel = false
+			modelRequest.Model = getTaskOriginModelName(c)
 		}
 		c.Set("relay_mode", relayMode)
 	} else if strings.Contains(c.Request.URL.Path, "/v1/video/generations") {
@@ -307,49 +330,10 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		} else if c.Request.Method == http.MethodGet {
 			relayMode = relayconstant.RelayModeVideoFetchByID
 			shouldSelectChannel = false
+			modelRequest.Model = getTaskOriginModelName(c)
 		}
 		if _, ok := c.Get("relay_mode"); !ok {
 			c.Set("relay_mode", relayMode)
-		}
-	} else if strings.Contains(c.Request.URL.Path, "/pg/video/generations") {
-		relayMode := relayconstant.RelayModeUnknown
-		if c.Request.Method == http.MethodPost {
-			req, err := getModelFromRequest(c)
-			if err != nil {
-				return nil, false, err
-			}
-			modelRequest.Model = req.Model
-			modelRequest.Group = req.Group
-			common.SetContextKey(c, constant.ContextKeyTokenGroup, modelRequest.Group)
-			relayMode = relayconstant.RelayModeVideoSubmit
-		} else if c.Request.Method == http.MethodGet {
-			relayMode = relayconstant.RelayModeVideoFetchByID
-			shouldSelectChannel = false
-		}
-		if _, ok := c.Get("relay_mode"); !ok {
-			c.Set("relay_mode", relayMode)
-		}
-	} else if strings.HasPrefix(c.Request.URL.Path, "/pg/images/generations") {
-		if c.Request.Method == http.MethodPost {
-			req, err := getModelFromRequest(c)
-			if err != nil {
-				return nil, false, err
-			}
-			modelRequest.Model = req.Model
-			modelRequest.Group = req.Group
-			common.SetContextKey(c, constant.ContextKeyTokenGroup, modelRequest.Group)
-			c.Set("relay_mode", relayconstant.RelayModeImagesGenerations)
-		}
-	} else if strings.HasPrefix(c.Request.URL.Path, "/pg/images/edits") {
-		if c.Request.Method == http.MethodPost {
-			req, err := getModelFromRequest(c)
-			if err != nil {
-				return nil, false, err
-			}
-			modelRequest.Model = req.Model
-			modelRequest.Group = req.Group
-			common.SetContextKey(c, constant.ContextKeyTokenGroup, modelRequest.Group)
-			c.Set("relay_mode", relayconstant.RelayModeImagesEdits)
 		}
 	} else if strings.HasPrefix(c.Request.URL.Path, "/v1beta/models/") || strings.HasPrefix(c.Request.URL.Path, "/v1/models/") {
 		// Gemini API 路径处理: /v1beta/models/gemini-2.0-flash:generateContent
@@ -425,19 +409,35 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		common.SetContextKey(c, constant.ContextKeyTokenGroup, modelRequest.Group)
 	}
 
-	if (strings.HasPrefix(c.Request.URL.Path, "/pg/images/generations") || strings.HasPrefix(c.Request.URL.Path, "/pg/images/edits")) && modelRequest.Model == "" {
-		modelRequest.Model = common.GetStringIfEmpty(modelRequest.Model, "gpt-image-2")
-	}
-
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/responses/compact") && modelRequest.Model != "" {
 		modelRequest.Model = ratio_setting.WithCompactModelSuffix(modelRequest.Model)
 	}
-	if relayMode, ok := c.Get("relay_mode"); ok && relayMode == relayconstant.RelayModeVideoFetchByID {
-		if err := fillModelRequestFromTask(c, &modelRequest); err != nil {
-			return nil, false, err
-		}
-	}
 	return &modelRequest, shouldSelectChannel, nil
+}
+
+// 修复 #4834: GET /v1/video/generations/:task_id && /v1/video/:task_id 此前不解析 model，
+// 当 token 启用「可用模型限制」时，下游 modelLimitEnable 校验会因
+// modelRequest.Model 为空而误报 "This token has no access to model"。
+// 从已存储的任务记录中回填 OriginModelName 即可让校验走在正确的模型上。
+func getTaskOriginModelName(c *gin.Context) string {
+	if !common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled) {
+		return ""
+	}
+
+	taskId := c.Param("task_id")
+	if taskId == "" {
+		// jimeng adapter
+		taskId = c.GetString("task_id")
+	}
+	if taskId == "" {
+		return ""
+	}
+
+	userId := c.GetInt("id")
+	if task, exist, err := model.GetByTaskId(userId, taskId); err == nil && exist && task != nil {
+		return task.Properties.OriginModelName
+	}
+	return ""
 }
 
 func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, modelName string) *types.NewAPIError {
