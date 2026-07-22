@@ -2,6 +2,7 @@ package openai
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -376,6 +377,9 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 		}
 		return bytes.NewReader(jsonData), nil
 	} else {
+		if info.ChannelType == constant.ChannelTypeOpenRouter && info.RelayMode == relayconstant.RelayModeAudioTranscription {
+			return convertOpenRouterAudioTranscriptionRequest(c, request)
+		}
 		var requestBody bytes.Buffer
 		writer := multipart.NewWriter(&requestBody)
 
@@ -433,8 +437,90 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 	}
 }
 
+func convertOpenRouterAudioTranscriptionRequest(c *gin.Context, request dto.AudioRequest) (io.Reader, error) {
+	formData, err := common.ParseMultipartFormReusable(c)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing multipart form: %w", err)
+	}
+	fileHeaders := formData.File["file"]
+	if len(fileHeaders) == 0 {
+		return nil, errors.New("file is required")
+	}
+	file, err := fileHeaders[0].Open()
+	if err != nil {
+		return nil, fmt.Errorf("error opening audio file: %w", err)
+	}
+	defer file.Close()
+	audioBytes, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("error reading audio file: %w", err)
+	}
+	payload := map[string]any{
+		"model": request.Model,
+		"input_audio": map[string]any{
+			"data":   base64.StdEncoding.EncodeToString(audioBytes),
+			"format": detectAudioFormat(fileHeaders[0].Filename, fileHeaders[0].Header.Get("Content-Type")),
+		},
+	}
+	for key, values := range formData.Value {
+		if key == "model" || len(values) == 0 {
+			continue
+		}
+		if len(values) == 1 {
+			payload[key] = values[0]
+		} else {
+			payload[key] = values
+		}
+	}
+	jsonData, err := common.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling object: %w", err)
+	}
+	c.Request.Header.Set("Content-Type", "application/json")
+	return bytes.NewReader(jsonData), nil
+}
+
+func detectAudioFormat(filename string, contentType string) string {
+	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(filename)), ".")
+	switch ext {
+	case "wav", "mp3", "webm", "ogg", "flac", "m4a":
+		return ext
+	case "mp4":
+		return "m4a"
+	case "mpeg", "mpga":
+		return "mp3"
+	}
+	mediaType := strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0]))
+	switch mediaType {
+	case "audio/wav", "audio/x-wav":
+		return "wav"
+	case "audio/mpeg", "audio/mp3":
+		return "mp3"
+	case "audio/webm":
+		return "webm"
+	case "audio/ogg":
+		return "ogg"
+	case "audio/flac":
+		return "flac"
+	case "audio/mp4", "audio/x-m4a":
+		return "m4a"
+	}
+	return "wav"
+}
+
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
-	switch info.RelayMode {
+	channelType := 0
+	relayMode := relayconstant.RelayModeImagesEdits
+	if info != nil {
+		if info.ChannelMeta != nil {
+			channelType = info.ChannelMeta.ChannelType
+		}
+		relayMode = info.RelayMode
+	}
+	if channelType == constant.ChannelTypeOpenAI && request.Model == "gpt-image-2" {
+		request.ResponseFormat = ""
+	}
+	switch relayMode {
 	case relayconstant.RelayModeImagesEdits:
 		if isJSONRequest(c) {
 			return request, nil

@@ -1,7 +1,5 @@
 package doubao
 
-import "strings"
-
 var ModelList = []string{
 	"doubao-seedance-1-0-pro-250528",
 	"doubao-seedance-1-0-lite-t2v",
@@ -38,16 +36,16 @@ var videoPriceTable = map[string]map[videoPriceKey]float64{
 	},
 }
 
-// GetVideoInputRatio 返回指定模型在给定输出分辨率/是否含视频输入下，相对基准价的计费倍率。
-// 第二个返回值表示该模型是否配置了价格表；倍率为 1.0 时调用方可忽略该 OtherRatio。
+// GetVideoInputRatio 返回指定模型含视频输入相对无视频基准价的计费倍率。
+// 输出分辨率对应的绝对单价通过 ConditionalInputPrice 单独计费；倍率只调整视频输入成本。
 func GetVideoInputRatio(modelName, resolution string, hasVideo bool) (float64, bool) {
 	prices, ok := videoPriceTable[modelName]
 	base := prices[videoPriceKey{}] // 零值键 = {480p/720p, 不含视频} 基准价
 	if !ok || base <= 0 {
 		return 0, false
 	}
-	res := strings.ToLower(strings.TrimSpace(resolution))
-	price, ok := prices[videoPriceKey{is1080p: res == "1080p", is4k: res == "4k", hasVideo: hasVideo}]
+	_ = resolution
+	price, ok := prices[videoPriceKey{hasVideo: hasVideo}]
 	if !ok {
 		// 未配置的组合（如 fast 无 1080p/4k，上游会自行报错）按基准价计费即可。
 		return 1.0, true

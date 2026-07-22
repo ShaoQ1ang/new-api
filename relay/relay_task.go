@@ -19,6 +19,8 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -193,13 +195,23 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 			info.PriceData.AddOtherRatio(k, v)
 		}
 	}
+	if !info.PriceData.UsePrice && info.PriceData.ConditionalInputPrice > 0 {
+		info.PriceData.Quota = int(info.PriceData.ConditionalInputPrice / 4 * common.QuotaPerUnit * info.PriceData.GroupRatioInfo.GroupRatio)
+	}
+	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeVideoSeconds {
+		if err := applyVideoSecondsBilling(c, info); err != nil {
+			return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
+		}
+	}
 
 	// 6. 将 OtherRatios 应用到基础额度（饱和转换，防止溢出成负数）
 	if !common.StringsContains(constant.TaskPricePatches, modelName) {
-		quotaWithRatios := info.PriceData.ApplyOtherRatiosToFloat(float64(info.PriceData.Quota))
-		quota, clamp := common.QuotaFromFloatChecked(quotaWithRatios)
-		info.PriceData.Quota = quota
-		noteTaskQuotaClamp(info, clamp)
+		if billing_setting.GetBillingMode(info.OriginModelName) != billing_setting.BillingModeVideoSeconds && info.PriceData.ConditionalInputPrice <= 0 {
+			quotaWithRatios := info.PriceData.ApplyOtherRatiosToFloat(float64(info.PriceData.Quota))
+			quota, clamp := common.QuotaFromFloatChecked(quotaWithRatios)
+			info.PriceData.Quota = quota
+			noteTaskQuotaClamp(info, clamp)
+		}
 	}
 
 	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
@@ -285,6 +297,27 @@ func noteTaskQuotaClamp(info *relaycommon.RelayInfo, clamp *common.QuotaClamp) {
 	if info.QuotaClamp == nil {
 		info.QuotaClamp = clamp
 	}
+}
+
+func applyVideoSecondsBilling(c *gin.Context, info *relaycommon.RelayInfo) error {
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return err
+	}
+	videoParams, err := taskcommon.ConvertVideoBillingParams(info, req)
+	if err != nil {
+		return err
+	}
+	unitPrice, ok := ratio_setting.GetVideoSecondsPrice(info.OriginModelName, videoParams.Tier, videoParams.AudioEnabled)
+	if !ok {
+		return fmt.Errorf("video seconds price not configured for %s tier %s", info.OriginModelName, videoParams.Tier)
+	}
+	info.PriceData.VideoSecondsUnitPrice = unitPrice
+	info.PriceData.VideoSecondsTier = videoParams.Tier
+	info.PriceData.VideoDurationSeconds = videoParams.DurationSeconds
+	info.PriceData.VideoAudioEnabled = &videoParams.AudioEnabled
+	info.PriceData.Quota = int(unitPrice * float64(videoParams.DurationSeconds) * common.QuotaPerUnit * info.PriceData.GroupRatioInfo.GroupRatio)
+	return nil
 }
 
 var fetchRespBuilders = map[int]func(c *gin.Context) (respBody []byte, taskResp *dto.TaskError){

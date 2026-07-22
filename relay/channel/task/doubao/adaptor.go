@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -28,39 +29,140 @@ import (
 // ============================
 
 type ContentItem struct {
-	Type     string    `json:"type,omitempty"`
-	Text     string    `json:"text,omitempty"`
-	ImageURL *MediaURL `json:"image_url,omitempty"`
-	VideoURL *MediaURL `json:"video_url,omitempty"`
-	AudioURL *MediaURL `json:"audio_url,omitempty"`
-	Role     string    `json:"role,omitempty"`
+	Type     string         `json:"type,omitempty"`
+	Text     string         `json:"text,omitempty"`
+	ImageURL *MediaURL      `json:"image_url,omitempty"`
+	VideoURL *MediaURL      `json:"video_url,omitempty"`
+	AudioURL *MediaURL      `json:"audio_url,omitempty"`
+	Role     string         `json:"role,omitempty"`
+	Extra    map[string]any `json:"-"`
 }
 
 type MediaURL struct {
-	URL string `json:"url,omitempty"`
+	URL   string         `json:"url,omitempty"`
+	Extra map[string]any `json:"-"`
 }
 
 type requestPayload struct {
-	Model                 string         `json:"model"`
-	Content               []ContentItem  `json:"content,omitempty"`
-	CallbackURL           string         `json:"callback_url,omitempty"`
-	ReturnLastFrame       *dto.BoolValue `json:"return_last_frame,omitempty"`
-	ServiceTier           string         `json:"service_tier,omitempty"`
-	ExecutionExpiresAfter *dto.IntValue  `json:"execution_expires_after,omitempty"`
-	GenerateAudio         *dto.BoolValue `json:"generate_audio,omitempty"`
-	Draft                 *dto.BoolValue `json:"draft,omitempty"`
-	Tools                 []struct {
-		Type string `json:"type,omitempty"`
-	} `json:"tools,omitempty"`
-	SafetyIdentifier string         `json:"safety_identifier,omitempty"`
-	Priority         *dto.IntValue  `json:"priority,omitempty"`
-	Resolution       string         `json:"resolution,omitempty"`
-	Ratio            string         `json:"ratio,omitempty"`
-	Duration         *dto.IntValue  `json:"duration,omitempty"`
-	Frames           *dto.IntValue  `json:"frames,omitempty"`
-	Seed             *dto.IntValue  `json:"seed,omitempty"`
-	CameraFixed      *dto.BoolValue `json:"camera_fixed,omitempty"`
-	Watermark        *dto.BoolValue `json:"watermark,omitempty"`
+	Model                 string           `json:"model"`
+	Content               []ContentItem    `json:"content,omitempty"`
+	CallbackURL           string           `json:"callback_url,omitempty"`
+	ReturnLastFrame       *dto.BoolValue   `json:"return_last_frame,omitempty"`
+	ServiceTier           string           `json:"service_tier,omitempty"`
+	ExecutionExpiresAfter *dto.IntValue    `json:"execution_expires_after,omitempty"`
+	GenerateAudio         *dto.BoolValue   `json:"generate_audio,omitempty"`
+	Draft                 *dto.BoolValue   `json:"draft,omitempty"`
+	Tools                 []map[string]any `json:"tools,omitempty"`
+	SafetyIdentifier      string           `json:"safety_identifier,omitempty"`
+	Priority              *dto.IntValue    `json:"priority,omitempty"`
+	Resolution            string           `json:"resolution,omitempty"`
+	Ratio                 string           `json:"ratio,omitempty"`
+	Duration              *dto.IntValue    `json:"duration,omitempty"`
+	Frames                *dto.IntValue    `json:"frames,omitempty"`
+	Seed                  *dto.IntValue    `json:"seed,omitempty"`
+	CameraFixed           *dto.BoolValue   `json:"camera_fixed,omitempty"`
+	Watermark             *dto.BoolValue   `json:"watermark,omitempty"`
+	Extra                 map[string]any   `json:"-"`
+}
+
+func (item ContentItem) MarshalJSON() ([]byte, error) {
+	type alias ContentItem
+	known, err := common.Marshal(alias(item))
+	if err != nil {
+		return nil, err
+	}
+	var fields map[string]any
+	if err := common.Unmarshal(known, &fields); err != nil {
+		return nil, err
+	}
+	for key, value := range item.Extra {
+		fields[key] = value
+	}
+	return common.Marshal(fields)
+}
+
+func (media MediaURL) MarshalJSON() ([]byte, error) {
+	type alias MediaURL
+	known, err := common.Marshal(alias(media))
+	if err != nil {
+		return nil, err
+	}
+	var fields map[string]any
+	if err := common.Unmarshal(known, &fields); err != nil {
+		return nil, err
+	}
+	for key, value := range media.Extra {
+		fields[key] = value
+	}
+	return common.Marshal(fields)
+}
+
+func (media *MediaURL) UnmarshalJSON(data []byte) error {
+	type alias MediaURL
+	var parsed alias
+	if err := common.Unmarshal(data, &parsed); err != nil {
+		return err
+	}
+	var fields map[string]any
+	if err := common.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	delete(fields, "url")
+	parsed.Extra = fields
+	*media = MediaURL(parsed)
+	return nil
+}
+
+func (item *ContentItem) UnmarshalJSON(data []byte) error {
+	type alias ContentItem
+	var parsed alias
+	if err := common.Unmarshal(data, &parsed); err != nil {
+		return err
+	}
+	var fields map[string]any
+	if err := common.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	for _, key := range []string{"type", "text", "image_url", "video_url", "audio_url", "role"} {
+		delete(fields, key)
+	}
+	parsed.Extra = fields
+	*item = ContentItem(parsed)
+	return nil
+}
+
+func (payload requestPayload) MarshalJSON() ([]byte, error) {
+	type alias requestPayload
+	known, err := common.Marshal(alias(payload))
+	if err != nil {
+		return nil, err
+	}
+	var fields map[string]any
+	if err := common.Unmarshal(known, &fields); err != nil {
+		return nil, err
+	}
+	for key, value := range payload.Extra {
+		fields[key] = value
+	}
+	return common.Marshal(fields)
+}
+
+func (payload *requestPayload) UnmarshalJSON(data []byte) error {
+	type alias requestPayload
+	var parsed alias
+	if err := common.Unmarshal(data, &parsed); err != nil {
+		return err
+	}
+	var fields map[string]any
+	if err := common.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	for _, key := range []string{"model", "content", "callback_url", "return_last_frame", "service_tier", "execution_expires_after", "generate_audio", "draft", "tools", "safety_identifier", "priority", "resolution", "ratio", "duration", "frames", "seed", "camera_fixed", "watermark"} {
+		delete(fields, key)
+	}
+	parsed.Extra = fields
+	*payload = requestPayload(parsed)
+	return nil
 }
 
 type responsePayload struct {
@@ -142,6 +244,9 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	}
 	hasVideo := hasVideoInMetadata(req.Metadata)
 	resolution, _ := req.Metadata["resolution"].(string)
+	if conditionalPrice, ok := ratio_setting.GetTaskConditionalInputPrice(info.OriginModelName, resolution, hasVideo); ok {
+		info.PriceData.ConditionalInputPrice = conditionalPrice
+	}
 	ratio, ok := GetVideoInputRatio(info.OriginModelName, resolution, hasVideo)
 	if !ok || ratio == 1.0 {
 		return nil
@@ -292,16 +397,24 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	if err := taskcommon.UnmarshalMetadata(metadata, &r); err != nil {
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
 	}
+	r.Model = req.Model
 
 	if sec, _ := strconv.Atoi(req.Seconds); sec > 0 {
 		r.Duration = lo.ToPtr(dto.IntValue(sec))
+	} else if req.Duration > 0 {
+		r.Duration = lo.ToPtr(dto.IntValue(req.Duration))
 	}
 
-	r.Content = lo.Reject(r.Content, func(c ContentItem, _ int) bool { return c.Type == "text" })
-	r.Content = append(r.Content, ContentItem{
-		Type: "text",
-		Text: req.Prompt,
-	})
+	hasText := false
+	for _, item := range r.Content {
+		if item.Type == "text" {
+			hasText = true
+			break
+		}
+	}
+	if !hasText && req.Prompt != "" {
+		r.Content = append(r.Content, ContentItem{Type: "text", Text: req.Prompt})
+	}
 
 	return &r, nil
 }
