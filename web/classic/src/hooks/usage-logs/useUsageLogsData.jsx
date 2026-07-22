@@ -36,6 +36,7 @@ import {
   renderAudioModelPrice,
   renderClaudeModelPrice,
   renderModelPrice,
+  renderTieredModelPrice,
   renderTaskBillingProcess,
   isTaskLog,
   localizeTaskLogLine,
@@ -488,9 +489,10 @@ export const useLogsData = () => {
       }
       if (logs[i].type === 2) {
         const isTaskUsageLog = isTaskLog(other);
+        const tieredBillingContent = renderTieredModelPrice(other);
         expandDataLocal.push({
           key: t('日志详情'),
-          value: isTaskUsageLog
+          value: tieredBillingContent || (isTaskUsageLog
             ? localizeTaskLogContent(logs[i].content, t) ||
               localizeTaskLogLine(
                 '任务预扣费（将在任务完成后按实际token重算）',
@@ -529,7 +531,7 @@ export const useLogsData = () => {
                   other.file_search || false,
                   other.file_search_call_count || 0,
                   billingDisplayMode,
-                ),
+                )),
         });
         if (logs[i]?.content) {
           expandDataLocal.push({
@@ -568,7 +570,10 @@ export const useLogsData = () => {
         let content = '';
         if (!isViolationFeeLog) {
           const isTaskLog = other?.is_task === true || other?.task_id != null;
-          if (
+          const tieredBillingContent = renderTieredModelPrice(other);
+          if (tieredBillingContent) {
+            content = tieredBillingContent;
+          } else if (
             isTaskLog &&
             (other?.billing_mode === 'video_seconds' ||
               other?.model_price === -1)

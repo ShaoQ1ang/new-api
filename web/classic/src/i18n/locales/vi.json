@@ -4785,6 +4785,8 @@
     "这是 Token 容量，不是价格；建议为原生窗口的 75%–80%（{{min}}–{{max}} Token）；0 表示不额外限制": "Đây là dung lượng token, không phải giá. Khuyến nghị 75%–80% cửa sổ gốc ({{min}}–{{max}} token); 0 nghĩa là không giới hạn thêm",
     "这是 Token 容量，不是价格；建议为原生窗口的 75%–80%；0 表示不额外限制": "Đây là dung lượng token, không phải giá. Khuyến nghị 75%–80% cửa sổ gốc; 0 nghĩa là không giới hạn thêm",
     "建议按模型官方公布的最大输出填写；0 表示未配置": "Dùng mức đầu ra tối đa do nhà cung cấp mô hình công bố; 0 nghĩa là chưa cấu hình",
-    "0 表示未配置": "0 nghĩa là chưa cấu hình"
+    "0 表示未配置": "0 nghĩa là chưa cấu hình",
+    "阶梯计费（表达式解析失败）": "Tính phí theo bậc (không thể phân tích biểu thức)",
+    "阶梯计费（未匹配到对应阶梯）": "Tính phí theo bậc (không tìm thấy bậc phù hợp)"
   }
 }

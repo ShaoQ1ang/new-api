@@ -2998,6 +2998,15 @@
     "这是 Token 容量，不是价格；建议为原生窗口的 75%–80%（{{min}}–{{max}} Token）；0 表示不额外限制": "这是 Token 容量，不是价格；建议为原生窗口的 75%–80%（{{min}}–{{max}} Token）；0 表示不额外限制",
     "这是 Token 容量，不是价格；建议为原生窗口的 75%–80%；0 表示不额外限制": "这是 Token 容量，不是价格；建议为原生窗口的 75%–80%；0 表示不额外限制",
     "建议按模型官方公布的最大输出填写；0 表示未配置": "建议按模型官方公布的最大输出填写；0 表示未配置",
-    "0 表示未配置": "0 表示未配置"
+    "0 表示未配置": "0 表示未配置",
+    "输入价格：{{symbol}}{{price}} / 1M tokens": "输入价格：{{symbol}}{{price}} / 1M tokens",
+    "输出价格：{{symbol}}{{price}} / 1M tokens": "输出价格：{{symbol}}{{price}} / 1M tokens",
+    "缓存读取价格：{{symbol}}{{price}} / 1M tokens": "缓存读取价格：{{symbol}}{{price}} / 1M tokens",
+    "缓存创建价格：{{symbol}}{{price}} / 1M tokens": "缓存创建价格：{{symbol}}{{price}} / 1M tokens",
+    "1h缓存创建价格：{{symbol}}{{price}} / 1M tokens": "1h缓存创建价格：{{symbol}}{{price}} / 1M tokens",
+    "图片输入价格：{{symbol}}{{price}} / 1M tokens": "图片输入价格：{{symbol}}{{price}} / 1M tokens",
+    "图片输出价格：{{symbol}}{{price}} / 1M tokens": "图片输出价格：{{symbol}}{{price}} / 1M tokens",
+    "音频输入价格：{{symbol}}{{price}} / 1M tokens": "音频输入价格：{{symbol}}{{price}} / 1M tokens",
+    "音频补全价格：{{symbol}}{{price}} / 1M tokens": "音频补全价格：{{symbol}}{{price}} / 1M tokens"
   }
 }
