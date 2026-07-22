@@ -130,6 +130,31 @@ export function useSidebarData(): SidebarData {
             icon: Box,
           },
           {
+            title: t('Skill Hub'),
+            icon: Puzzle,
+            activeUrls: ['/skill-hub'],
+            configUrls: ['/skill-hub', '/skill-hub/tags', '/skill-hub/reports'],
+            items: [
+              {
+                title: t('Skills'),
+                url: '/skill-hub',
+              },
+              {
+                title: t('Tags'),
+                url: '/skill-hub/tags',
+              },
+              {
+                title: t('Reports'),
+                url: '/skill-hub/reports',
+              },
+            ],
+          },
+          {
+            title: t('Client Management'),
+            url: '/client-releases',
+            icon: Package,
+          },
+          {
             title: t('Users'),
             url: '/users',
             icon: Users,
