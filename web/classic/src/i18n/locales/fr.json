@@ -4266,6 +4266,8 @@
     "这是 Token 容量，不是价格；建议为原生窗口的 75%–80%（{{min}}–{{max}} Token）；0 表示不额外限制": "Il s'agit d'une capacité en tokens, pas d'un prix. Recommandé : 75 % à 80 % de la fenêtre native ({{min}}–{{max}} tokens) ; 0 signifie aucune limite supplémentaire",
     "这是 Token 容量，不是价格；建议为原生窗口的 75%–80%；0 表示不额外限制": "Il s'agit d'une capacité en tokens, pas d'un prix. Recommandé : 75 % à 80 % de la fenêtre native ; 0 signifie aucune limite supplémentaire",
     "建议按模型官方公布的最大输出填写；0 表示未配置": "Utilisez la sortie maximale publiée officiellement pour le modèle ; 0 signifie non configuré",
-    "0 表示未配置": "0 signifie non configuré"
+    "0 表示未配置": "0 signifie non configuré",
+    "阶梯计费（表达式解析失败）": "Tarification par paliers (échec d’analyse de l’expression)",
+    "阶梯计费（未匹配到对应阶梯）": "Tarification par paliers (aucun palier correspondant)"
   }
 }

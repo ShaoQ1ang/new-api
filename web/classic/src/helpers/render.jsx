@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import i18next from 'i18next';
 import { Modal, Tag, Typography, Avatar } from '@douyinfe/semi-ui';
-import { copy, showSuccess } from './utils';
+import { copy, parseTiersFromExpr, showSuccess } from './utils';
 import {
   buildTaskBillingSummaryLines,
   buildVideoSecondsBillingProcessLines,
@@ -1688,6 +1688,105 @@ export function renderTaskBillingProcess(other, content) {
       showReferenceNote: false,
     },
   );
+}
+
+function decodeBillingExpr(exprB64) {
+  if (!exprB64) return '';
+  try {
+    const binary = atob(exprB64);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return '';
+  }
+}
+
+export function renderTieredModelPrice(other) {
+  if (other?.billing_mode !== 'tiered_expr') return null;
+
+  const expression = decodeBillingExpr(other.expr_b64);
+  const tiers = parseTiersFromExpr(expression);
+  if (tiers.length === 0) {
+    return renderBillingArticle([i18next.t('阶梯计费（表达式解析失败）')]);
+  }
+
+  const matchedTier = String(other.matched_tier || '').trim().toLowerCase();
+  const tier = tiers.find(
+    (item) => String(item.label || '').trim().toLowerCase() === matchedTier,
+  );
+  if (!tier) {
+    return renderBillingArticle([i18next.t('阶梯计费（未匹配到对应阶梯）')]);
+  }
+
+  const { ratio: groupRatio } = getEffectiveRatio(
+    other.group_ratio,
+    other.user_group_ratio,
+  );
+  const { symbol, rate } = getCurrencyConfig();
+  const hasCacheTokens =
+    Number(other.cache_tokens || 0) > 0 ||
+    Number(other.cache_creation_tokens || 0) > 0 ||
+    Number(other.cache_creation_tokens_5m || 0) > 0 ||
+    Number(other.cache_creation_tokens_1h || 0) > 0;
+  const priceRows = [
+    ['输入价格：{{symbol}}{{price}} / 1M tokens', tier.inputPrice, true],
+    ['输出价格：{{symbol}}{{price}} / 1M tokens', tier.outputPrice, true],
+    ['缓存读取价格：{{symbol}}{{price}} / 1M tokens', tier.cacheReadPrice, hasCacheTokens],
+    ['缓存创建价格：{{symbol}}{{price}} / 1M tokens', tier.cacheCreatePrice, hasCacheTokens],
+    ['1h缓存创建价格：{{symbol}}{{price}} / 1M tokens', tier.cacheCreate1hPrice, hasCacheTokens],
+    ['图片输入价格：{{symbol}}{{price}} / 1M tokens', tier.imagePrice, true],
+    ['图片输出价格：{{symbol}}{{price}} / 1M tokens', tier.imageOutputPrice, true],
+    ['音频输入价格：{{symbol}}{{price}} / 1M tokens', tier.audioInputPrice, true],
+    ['音频补全价格：{{symbol}}{{price}} / 1M tokens', tier.audioOutputPrice, true],
+  ].filter(([, price, enabled]) => enabled && Number.isFinite(Number(price)) && Number(price) > 0);
+
+  const lines = [
+    i18next.t('动态计费'),
+    i18next.t('档位') + ': ' + (tier.label || i18next.t('默认')),
+    ...priceRows.map(([label, price]) =>
+      buildBillingPriceText(label, {
+        symbol,
+        usdAmount: Number(price),
+        rate,
+      }),
+    ),
+    i18next.t('分组倍率') + ': ' + groupRatio + 'x',
+  ];
+
+  return renderBillingArticle(lines);
+}
+
+export function renderTieredModelPriceSimple(other) {
+  if (other?.billing_mode !== 'tiered_expr') return null;
+  const expression = decodeBillingExpr(other.expr_b64);
+  const tiers = parseTiersFromExpr(expression);
+  const matchedTier = String(other.matched_tier || '').trim().toLowerCase();
+  const tier = tiers.find(
+    (item) => String(item.label || '').trim().toLowerCase() === matchedTier,
+  );
+  if (!tier) {
+    return i18next.t('阶梯计费（未匹配到对应阶梯）');
+  }
+
+  const { symbol, rate } = getCurrencyConfig();
+  const formatPrice = (value) =>
+    `${symbol}${formatBillingDisplayPrice(Number(value), rate)}`;
+  const parts = [
+    tier.label || i18next.t('默认'),
+    tier.inputPrice > 0 ? `${i18next.t('输入')} ${formatPrice(tier.inputPrice)}/M` : null,
+    tier.outputPrice > 0 ? `${i18next.t('输出')} ${formatPrice(tier.outputPrice)}/M` : null,
+  ].filter(Boolean);
+  if (Number(other.cache_tokens || 0) > 0) {
+    if (tier.cacheReadPrice > 0) {
+      parts.push(`${i18next.t('缓存读取')} ${formatPrice(tier.cacheReadPrice)}/M`);
+    }
+  }
+  if (Number(other.cache_creation_tokens || 0) > 0) {
+    if (tier.cacheCreatePrice > 0) {
+      parts.push(`${i18next.t('缓存创建')} ${formatPrice(tier.cacheCreatePrice)}/M`);
+    }
+  }
+  return parts.join(' · ');
 }
 
 export function renderModelPrice(
