@@ -50,6 +50,7 @@ func (topUp *TopUp) ApplyPaymentSnapshot(snapshot PaymentSnapshot) {
 }
 
 const (
+	PaymentMethodBalance      = "balance"
 	PaymentMethodStripe       = "stripe"
 	PaymentMethodCreem        = "creem"
 	PaymentMethodWaffo        = "waffo"
@@ -58,6 +59,7 @@ const (
 )
 
 const (
+	PaymentProviderBalance      = "balance"
 	PaymentProviderEpay         = "epay"
 	PaymentProviderStripe       = "stripe"
 	PaymentProviderCreem        = "creem"

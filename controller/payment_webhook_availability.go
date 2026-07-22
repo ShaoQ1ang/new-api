@@ -25,7 +25,7 @@ func isStripeWebhookConfigured() bool {
 }
 
 func isStripeWebhookEnabled() bool {
-	return isStripeTopUpEnabled()
+	return isPaymentComplianceConfirmed() && isStripeWebhookConfigured()
 }
 
 func isCreemTopUpEnabled() bool {
@@ -77,11 +77,18 @@ func isWaffoPancakeTopUpEnabled() bool {
 	if !isPaymentComplianceConfirmed() {
 		return false
 	}
-	// Presence-of-credentials = enabled. Webhook public keys ship inside
-	// the SDK; mode (test/prod) is read from each event.
+	if !setting.WaffoPancakeEnabled {
+		return false
+	}
+	webhookKey := setting.WaffoPancakeWebhookPublicKey
+	if setting.WaffoPancakeSandbox {
+		webhookKey = setting.WaffoPancakeWebhookTestKey
+	}
 	return strings.TrimSpace(setting.WaffoPancakeMerchantID) != "" &&
 		strings.TrimSpace(setting.WaffoPancakePrivateKey) != "" &&
-		strings.TrimSpace(setting.WaffoPancakeProductID) != ""
+		strings.TrimSpace(setting.WaffoPancakeStoreID) != "" &&
+		strings.TrimSpace(setting.WaffoPancakeProductID) != "" &&
+		strings.TrimSpace(webhookKey) != ""
 }
 
 func isWaffoPancakeWebhookConfigured() bool {

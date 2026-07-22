@@ -48,6 +48,9 @@ func TestMain(m *testing.M) {
 		&TopUp{},
 		&SubscriptionPlan{},
 		&SubscriptionOrder{},
+		&AlipayPendingTask{},
+		&BillingSubscription{},
+		&RecurringChargeAttempt{},
 		&UserSubscription{},
 		&UserOAuthBinding{},
 		&PerfMetric{},
@@ -63,7 +66,7 @@ func TestMain(m *testing.M) {
 
 func truncateTables(t *testing.T) {
 	t.Helper()
-	t.Cleanup(func() {
+	clear := func() {
 		DB.Exec("DELETE FROM tasks")
 		DB.Exec("DELETE FROM passkey_credentials")
 		DB.Exec("DELETE FROM two_fa_backup_codes")
@@ -77,13 +80,18 @@ func truncateTables(t *testing.T) {
 		DB.Exec("DELETE FROM abilities")
 		DB.Exec("DELETE FROM top_ups")
 		DB.Exec("DELETE FROM subscription_orders")
+		DB.Exec("DELETE FROM alipay_pending_tasks")
+		DB.Exec("DELETE FROM recurring_charge_attempts")
+		DB.Exec("DELETE FROM billing_subscriptions")
 		DB.Exec("DELETE FROM subscription_plans")
 		DB.Exec("DELETE FROM user_subscriptions")
 		DB.Exec("DELETE FROM perf_metrics")
 		DB.Exec("DELETE FROM system_instances")
 		DB.Exec("DELETE FROM system_task_locks")
 		DB.Exec("DELETE FROM system_tasks")
-	})
+	}
+	clear()
+	t.Cleanup(clear)
 }
 
 func insertTask(t *testing.T, task *Task) {

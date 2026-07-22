@@ -527,7 +527,7 @@ func SearchSkillHubSkillsByTagIDs(tagIDs []int, keyword string, admin bool, offs
 }
 
 func skillHubSkillsByTagIDsQuery(db *gorm.DB, tagIDs []int) *gorm.DB {
-	taggedSkillIDs := db.Model(&SkillHubSkillTag{}).
+	taggedSkillIDs := db.Session(&gorm.Session{}).Model(&SkillHubSkillTag{}).
 		Select("skill_id").
 		Where("tag_id IN ?", tagIDs)
 	return db.Model(&SkillHubSkill{}).

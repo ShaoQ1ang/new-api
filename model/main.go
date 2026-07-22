@@ -506,6 +506,20 @@ type sqliteColumnDef struct {
 	DDL  string
 }
 
+// ensureDecimalMoneyTablesSQLite keeps the legacy SQLite migration entry point
+// available for databases that contain decimal money columns. GORM's SQLite
+// table rewrite is not safe for these definitions, so create the tables with
+// SQLite-compatible DDL before normal migrations run.
+func ensureDecimalMoneyTablesSQLite() error {
+	if !common.UsingSQLite {
+		return nil
+	}
+	if err := DB.Exec("CREATE TABLE IF NOT EXISTS `top_ups` (`id` integer, `user_id` integer, `amount` integer, `money` real, `display_amount` decimal(12,6) NOT NULL DEFAULT 0, `display_currency` varchar(32) NOT NULL DEFAULT '', `settlement_amount` decimal(12,6) NOT NULL DEFAULT 0, `settlement_currency` varchar(16) NOT NULL DEFAULT '', `exchange_rate_snapshot` decimal(12,6) NOT NULL DEFAULT 0, `trade_no` varchar(255), `payment_method` varchar(50), `payment_provider` varchar(50) DEFAULT '', `create_time` integer, `complete_time` integer, `status` text, PRIMARY KEY (`id`))").Error; err != nil {
+		return err
+	}
+	return DB.Exec("CREATE TABLE IF NOT EXISTS `subscription_orders` (`id` integer, `user_id` integer, `plan_id` integer, `money` real, `display_amount` decimal(12,6) NOT NULL DEFAULT 0, `display_currency` varchar(32) NOT NULL DEFAULT '', `settlement_amount` decimal(12,6) NOT NULL DEFAULT 0, `settlement_currency` varchar(16) NOT NULL DEFAULT '', `exchange_rate_snapshot` decimal(12,6) NOT NULL DEFAULT 0, `trade_no` varchar(255), `payment_method` varchar(50), `payment_provider` varchar(50) DEFAULT '', `status` text, `create_time` integer, `complete_time` integer, `provider_payload` text, PRIMARY KEY (`id`))").Error
+}
+
 func ensureSubscriptionPlanTableSQLite() error {
 	if !common.UsingMainDatabase(common.DatabaseTypeSQLite) {
 		return nil
@@ -523,6 +537,7 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`custom_seconds`" + ` bigint NOT NULL DEFAULT 0,
 ` + "`enabled`" + ` numeric DEFAULT 1,
 ` + "`sort_order`" + ` integer DEFAULT 0,
+` + "`alipay_enabled`" + ` numeric DEFAULT 0,
 ` + "`allow_balance_pay`" + ` numeric DEFAULT 1,
 ` + "`allow_wallet_overflow`" + ` numeric DEFAULT 1,
 ` + "`stripe_price_id`" + ` varchar(128) DEFAULT '',
@@ -560,6 +575,7 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "custom_seconds", DDL: "`custom_seconds` bigint NOT NULL DEFAULT 0"},
 		{Name: "enabled", DDL: "`enabled` numeric DEFAULT 1"},
 		{Name: "sort_order", DDL: "`sort_order` integer DEFAULT 0"},
+		{Name: "alipay_enabled", DDL: "`alipay_enabled` numeric DEFAULT 0"},
 		{Name: "allow_balance_pay", DDL: "`allow_balance_pay` numeric DEFAULT 1"},
 		{Name: "allow_wallet_overflow", DDL: "`allow_wallet_overflow` numeric DEFAULT 1"},
 		{Name: "stripe_price_id", DDL: "`stripe_price_id` varchar(128) DEFAULT ''"},
