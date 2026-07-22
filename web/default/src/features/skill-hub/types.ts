@@ -24,6 +24,7 @@ export type SkillHubSkill = {
   author?: string
   origin?: string
   originUrl?: string
+  license?: string
   icon?: string
   tags?: string[]
   verified: boolean
@@ -32,12 +33,45 @@ export type SkillHubSkill = {
   status?: number
   sort?: number
   updatedAt?: string
+  skillMarkdown?: string
+  evaluation?: SkillHubEvaluation
+  testcases?: SkillHubTestcases
+  reportingEnabled?: boolean
   source?: {
     type: 'zip'
     url?: string
     ref?: string
     checksum?: string
   }
+}
+
+export type SkillHubEvaluationDimension = {
+  score: number
+  review?: string
+}
+
+export type SkillHubEvaluation = {
+  overallScore?: number
+  overallRating?: string
+  overallReview?: string
+  dimensions: {
+    safety: SkillHubEvaluationDimension
+    access: SkillHubEvaluationDimension
+    frontier: SkillHubEvaluationDimension
+    economy: SkillHubEvaluationDimension
+  }
+}
+
+export type SkillHubTestcase = {
+  id: number
+  question: string
+  answer: string
+  sortOrder: number
+}
+
+export type SkillHubTestcases = {
+  slug: string
+  testcases: SkillHubTestcase[]
 }
 
 export type SkillHubListResponse = {
@@ -79,6 +113,43 @@ export type SkillHubTagResponse = {
   data?: SkillHubTag
 }
 
+export type SkillHubReportStatus = 'pending' | 'resolved' | 'dismissed'
+
+export type SkillHubAdminReport = {
+  id: number
+  reporterUserId: number
+  reporterUsername?: string
+  reporterEmail?: string
+  skillInternalId: number
+  skillId: string
+  skillName: string
+  skillVersion?: string
+  description: string
+  status: SkillHubReportStatus
+  adminNote?: string
+  handledBy?: number
+  handledTime?: number
+  revision: number
+  notificationStatus: 'pending' | 'sending' | 'notified' | 'failed'
+  createdTime: number
+  updatedTime: number
+}
+
+export type SkillHubAdminReportListResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    items: SkillHubAdminReport[]
+    total: number
+  }
+}
+
+export type SkillHubAdminReportResponse = {
+  success: boolean
+  message?: string
+  data?: SkillHubAdminReport
+}
+
 export type SkillHubDirectUploadInitResponse = {
   success: boolean
   message?: string
@@ -116,6 +187,7 @@ export type SkillHubForm = {
   author: string
   origin: string
   originUrl: string
+  license: string
   icon: string
   tags: string[]
   verified: boolean
@@ -126,4 +198,24 @@ export type SkillHubForm = {
   sourceUrl: string
   sourceRef: string
   sourceChecksum: string
+  skillMarkdown: string
+  evaluation: SkillHubEvaluationForm | null
+  testcases: SkillHubTestcases | null
+}
+
+export type SkillHubEvaluationForm = {
+  overallScore: string
+  overallRating: string
+  overallReview: string
+  dimensions: {
+    safety: SkillHubEvaluationDimensionForm
+    access: SkillHubEvaluationDimensionForm
+    frontier: SkillHubEvaluationDimensionForm
+    economy: SkillHubEvaluationDimensionForm
+  }
+}
+
+export type SkillHubEvaluationDimensionForm = {
+  score: string
+  review: string
 }
