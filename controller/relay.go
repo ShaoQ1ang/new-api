@@ -22,6 +22,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -53,6 +54,19 @@ func relayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIErro
 		err = relay.TextHelper(c, info)
 	}
 	return err
+}
+
+func shouldMarkTaskPerCallBilling(relayInfo *relaycommon.RelayInfo) bool {
+	if relayInfo == nil {
+		return false
+	}
+	if common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) {
+		return true
+	}
+	if billing_setting.GetBillingMode(relayInfo.OriginModelName) == billing_setting.BillingModeVideoSeconds {
+		return false
+	}
+	return relayInfo.PriceData.UsePrice
 }
 
 func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {

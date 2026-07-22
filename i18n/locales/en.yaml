@@ -294,3 +294,8 @@ payment.waffo_pancake_config_invalid: "Waffo Pancake configuration is incomplete
 payment.min_topup: "Top-up amount must be at least {{.Min}}"
 payment.amount_exceed_max: "Top-up amount must not exceed {{.Max}}"
 payment.user_group_failed: "Failed to get user group"
+auth.login_required: "Please log in first"
+custom_oauth.discovery_url_required: "Please enter a Discovery URL or Issuer URL first"
+custom_oauth.discovery_fetch_failed: "Failed to fetch Discovery configuration: {{.Error}}"
+secure_verification.unsupported_method: "Unsupported verification method: {{.Method}}"
+secure_verification.success: "Verification successful"

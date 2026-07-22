@@ -94,6 +94,7 @@ func GetStatus(c *gin.Context) {
 		"password_login_enabled":        common.PasswordLoginEnabled,
 		"password_register_enabled":     common.PasswordRegisterEnabled,
 		"default_use_auto_group":        setting.DefaultUseAutoGroup,
+		"playground_model_rules":        common.OptionMap["PlaygroundModelRules"],
 
 		"usd_exchange_rate": operation_setting.USDExchangeRate,
 		"price":             operation_setting.Price,
@@ -365,4 +366,23 @@ func ResetPassword(c *gin.Context) {
 		"data":    password,
 	})
 	return
+}
+
+func buildVerificationEmail(systemName, code string) (string, string) {
+	subject := fmt.Sprintf("%s Email Verification", systemName)
+	content := fmt.Sprintf("<p>Hello, you are verifying your email for %s.</p>"+
+		"<p>Your verification code is: <strong>%s</strong></p>"+
+		"<p>This code is valid for %d minutes. If you did not request this, please ignore this email.</p>",
+		systemName, code, common.VerificationValidMinutes)
+	return subject, content
+}
+
+func buildPasswordResetEmail(systemName, link string) (string, string) {
+	subject := fmt.Sprintf("%s Password Reset", systemName)
+	content := fmt.Sprintf("<p>Hello, you are resetting your password for %s.</p>"+
+		"<p>Click <a href='%s'>here</a> to reset your password.</p>"+
+		"<p>If the link is not clickable, open or copy this URL in your browser:<br> %s </p>"+
+		"<p>This reset link is valid for %d minutes. If you did not request this, please ignore this email.</p>",
+		systemName, link, link, common.VerificationValidMinutes)
+	return subject, content
 }
