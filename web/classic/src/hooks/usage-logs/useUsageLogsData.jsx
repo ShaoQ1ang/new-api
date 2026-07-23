@@ -956,7 +956,9 @@ export const useLogsData = () => {
     const res = await API.get(url);
     const { success, message, data } = res.data;
     if (success) {
-      const newPageData = data.items;
+      // Login audit entries are retained server-side but hidden from the
+      // classic usage-log table as they are not usage records.
+      const newPageData = data.items.filter((log) => log.type !== 7);
       setActivePage(data.page);
       setPageSize(data.page_size);
       setLogCount(data.total);
