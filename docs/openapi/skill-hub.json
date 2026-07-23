@@ -2,7 +2,7 @@
   "openapi": "3.0.1",
   "info": {
     "title": "技能广场接口",
-    "description": "Skill Hub 技能广场公开浏览与管理员维护接口。",
+    "description": "Skill Hub 技能广场公开浏览与授权人员维护接口。管理员和超级管理员隐式拥有管理权限；普通用户可获得技能内容或举报管理的独立权限。",
     "version": "1.0.0"
   },
   "tags": [
@@ -12,7 +12,7 @@
     },
     {
       "name": "技能广场管理",
-      "description": "管理员维护技能、标签、上传资源与发布状态"
+      "description": "具有 skill_hub.content.manage 权限的人员维护技能、标签、上传资源与发布状态；举报处理使用 skill_hub.reports.manage"
     }
   ],
   "paths": {
@@ -526,7 +526,7 @@
     "/api/admin/skill-hub/reports": {
       "get": {
         "summary": "管理员分页查询 Skill 举报",
-        "description": "需要管理员权限；支持关键词和处理状态筛选，举报正文只应作为不受信任纯文本展示",
+        "description": "需要 skill_hub.reports.manage 权限；支持关键词和处理状态筛选，举报正文只应作为不受信任纯文本展示",
         "tags": ["技能广场管理"],
         "parameters": [
           { "name": "keyword", "in": "query", "schema": { "type": "string" } },
@@ -546,6 +546,7 @@
     "/api/admin/skill-hub/reports/{id}": {
       "get": {
         "summary": "管理员获取 Skill 举报详情",
+        "description": "需要 skill_hub.reports.manage 权限；举报正文应作为不受信任纯文本展示",
         "tags": ["技能广场管理"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "responses": {
@@ -558,7 +559,7 @@
       },
       "put": {
         "summary": "管理员更新 Skill 举报处理结果",
-        "description": "使用 revision 乐观锁；并发更新冲突时应刷新后重试",
+        "description": "需要 skill_hub.reports.manage 权限；使用 revision 乐观锁；并发更新冲突时应刷新后重试",
         "tags": ["技能广场管理"],
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
         "requestBody": {
@@ -578,7 +579,7 @@
       "get": {
         "summary": "管理员获取标签列表",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；返回标签库并统计每个标签被 Skill 使用的数量；会在查询前同步一次 Skill 标签关联",
+        "description": "需要 skill_hub.content.manage 权限；返回标签库并统计每个标签被 Skill 使用的数量；会在查询前同步一次 Skill 标签关联",
         "tags": [
           "技能广场管理"
         ],
@@ -638,7 +639,7 @@
       "post": {
         "summary": "管理员创建标签",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；标签名称不可重复，不能包含斜杠",
+        "description": "需要 skill_hub.content.manage 权限；标签名称不可重复，不能包含斜杠",
         "tags": [
           "技能广场管理"
         ],
@@ -682,7 +683,7 @@
       "get": {
         "summary": "管理员按标签获取技能列表",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；按一个或多个标签 ID 返回全部状态技能；未传 tag_ids 时返回全部技能",
+        "description": "需要 skill_hub.content.manage 权限；按一个或多个标签 ID 返回全部状态技能；未传 tag_ids 时返回全部技能",
         "tags": [
           "技能广场管理"
         ],
@@ -762,7 +763,7 @@
       "delete": {
         "summary": "管理员删除标签",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；只能删除未被任何 Skill 使用的标签",
+        "description": "需要 skill_hub.content.manage 权限；只能删除未被任何 Skill 使用的标签",
         "tags": [
           "技能广场管理"
         ],
@@ -806,7 +807,7 @@
       "get": {
         "summary": "管理员获取技能列表",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；返回全部状态技能",
+        "description": "需要 skill_hub.content.manage 权限；返回全部状态技能",
         "tags": [
           "技能广场管理"
         ],
@@ -875,7 +876,7 @@
       "post": {
         "summary": "管理员创建技能",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；保存成功后上传对象才会成为正式 Skill 资产。",
+        "description": "需要 skill_hub.content.manage 权限；保存成功后上传对象才会成为正式 Skill 资产。",
         "tags": [
           "技能广场管理"
         ],
@@ -918,7 +919,7 @@
     "/api/admin/skill-hub/skills/batch-delete": {
       "post": {
         "summary": "批量删除技能",
-        "description": "需要管理员权限。一次可删除 1 至 200 个技能，并清理关联标签关系及受管 OSS 文件。",
+        "description": "需要 skill_hub.content.manage 权限。一次可删除 1 至 200 个技能，并清理关联标签关系及受管 OSS 文件。",
         "tags": [
           "技能广场管理"
         ],
@@ -952,7 +953,7 @@
     "/api/admin/skill-hub/skills/batch-export": {
       "post": {
         "summary": "批量导出技能",
-        "description": "需要管理员权限。将真实技能 ZIP、图标文件、独立 testcases JSON 文件和 manifest.json 打包为可再次批量导入的 ZIP；manifest 通过相对路径引用案例文件。一次可导出 1 至 200 个技能。",
+        "description": "需要 skill_hub.content.manage 权限。将真实技能 ZIP、图标文件、独立 testcases JSON 文件和 manifest.json 打包为可再次批量导入的 ZIP；manifest 通过相对路径引用案例文件。一次可导出 1 至 200 个技能。",
         "tags": [
           "技能广场管理"
         ],
@@ -995,7 +996,7 @@
       "get": {
         "summary": "管理员获取技能详情",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）",
+        "description": "需要 skill_hub.content.manage 权限",
         "tags": [
           "技能广场管理"
         ],
@@ -1037,7 +1038,7 @@
       "put": {
         "summary": "管理员更新技能",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；如果 source.ref 或 icon 被新上传对象替换，保存成功后会 best-effort 删除旧 OSS 对象。",
+        "description": "需要 skill_hub.content.manage 权限；如果 source.ref 或 icon 被新上传对象替换，保存成功后会 best-effort 删除旧 OSS 对象。",
         "tags": [
           "技能广场管理"
         ],
@@ -1089,7 +1090,7 @@
       "delete": {
         "summary": "管理员删除技能",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；删除记录成功后会 best-effort 删除关联的 Skill zip 和图标 OSS 对象。",
+        "description": "需要 skill_hub.content.manage 权限；删除记录成功后会 best-effort 删除关联的 Skill zip 和图标 OSS 对象。",
         "tags": [
           "技能广场管理"
         ],
@@ -1133,7 +1134,7 @@
       "post": {
         "summary": "管理员发布技能",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）",
+        "description": "需要 skill_hub.content.manage 权限",
         "tags": [
           "技能广场管理"
         ],
@@ -1177,7 +1178,7 @@
       "post": {
         "summary": "管理员下架技能",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）",
+        "description": "需要 skill_hub.content.manage 权限",
         "tags": [
           "技能广场管理"
         ],
@@ -1221,7 +1222,7 @@
       "post": {
         "summary": "初始化 Skill Hub 文件直传",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；根据 kind、文件名、大小、技能 ID 和版本生成 _tmp 临时 OSS PUT signed URL。zip 最大 50MB，icon 最大 1MB；文件本体由浏览器直接 PUT 到 OSS，不经过 New API。",
+        "description": "需要 skill_hub.content.manage 权限；根据 kind、文件名、大小、技能 ID 和版本生成 _tmp 临时 OSS PUT signed URL。zip 最大 50MB，icon 最大 1MB；文件本体由浏览器直接 PUT 到 OSS，不经过 New API。",
         "tags": [
           "技能广场管理"
         ],
@@ -1265,7 +1266,7 @@
       "post": {
         "summary": "完成 Skill Hub 文件直传",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；浏览器完成 OSS PUT 后调用。后端校验上传票据、检查 _tmp 临时 OSS 对象大小、读取对象重新计算 sha256，并验证 zip 或图片文件头，返回保存 Skill 所需的 URL、object 和 checksum；保存 Skill 时后端会将临时对象复制到正式目录。",
+        "description": "需要 skill_hub.content.manage 权限；浏览器完成 OSS PUT 后调用。后端校验上传票据、检查 _tmp 临时 OSS 对象大小、读取对象重新计算 sha256，并验证 zip 或图片文件头，返回保存 Skill 所需的 URL、object 和 checksum；保存 Skill 时后端会将临时对象复制到正式目录。",
         "tags": [
           "技能广场管理"
         ],
@@ -1309,7 +1310,7 @@
       "post": {
         "summary": "丢弃 Skill Hub 未保存上传",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；用于清理已经 PUT 到 OSS 但尚未保存到 Skill 记录的 _tmp 临时 zip 或 icon 对象。前端在替换上传、切换记录、新建草稿或离开页面时 best-effort 调用。",
+        "description": "需要 skill_hub.content.manage 权限；用于清理已经 PUT 到 OSS 但尚未保存到 Skill 记录的 _tmp 临时 zip 或 icon 对象。前端在替换上传、切换记录、新建草稿或离开页面时 best-effort 调用。",
         "tags": [
           "技能广场管理"
         ],

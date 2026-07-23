@@ -22,22 +22,37 @@ import { useTranslation } from 'react-i18next';
 import ModelsTable from '../../components/table/models';
 import ChatModelsTable from '../../components/table/chat-models';
 import PlaygroundModelRulesTable from '../../components/table/playground-model-rules';
+import {
+  isAdmin,
+  MANAGEMENT_PERMISSION,
+  hasManagementPermission,
+} from '../../helpers';
 
 const ModelPage = () => {
   const { t } = useTranslation();
+  const adminAccess = isAdmin();
+  const canManageChatModels = hasManagementPermission(
+    MANAGEMENT_PERMISSION.CHAT_MODELS,
+  );
 
   return (
     <div className='mt-[60px] px-2'>
-      <Tabs type='card' defaultActiveKey='marketplace'>
-        <Tabs.TabPane tab={t('模型广场管理')} itemKey='marketplace'>
-          <ModelsTable />
-        </Tabs.TabPane>
-        <Tabs.TabPane tab={t('对话模型管理')} itemKey='chat'>
-          <ChatModelsTable />
-        </Tabs.TabPane>
-        <Tabs.TabPane tab={t('操练场模型规则')} itemKey='playground-rules'>
-          <PlaygroundModelRulesTable />
-        </Tabs.TabPane>
+      <Tabs type='card' defaultActiveKey={adminAccess ? 'marketplace' : 'chat'}>
+        {adminAccess ? (
+          <Tabs.TabPane tab={t('模型广场管理')} itemKey='marketplace'>
+            <ModelsTable />
+          </Tabs.TabPane>
+        ) : null}
+        {canManageChatModels ? (
+          <Tabs.TabPane tab={t('对话模型管理')} itemKey='chat'>
+            <ChatModelsTable />
+          </Tabs.TabPane>
+        ) : null}
+        {adminAccess ? (
+          <Tabs.TabPane tab={t('操练场模型规则')} itemKey='playground-rules'>
+            <PlaygroundModelRulesTable />
+          </Tabs.TabPane>
+        ) : null}
       </Tabs>
     </div>
   );

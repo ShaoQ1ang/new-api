@@ -4567,6 +4567,25 @@
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
     "Zip URL must use HTTPS, except localhost or private network hosts during development": "URL Zip phải dùng HTTPS, ngoại trừ localhost hoặc máy chủ mạng riêng trong quá trình phát triển",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Failed to load management permissions": "Không thể tải quyền quản lý",
+    "Failed to save management permissions": "Không thể lưu quyền quản lý",
+    "Management permissions saved": "Đã lưu quyền quản lý",
+    "Confirm your identity before changing management permissions.": "Hãy xác minh danh tính trước khi thay đổi quyền quản lý.",
+    "Management Permissions": "Quyền quản lý",
+    "Grant individual management capabilities without promoting this user to administrator.": "Cấp từng khả năng quản lý mà không cần nâng người dùng này lên quản trị viên.",
+    "Administrators receive all management permissions automatically. Explicit permissions can only be assigned to common users.": "Quản trị viên tự động có mọi quyền quản lý. Chỉ người dùng thông thường mới có thể được cấp quyền tường minh.",
+    "Available capabilities": "Khả năng có sẵn",
+    "Save management permissions": "Lưu quyền quản lý",
+    "Skill Hub content management": "Quản lý nội dung Kho kỹ năng",
+    "Create, edit, publish, and delete skills and tags.": "Tạo, chỉnh sửa, xuất bản và xóa kỹ năng cùng thẻ.",
+    "Skill Hub report management": "Quản lý báo cáo Kho kỹ năng",
+    "Review and update Skill Hub reports.": "Xem xét và cập nhật báo cáo trong Kho kỹ năng.",
+    "Chat model management": "Quản lý mô hình trò chuyện",
+    "Manage models shown in chat model selectors.": "Quản lý các mô hình hiển thị trong bộ chọn mô hình trò chuyện.",
+    "Client release management": "Quản lý bản phát hành ứng dụng",
+    "Create, edit, upload, and delete client releases.": "Tạo, chỉnh sửa, tải lên và xóa bản phát hành ứng dụng.",
+    "Client release publishing": "Xuất bản bản phát hành ứng dụng",
+    "Publish or unpublish existing client releases.": "Xuất bản hoặc hủy xuất bản các bản phát hành ứng dụng hiện có."
   }
 }

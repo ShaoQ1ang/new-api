@@ -185,6 +185,54 @@ func RootAuth() func(c *gin.Context) {
 	}
 }
 
+func RequireManagementPermission(permission string) gin.HandlerFunc {
+	return RequireAnyManagementPermission(permission)
+}
+
+func RequireAnyManagementPermission(permissions ...string) gin.HandlerFunc {
+	if len(permissions) == 0 {
+		panic("management permission middleware requires at least one permission")
+	}
+	required := append([]string(nil), permissions...)
+	for _, permission := range required {
+		if !constant.IsValidManagementPermission(permission) {
+			panic("invalid management permission: " + permission)
+		}
+	}
+
+	return func(c *gin.Context) {
+		userId := c.GetInt("id")
+		if userId <= 0 {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgAuthNotLoggedIn),
+			})
+			c.Abort()
+			return
+		}
+
+		allowed, err := model.HasAnyManagementPermission(userId, required...)
+		if err != nil {
+			common.SysError(fmt.Sprintf("management permission check failed for user %d: %v", userId, err))
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgDatabaseError),
+			})
+			c.Abort()
+			return
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgAuthInsufficientPrivilege),
+			})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 func WssAuth(c *gin.Context) {
 
 }

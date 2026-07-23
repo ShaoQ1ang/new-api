@@ -23,9 +23,25 @@ import { useQuery } from '@tanstack/react-query'
 import { Pencil } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { useAuthStore } from '@/stores/auth-store'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
+import {
+  MANAGEMENT_PERMISSION,
+  type ManagementPermission,
+} from '@/lib/management-permissions'
+import { ROLE } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from '@/components/ui/field'
 import {
   Form,
   FormControl,
@@ -55,7 +71,19 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
-import { createUser, updateUser, getUser, getGroups } from '../api'
+import {
+  SecureVerificationDialog,
+  useSecureVerification,
+  type VerificationMethod,
+} from '@/features/auth/secure-verification'
+import {
+  createUser,
+  updateUser,
+  getUser,
+  getGroups,
+  getUserManagementPermissions,
+  updateUserManagementPermissions,
+} from '../api'
 import { BINDING_FIELDS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
   userFormSchema,
@@ -80,10 +108,35 @@ export function UsersMutateDrawer({
   currentRow,
 }: UsersMutateDrawerProps) {
   const { t } = useTranslation()
+  const authUser = useAuthStore((state) => state.auth.user)
   const isUpdate = !!currentRow
+  const canAssignManagementPermissions =
+    isUpdate && authUser?.role === ROLE.SUPER_ADMIN
   const { triggerRefresh } = useUsers()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false)
+  const [managementPermissions, setManagementPermissions] = useState<
+    ManagementPermission[]
+  >([])
+  const [managementPermissionRole, setManagementPermissionRole] = useState<
+    number | null
+  >(null)
+  const [managementPermissionsLoading, setManagementPermissionsLoading] =
+    useState(false)
+  const [managementPermissionsSaving, setManagementPermissionsSaving] =
+    useState(false)
+
+  const {
+    open: verificationOpen,
+    setOpen: setVerificationOpen,
+    methods: verificationMethods,
+    state: verificationState,
+    executeVerification,
+    cancel: cancelVerification,
+    setCode,
+    switchMethod,
+    withVerification,
+  } = useSecureVerification()
 
   // Fetch groups
   const { data: groupsData } = useQuery({
@@ -113,6 +166,45 @@ export function UsersMutateDrawer({
       form.reset(USER_FORM_DEFAULT_VALUES)
     }
   }, [open, isUpdate, currentRow, form])
+
+  useEffect(() => {
+    let active = true
+    if (!open || !canAssignManagementPermissions || !currentRow) {
+      setManagementPermissions([])
+      setManagementPermissionRole(null)
+      return () => {
+        active = false
+      }
+    }
+
+    setManagementPermissionsLoading(true)
+    getUserManagementPermissions(currentRow.id)
+      .then((result) => {
+        if (!active) return
+        if (!result.success || !result.data) {
+          throw new Error(
+            result.message || t('Failed to load management permissions')
+          )
+        }
+        setManagementPermissions(result.data.permissions)
+        setManagementPermissionRole(result.data.role)
+      })
+      .catch((error: unknown) => {
+        if (!active) return
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : t('Failed to load management permissions')
+        )
+      })
+      .finally(() => {
+        if (active) setManagementPermissionsLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [canAssignManagementPermissions, currentRow, open, t])
 
   const { meta: currencyMeta } = getCurrencyDisplay()
   const currencyLabel = getCurrencyLabel()
@@ -158,6 +250,66 @@ export function UsersMutateDrawer({
       form.reset(transformUserToFormDefaults(result.data))
     }
     triggerRefresh()
+  }
+
+  const toggleManagementPermission = (
+    permission: ManagementPermission,
+    checked: boolean
+  ) => {
+    setManagementPermissions((current) =>
+      checked
+        ? Array.from(new Set([...current, permission]))
+        : current.filter((item) => item !== permission)
+    )
+  }
+
+  const persistManagementPermissions = async () => {
+    if (!currentRow) return
+    setManagementPermissionsSaving(true)
+    try {
+      const result = await updateUserManagementPermissions(
+        currentRow.id,
+        managementPermissions
+      )
+      if (!result.success || !result.data) {
+        throw new Error(
+          result.message || t('Failed to save management permissions')
+        )
+      }
+      setManagementPermissions(result.data.permissions)
+      setManagementPermissionRole(result.data.role)
+      toast.success(t('Management permissions saved'))
+    } finally {
+      setManagementPermissionsSaving(false)
+    }
+  }
+
+  const saveManagementPermissions = async () => {
+    try {
+      await withVerification(persistManagementPermissions, {
+        title: t('Security verification'),
+        description: t(
+          'Confirm your identity before changing management permissions.'
+        ),
+      })
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t('Failed to save management permissions')
+      )
+    }
+  }
+
+  const handleVerification = async (
+    method: VerificationMethod,
+    code?: string
+  ) => {
+    try {
+      await executeVerification(method, code)
+    } catch {
+      // The verification hook displays the actionable error.
+    }
   }
 
   return (
@@ -397,6 +549,80 @@ export function UsersMutateDrawer({
                 </div>
               )}
 
+              {canAssignManagementPermissions && (
+                <div className='space-y-4'>
+                  <div>
+                    <h3 className='text-sm font-medium'>
+                      {t('Management Permissions')}
+                    </h3>
+                    <p className='text-muted-foreground mt-1 text-xs'>
+                      {t(
+                        'Grant individual management capabilities without promoting this user to administrator.'
+                      )}
+                    </p>
+                  </div>
+
+                  {managementPermissionRole !== null &&
+                  managementPermissionRole !== ROLE.USER ? (
+                    <p className='text-muted-foreground rounded-md border p-3 text-sm'>
+                      {t(
+                        'Administrators receive all management permissions automatically. Explicit permissions can only be assigned to common users.'
+                      )}
+                    </p>
+                  ) : (
+                    <FieldSet disabled={managementPermissionsLoading}>
+                      <FieldLegend variant='label'>
+                        {t('Available capabilities')}
+                      </FieldLegend>
+                      <FieldGroup data-slot='checkbox-group'>
+                        {MANAGEMENT_PERMISSION_OPTIONS.map((option) => (
+                          <Field
+                            key={option.permission}
+                            orientation='horizontal'
+                          >
+                            <Checkbox
+                              id={`management-permission-${option.permission}`}
+                              checked={managementPermissions.includes(
+                                option.permission
+                              )}
+                              onCheckedChange={(checked) =>
+                                toggleManagementPermission(
+                                  option.permission,
+                                  checked === true
+                                )
+                              }
+                            />
+                            <FieldContent>
+                              <FieldLabel
+                                htmlFor={`management-permission-${option.permission}`}
+                              >
+                                {t(option.label)}
+                              </FieldLabel>
+                              <FieldDescription>
+                                {t(option.description)}
+                              </FieldDescription>
+                            </FieldContent>
+                          </Field>
+                        ))}
+                      </FieldGroup>
+                      <Button
+                        type='button'
+                        variant='outline'
+                        disabled={
+                          managementPermissionsLoading ||
+                          managementPermissionsSaving
+                        }
+                        onClick={() => void saveManagementPermissions()}
+                      >
+                        {managementPermissionsSaving
+                          ? t('Saving...')
+                          : t('Save management permissions')}
+                      </Button>
+                    </FieldSet>
+                  )}
+                </div>
+              )}
+
               {/* Binding Information (Read-only) */}
               {isUpdate && (
                 <div className='space-y-4'>
@@ -450,6 +676,49 @@ export function UsersMutateDrawer({
           onSuccess={refreshUserData}
         />
       )}
+
+      <SecureVerificationDialog
+        open={verificationOpen}
+        onOpenChange={setVerificationOpen}
+        methods={verificationMethods}
+        state={verificationState}
+        onVerify={handleVerification}
+        onCancel={cancelVerification}
+        onCodeChange={setCode}
+        onMethodChange={switchMethod}
+      />
     </>
   )
 }
+
+const MANAGEMENT_PERMISSION_OPTIONS: Array<{
+  permission: ManagementPermission
+  label: string
+  description: string
+}> = [
+  {
+    permission: MANAGEMENT_PERMISSION.SKILL_HUB_CONTENT,
+    label: 'Skill Hub content management',
+    description: 'Create, edit, publish, and delete skills and tags.',
+  },
+  {
+    permission: MANAGEMENT_PERMISSION.SKILL_HUB_REPORTS,
+    label: 'Skill Hub report management',
+    description: 'Review and update Skill Hub reports.',
+  },
+  {
+    permission: MANAGEMENT_PERMISSION.CHAT_MODELS,
+    label: 'Chat model management',
+    description: 'Manage models shown in chat model selectors.',
+  },
+  {
+    permission: MANAGEMENT_PERMISSION.CLIENT_RELEASES,
+    label: 'Client release management',
+    description: 'Create, edit, upload, and delete client releases.',
+  },
+  {
+    permission: MANAGEMENT_PERMISSION.CLIENT_RELEASES_PUBLISH,
+    label: 'Client release publishing',
+    description: 'Publish or unpublish existing client releases.',
+  },
+]

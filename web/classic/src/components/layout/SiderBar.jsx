@@ -25,7 +25,14 @@ import './SiderBar.css';
 import { getLucideIcon } from '../../helpers/render';
 import { useSidebar } from '../../hooks/common/useSidebar';
 import { useMinimumLoadingTime } from '../../hooks/common/useMinimumLoadingTime';
-import { isAdmin, isRoot, showError } from '../../helpers';
+import {
+  isAdmin,
+  isRoot,
+  showError,
+  MANAGEMENT_PERMISSION,
+  hasAnyManagementPermission,
+  hasManagementPermission,
+} from '../../helpers';
 import SkeletonWrapper from './components/SkeletonWrapper';
 
 import { Nav, Divider, Avatar, Typography } from '@douyinfe/semi-ui';
@@ -86,6 +93,26 @@ const SiderBar = ({
   );
   const logo = getLogo();
   const systemName = getSystemName();
+  const adminAccess = isAdmin();
+  const canManageChatModels = hasManagementPermission(
+    MANAGEMENT_PERMISSION.CHAT_MODELS,
+  );
+  const canManageSkillHubContent = hasManagementPermission(
+    MANAGEMENT_PERMISSION.SKILL_HUB_CONTENT,
+  );
+  const canManageSkillHubReports = hasManagementPermission(
+    MANAGEMENT_PERMISSION.SKILL_HUB_REPORTS,
+  );
+  const canAccessClientReleases = hasAnyManagementPermission([
+    MANAGEMENT_PERMISSION.CLIENT_RELEASES,
+    MANAGEMENT_PERMISSION.CLIENT_RELEASES_PUBLISH,
+  ]);
+  const canSeeAdminSection =
+    adminAccess ||
+    canManageChatModels ||
+    canManageSkillHubContent ||
+    canManageSkillHubReports ||
+    canAccessClientReleases;
 
   useEffect(() => {
     setDocsLink(localStorage.getItem('docs_link') || '');
@@ -191,7 +218,7 @@ const SiderBar = ({
         text: t('模型管理'),
         itemKey: 'models',
         to: '/console/models',
-        className: isAdmin() ? '' : 'tableHiddle',
+        className: adminAccess || canManageChatModels ? '' : 'tableHiddle',
       },
       {
         text: t('模型部署'),
@@ -203,29 +230,40 @@ const SiderBar = ({
         text: t('技能广场管理'),
         itemKey: 'skillHub',
         items: [
-          {
-            text: t('技能管理'),
-            itemKey: 'skillHubSkills',
-            to: '/console/skill-hub',
-          },
-          {
-            text: t('标签管理'),
-            itemKey: 'skillHubTags',
-            to: '/console/skill-hub/tags',
-          },
-          {
-            text: t('举报管理'),
-            itemKey: 'skillHubReports',
-            to: '/console/skill-hub/reports',
-          },
+          ...(adminAccess || canManageSkillHubContent
+            ? [
+                {
+                  text: t('技能管理'),
+                  itemKey: 'skillHubSkills',
+                  to: '/console/skill-hub',
+                },
+                {
+                  text: t('标签管理'),
+                  itemKey: 'skillHubTags',
+                  to: '/console/skill-hub/tags',
+                },
+              ]
+            : []),
+          ...(adminAccess || canManageSkillHubReports
+            ? [
+                {
+                  text: t('举报管理'),
+                  itemKey: 'skillHubReports',
+                  to: '/console/skill-hub/reports',
+                },
+              ]
+            : []),
         ],
-        className: isAdmin() ? '' : 'tableHiddle',
+        className:
+          adminAccess || canManageSkillHubContent || canManageSkillHubReports
+            ? ''
+            : 'tableHiddle',
       },
       {
         text: t('客户端管理'),
         itemKey: 'clientRelease',
         to: '/console/client-releases',
-        className: isAdmin() ? '' : 'tableHiddle',
+        className: adminAccess || canAccessClientReleases ? '' : 'tableHiddle',
       },
       {
         text: t('兑换码管理'),
@@ -254,7 +292,16 @@ const SiderBar = ({
     });
 
     return filteredItems;
-  }, [isAdmin(), isRoot(), t, isModuleVisible]);
+  }, [
+    adminAccess,
+    canAccessClientReleases,
+    canManageChatModels,
+    canManageSkillHubContent,
+    canManageSkillHubReports,
+    isRoot(),
+    t,
+    isModuleVisible,
+  ]);
 
   const chatMenuItems = useMemo(() => {
     const items = [
@@ -479,7 +526,7 @@ const SiderBar = ({
         type='sidebar'
         className=''
         collapsed={collapsed}
-        showAdmin={isAdmin()}
+        showAdmin={canSeeAdminSection}
       >
         <Nav
           className='sidebar-nav'
@@ -556,8 +603,8 @@ const SiderBar = ({
             </>
           )}
 
-          {/* 管理员区域 - 只在管理员时显示且配置允许时显示 */}
-          {isAdmin() && hasSectionVisibleModules('admin') && (
+          {/* 管理区域 - 管理员或具有显式管理权限的用户可见 */}
+          {canSeeAdminSection && hasSectionVisibleModules('admin') && (
             <>
               <Divider className='sidebar-divider' />
               <div>

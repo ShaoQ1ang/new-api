@@ -4567,6 +4567,25 @@
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V 4",
     "Zip URL must use HTTPS, except localhost or private network hosts during development": "Zip URL は HTTPS を使用する必要があります。開発時は localhost またはプライベートネットワークのホストで HTTP を使用できます",
-    "Zoom": "ズーム"
+    "Zoom": "ズーム",
+    "Failed to load management permissions": "管理権限の読み込みに失敗しました",
+    "Failed to save management permissions": "管理権限の保存に失敗しました",
+    "Management permissions saved": "管理権限を保存しました",
+    "Confirm your identity before changing management permissions.": "管理権限を変更する前に本人確認を行ってください。",
+    "Management Permissions": "管理権限",
+    "Grant individual management capabilities without promoting this user to administrator.": "このユーザーを管理者に昇格させずに、個別の管理機能を付与します。",
+    "Administrators receive all management permissions automatically. Explicit permissions can only be assigned to common users.": "管理者にはすべての管理権限が自動的に付与されます。明示的な権限は一般ユーザーにのみ割り当てられます。",
+    "Available capabilities": "利用可能な機能",
+    "Save management permissions": "管理権限を保存",
+    "Skill Hub content management": "スキルハブのコンテンツ管理",
+    "Create, edit, publish, and delete skills and tags.": "スキルとタグの作成、編集、公開、削除を行います。",
+    "Skill Hub report management": "スキルハブの報告管理",
+    "Review and update Skill Hub reports.": "スキルハブの報告を確認して更新します。",
+    "Chat model management": "チャットモデル管理",
+    "Manage models shown in chat model selectors.": "チャットモデル選択欄に表示するモデルを管理します。",
+    "Client release management": "クライアントリリース管理",
+    "Create, edit, upload, and delete client releases.": "クライアントリリースの作成、編集、アップロード、削除を行います。",
+    "Client release publishing": "クライアントリリースの公開",
+    "Publish or unpublish existing client releases.": "既存のクライアントリリースを公開または非公開にします。"
   }
 }

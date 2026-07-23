@@ -124,14 +124,17 @@ OSS Bucket 需要允许管理后台域名执行 `PUT` 和 `OPTIONS`，允许 `Co
 
 ## 管理后台结构
 
-管理后台入口显示为 `技能广场管理`，下挂两个页面：
+管理后台入口显示为 `技能广场管理`，下挂三个页面：
 
-| 页面     | 默认前端路由      | Classic 路由              | 用途                                                       |
-| -------- | ----------------- | ------------------------- | ---------------------------------------------------------- |
-| 技能管理 | `/skill-hub`      | `/console/skill-hub`      | 维护 connector 可安装的 Skill 列表、Zip 包、图标和发布状态 |
-| 标签管理 | `/skill-hub/tags` | `/console/skill-hub/tags` | 维护全局标签库，供技能管理页选择                           |
+| 页面 | 默认前端路由 | Classic 路由 | 所需权限 | 用途 |
+| --- | --- | --- | --- | --- |
+| 技能管理 | `/skill-hub` | `/console/skill-hub` | `skill_hub.content.manage` | 维护 connector 可安装的 Skill 列表、Zip 包、图标和发布状态 |
+| 标签管理 | `/skill-hub/tags` | `/console/skill-hub/tags` | `skill_hub.content.manage` | 维护全局标签库，供技能管理页选择 |
+| 举报管理 | `/skill-hub/reports` | `/console/skill-hub/reports` | `skill_hub.reports.manage` | 查看并处理用户举报 |
 
 后台只保留当前界面需要的数据，不再维护旧的推荐位。公开接口仍只返回已发布 Skill，connector 按公开列表展示。
+
+管理员和超级管理员隐式拥有上述权限；超级管理员也可以把其中一项单独授予普通用户。权限在服务端按请求实时检查，前端菜单隐藏不是安全边界。
 
 ## 技能管理使用流程
 

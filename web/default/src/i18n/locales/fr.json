@@ -4567,6 +4567,25 @@
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
     "Zip URL must use HTTPS, except localhost or private network hosts during development": "L'URL Zip doit utiliser HTTPS, sauf localhost ou les hotes du reseau prive en developpement",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Failed to load management permissions": "Échec du chargement des autorisations de gestion",
+    "Failed to save management permissions": "Échec de l’enregistrement des autorisations de gestion",
+    "Management permissions saved": "Autorisations de gestion enregistrées",
+    "Confirm your identity before changing management permissions.": "Confirmez votre identité avant de modifier les autorisations de gestion.",
+    "Management Permissions": "Autorisations de gestion",
+    "Grant individual management capabilities without promoting this user to administrator.": "Accordez des capacités de gestion précises sans promouvoir cet utilisateur au rôle d’administrateur.",
+    "Administrators receive all management permissions automatically. Explicit permissions can only be assigned to common users.": "Les administrateurs reçoivent automatiquement toutes les autorisations de gestion. Les autorisations explicites ne peuvent être attribuées qu’aux utilisateurs ordinaires.",
+    "Available capabilities": "Capacités disponibles",
+    "Save management permissions": "Enregistrer les autorisations de gestion",
+    "Skill Hub content management": "Gestion du contenu de l’espace des compétences",
+    "Create, edit, publish, and delete skills and tags.": "Créer, modifier, publier et supprimer des compétences et des étiquettes.",
+    "Skill Hub report management": "Gestion des signalements de l’espace des compétences",
+    "Review and update Skill Hub reports.": "Examiner et mettre à jour les signalements de l’espace des compétences.",
+    "Chat model management": "Gestion des modèles de conversation",
+    "Manage models shown in chat model selectors.": "Gérer les modèles affichés dans les sélecteurs de modèles de conversation.",
+    "Client release management": "Gestion des versions du client",
+    "Create, edit, upload, and delete client releases.": "Créer, modifier, téléverser et supprimer les versions du client.",
+    "Client release publishing": "Publication des versions du client",
+    "Publish or unpublish existing client releases.": "Publier ou dépublier les versions existantes du client."
   }
 }

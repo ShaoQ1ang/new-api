@@ -336,8 +336,8 @@ func HardDeleteUserById(id int) error {
 	if id == 0 {
 		return errors.New("id 为空！")
 	}
-	err := DB.Unscoped().Delete(&User{}, "id = ?", id).Error
-	return err
+	user := User{Id: id}
+	return user.HardDelete()
 }
 
 func inviteUser(inviterId int) (err error) {
@@ -585,7 +585,15 @@ func (user *User) Delete() error {
 	if user.Id == 0 {
 		return errors.New("id 为空！")
 	}
-	if err := DB.Delete(user).Error; err != nil {
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		if _, err := lockUserForUpdateTx(tx, user.Id, false); err != nil {
+			return err
+		}
+		if err := deleteUserManagementPermissionsTx(tx, user.Id); err != nil {
+			return err
+		}
+		return tx.Delete(user).Error
+	}); err != nil {
 		return err
 	}
 
@@ -597,8 +605,18 @@ func (user *User) HardDelete() error {
 	if user.Id == 0 {
 		return errors.New("id 为空！")
 	}
-	err := DB.Unscoped().Delete(user).Error
-	return err
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		if _, err := lockUserForUpdateTx(tx, user.Id, true); err != nil {
+			return err
+		}
+		if err := deleteUserManagementPermissionsTx(tx, user.Id); err != nil {
+			return err
+		}
+		return tx.Unscoped().Delete(user).Error
+	}); err != nil {
+		return err
+	}
+	return invalidateUserCache(user.Id)
 }
 
 // ValidateAndFill check password & user status

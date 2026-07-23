@@ -4391,6 +4391,22 @@
     "从常用档位或已有配置中多选；Provider 有新档位时可输入并按 Enter 添加。留空时沿用“推理模型”开关": "Select common or previously configured levels. To add a new provider-specific level, type it and press Enter. Leave empty to use the Reasoning model switch.",
     "请选择默认深度": "Select a default thinking level",
     "默认值只能从已选择的思考深度中设置": "The default can only be selected from the chosen thinking levels",
-    "0 表示未配置": "0 means not configured"
+    "0 表示未配置": "0 means not configured",
+    "保存管理权限失败": "Failed to save management permissions",
+    "管理权限已保存": "Management permissions saved",
+    "修改管理权限前，请先验证您的身份。": "Confirm your identity before changing management permissions.",
+    "管理权限": "Management permissions",
+    "无需提升为管理员，即可为普通用户授予指定的管理能力。": "Grant individual management capabilities without promoting this user to administrator.",
+    "管理员自动拥有全部管理权限；显式权限只能授予普通用户。": "Administrators receive all management permissions automatically. Explicit permissions can only be assigned to common users.",
+    "保存管理权限": "Save management permissions",
+    "技能广场内容管理": "Skill Hub content management",
+    "创建、编辑、发布和删除技能与标签。": "Create, edit, publish, and delete skills and tags.",
+    "技能广场举报管理": "Skill Hub report management",
+    "查看并处理技能广场举报。": "Review and update Skill Hub reports.",
+    "管理聊天模型选择器中展示的模型。": "Manage models shown in chat model selectors.",
+    "客户端版本管理": "Client release management",
+    "创建、编辑、上传和删除客户端版本。": "Create, edit, upload, and delete client releases.",
+    "客户端版本发布": "Client release publishing",
+    "发布或取消发布已有客户端版本。": "Publish or unpublish existing client releases."
   }
 }

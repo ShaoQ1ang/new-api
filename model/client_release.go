@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -21,6 +22,8 @@ const (
 )
 
 var clientReleaseVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+
+var ErrClientReleasePublishPermissionRequired = errors.New("client release publish permission is required")
 
 type ClientRelease struct {
 	Id           int            `json:"id" gorm:"primaryKey"`
@@ -224,26 +227,101 @@ func (r *ClientRelease) Update() error {
 	return DB.Save(r).Error
 }
 
-func (r *ClientRelease) UpdateReturningPreviousObjectKey() (string, error) {
+func (r *ClientRelease) UpdateReturningPreviousObjectKey(actorUserId int) (string, error) {
 	var previousObjectKey string
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		allowPublished, err := hasAnyManagementPermissionTx(
+			tx,
+			actorUserId,
+			true,
+			constant.PermissionClientReleasesPublish,
+		)
+		if err != nil {
+			return err
+		}
 		var current ClientRelease
 		query := tx
-		if !common.UsingSQLite {
+		if tx.Dialector.Name() != "sqlite" {
 			query = query.Clauses(clause.Locking{Strength: "UPDATE"})
 		}
 		if err := query.Where("id = ?", r.Id).First(&current).Error; err != nil {
 			return err
 		}
+		if current.Status == ClientReleaseStatusPublished && !allowPublished {
+			return ErrClientReleasePublishPermissionRequired
+		}
 		previousObjectKey = current.ObjectKey
 		r.CreatedTime = current.CreatedTime
+		// Publishing is a separate capability. Preserve the status observed
+		// under the row lock so metadata edits cannot publish, unpublish, or
+		// overwrite a concurrent status transition.
+		r.Status = current.Status
 		return tx.Save(r).Error
 	})
 	return previousObjectKey, err
 }
 
-func DeleteClientRelease(release *ClientRelease) error {
-	return DB.Delete(release).Error
+func UpdateClientReleaseStatus(id int, status int, actorUserId int) (*ClientRelease, error) {
+	if status != ClientReleaseStatusDraft && status != ClientReleaseStatusPublished {
+		return nil, errors.New("client release status is invalid")
+	}
+	var release ClientRelease
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		allowed, err := hasAnyManagementPermissionTx(
+			tx,
+			actorUserId,
+			true,
+			constant.PermissionClientReleasesPublish,
+		)
+		if err != nil {
+			return err
+		}
+		if !allowed {
+			return ErrClientReleasePublishPermissionRequired
+		}
+		query := tx
+		if tx.Dialector.Name() != "sqlite" {
+			query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+		}
+		if err := query.Where("id = ?", id).First(&release).Error; err != nil {
+			return err
+		}
+		release.Status = status
+		return tx.Save(&release).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &release, nil
+}
+
+func DeleteClientRelease(id int, actorUserId int) (string, error) {
+	var objectKey string
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		allowPublished, err := hasAnyManagementPermissionTx(
+			tx,
+			actorUserId,
+			true,
+			constant.PermissionClientReleasesPublish,
+		)
+		if err != nil {
+			return err
+		}
+		var release ClientRelease
+		query := tx
+		if tx.Dialector.Name() != "sqlite" {
+			query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+		}
+		if err := query.Where("id = ?", id).First(&release).Error; err != nil {
+			return err
+		}
+		if release.Status == ClientReleaseStatusPublished && !allowPublished {
+			return ErrClientReleasePublishPermissionRequired
+		}
+		objectKey = release.ObjectKey
+		return tx.Delete(&release).Error
+	})
+	return objectKey, err
 }
 
 func GetClientReleaseByID(id int) (*ClientRelease, error) {

@@ -17,9 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { history } from './history';
+import { API } from './api';
+import {
+  getStoredUser,
+  hasAnyManagementPermission,
+} from './managementPermissions';
 
 export function authHeader() {
   // return authorization header with jwt token
@@ -62,6 +67,50 @@ export function AdminRoute({ children }) {
   } catch (e) {
     // ignore
   }
+  return <Navigate to='/forbidden' replace />;
+}
+
+export function ManagementPermissionRoute({ children, permissions }) {
+  const storedUser = getStoredUser();
+  const [state, setState] = useState(() => {
+    if (!storedUser) return 'logged-out';
+    if (hasAnyManagementPermission(permissions, storedUser)) return 'allowed';
+    return Array.isArray(storedUser.management_permissions)
+      ? 'forbidden'
+      : 'loading';
+  });
+
+  useEffect(() => {
+    if (state !== 'loading') return;
+    let active = true;
+    API.get('/api/user/self')
+      .then((res) => {
+        if (!active) return;
+        if (!res.data?.success || !res.data?.data) {
+          setState('forbidden');
+          return;
+        }
+        const user = res.data.data;
+        localStorage.setItem('user', JSON.stringify(user));
+        setState(
+          hasAnyManagementPermission(permissions, user)
+            ? 'allowed'
+            : 'forbidden',
+        );
+      })
+      .catch(() => {
+        if (active) setState('forbidden');
+      });
+    return () => {
+      active = false;
+    };
+  }, [permissions, state]);
+
+  if (state === 'logged-out') {
+    return <Navigate to='/login' state={{ from: history.location }} />;
+  }
+  if (state === 'allowed') return children;
+  if (state === 'loading') return null;
   return <Navigate to='/forbidden' replace />;
 }
 

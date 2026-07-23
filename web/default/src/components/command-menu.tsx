@@ -20,8 +20,10 @@ import React from 'react'
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import { ArrowRight, ChevronRight, Laptop, Moon, Sun } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useAuthStore } from '@/stores/auth-store'
 import { useSearch } from '@/context/search-provider'
 import { useTheme } from '@/context/theme-provider'
+import { useSidebarConfig } from '@/hooks/use-sidebar-config'
 import { useSidebarData } from '@/hooks/use-sidebar-data'
 import {
   Command,
@@ -33,6 +35,7 @@ import {
   CommandList,
   CommandSeparator,
 } from '@/components/ui/command'
+import { filterNavigationByManagementPermissions } from './layout/lib/filter-management-navigation'
 import { getNavGroupsForPath } from './layout/lib/workspace-registry'
 import { ScrollArea } from './ui/scroll-area'
 
@@ -43,9 +46,15 @@ export function CommandMenu() {
   const { open, setOpen } = useSearch()
   const { pathname } = useLocation()
   const sidebarData = useSidebarData()
+  const user = useAuthStore((state) => state.auth.user)
 
   // 根据当前路径从工作区注册表获取对应的侧边栏配置
-  const navGroups = getNavGroupsForPath(pathname, t) || sidebarData.navGroups
+  const allNavGroups = getNavGroupsForPath(pathname, t) || sidebarData.navGroups
+  const configFilteredNavGroups = useSidebarConfig(allNavGroups)
+  const navGroups = filterNavigationByManagementPermissions(
+    configFilteredNavGroups,
+    user
+  )
 
   const runCommand = React.useCallback(
     (command: () => unknown) => {

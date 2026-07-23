@@ -299,6 +299,7 @@ func migrateDB() error {
 		&SkillHubFavorite{},
 		&SkillHubReport{},
 		&ClientRelease{},
+		&UserManagementPermission{},
 	}
 	if !common.UsingSQLite {
 		models = append(models, &TopUp{}, &SubscriptionOrder{}, &SubscriptionPlan{})

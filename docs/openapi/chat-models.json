@@ -12,7 +12,7 @@
     },
     {
       "name": "对话模型管理",
-      "description": "管理员维护对话模型列表"
+      "description": "管理员、超级管理员或具有 chat_models.manage 权限的普通用户维护对话模型列表"
     }
   ],
   "paths": {
@@ -72,7 +72,7 @@
     "/api/chat-models/": {
       "get": {
         "summary": "分页获取对话模型配置",
-        "description": "需要管理员权限。available 表示该模型当前是否仍存在于模型广场 pricing 中且属于对话端点。",
+        "description": "需要 chat_models.manage 权限；管理员和超级管理员隐式拥有。available 表示该模型当前是否仍存在于模型广场 pricing 中且属于对话端点。",
         "tags": ["对话模型管理"],
         "parameters": [
           {
@@ -139,7 +139,7 @@
       },
       "post": {
         "summary": "创建对话模型配置",
-        "description": "需要管理员权限。model 必须是当前模型广场 pricing 中可用于对话端点的模型。若 is_auto 为 true，后端会在事务内清除其他 Auto 并设置当前项为 Auto。",
+        "description": "需要 chat_models.manage 权限。model 必须是当前模型广场 pricing 中可用于对话端点的模型。若 is_auto 为 true，后端会在事务内清除其他 Auto 并设置当前项为 Auto。",
         "tags": ["对话模型管理"],
         "requestBody": {
           "required": true,
@@ -184,7 +184,7 @@
     "/api/chat-models/candidates": {
       "get": {
         "summary": "获取可添加的对话模型候选",
-        "description": "需要管理员权限。候选来自模型广场 pricing，只返回对话端点模型，并标记是否已经配置到对话模型列表。",
+        "description": "需要 chat_models.manage 权限。候选来自模型广场 pricing，只返回对话端点模型，并标记是否已经配置到对话模型列表。",
         "tags": ["对话模型管理"],
         "parameters": [
           {
@@ -214,7 +214,7 @@
     "/api/chat-models/thinking-levels": {
       "get": {
         "summary": "获取已配置的思考深度候选",
-        "description": "需要管理员权限。动态汇总所有对话模型已经配置的思考深度 ID，供管理页面选择或搜索；该列表不是固定枚举，管理员仍可为模型新增 provider 特有档位。",
+        "description": "需要 chat_models.manage 权限。动态汇总所有对话模型已经配置的思考深度 ID，供管理页面选择或搜索；该列表不是固定枚举，获授权人员仍可为模型新增 provider 特有档位。",
         "tags": ["对话模型管理"],
         "responses": {
           "200": {
@@ -247,7 +247,7 @@
     "/api/chat-models/{id}": {
       "patch": {
         "summary": "编辑对话模型配置",
-        "description": "需要管理员权限。所有字段均可选，不传表示不修改。若 is_auto 为 true，后端会在事务内保证最多一个 Auto。",
+        "description": "需要 chat_models.manage 权限。所有字段均可选，不传表示不修改。若 is_auto 为 true，后端会在事务内保证最多一个 Auto。",
         "tags": ["对话模型管理"],
         "parameters": [
           {
@@ -299,7 +299,7 @@
       },
       "delete": {
         "summary": "删除对话模型配置",
-        "description": "需要管理员权限。删除 Auto 项后用户侧不再返回 Auto。",
+        "description": "需要 chat_models.manage 权限。删除 Auto 项后用户侧不再返回 Auto。",
         "tags": ["对话模型管理"],
         "parameters": [
           {
