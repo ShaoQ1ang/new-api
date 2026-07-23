@@ -229,8 +229,8 @@ func (t *SkillHubSkillTag) BeforeCreate(tx *gorm.DB) error {
 }
 
 func ValidateSkillHubSkill(s *SkillHubSkill) error {
-	if !skillHubIDPattern.MatchString(s.SkillID) {
-		return errors.New("skill id must use letters, numbers, dots, underscores, or dashes")
+	if err := ValidateSkillHubSkillID(s.SkillID); err != nil {
+		return err
 	}
 	if s.Name == "" {
 		return errors.New("skill name is required")
@@ -275,6 +275,13 @@ func ValidateSkillHubSkill(s *SkillHubSkill) error {
 	}
 	if _, err := SkillHubTestcasesFromJSON(s.TestcasesJSON); err != nil {
 		return err
+	}
+	return nil
+}
+
+func ValidateSkillHubSkillID(skillID string) error {
+	if !skillHubIDPattern.MatchString(skillID) {
+		return errors.New("skill id must use letters, numbers, dots, underscores, or dashes")
 	}
 	return nil
 }

@@ -69,6 +69,7 @@ import {
   updateSkillHubSkill,
   uploadSkillHubZip,
 } from './api'
+import { SkillHubBatchUploadDialog } from './batch-upload-dialog'
 import type {
   SkillHubEvaluationForm,
   SkillHubForm,
@@ -567,6 +568,10 @@ export function SkillHub() {
     <SectionPageLayout>
       <SectionPageLayout.Title>技能管理</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
+        <SkillHubBatchUploadDialog
+          tags={tagOptions}
+          onComplete={() => loadSkills()}
+        />
         <Button
           variant='outline'
           disabled={loading}

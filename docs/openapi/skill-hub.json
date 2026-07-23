@@ -1349,6 +1349,135 @@
           }
         ]
       }
+    },
+    "/api/admin/skill-hub/batch-upload/init": {
+      "post": {
+        "summary": "批量初始化 Skill Hub 文件直传",
+        "deprecated": false,
+        "description": "需要 skill_hub.content.manage 权限；一次接收 1 至 200 个技能的 Zip 与可选图标元数据，按冲突策略批量返回临时 OSS PUT signed URL。文件本体由浏览器直接上传到 OSS，不经过 New API。",
+        "tags": [
+          "技能广场管理"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillHubBatchUploadInitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "逐项返回 ready、skipped 或 failed；ready 项携带 Zip 与可选图标上传参数",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubBatchUploadInitApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionAuth": [],
+            "NewApiUser": []
+          },
+          {
+            "AccessToken": [],
+            "NewApiUser": []
+          }
+        ]
+      }
+    },
+    "/api/admin/skill-hub/batch-upload/commit": {
+      "post": {
+        "summary": "批量提交 Skill Hub 上传",
+        "deprecated": false,
+        "description": "需要 skill_hub.content.manage 权限；一次接收 1 至 200 项，校验临时 OSS 对象、上传票据与技能 ID 绑定关系，应用统一覆盖配置，转正对象并串行保存数据库。请求体最大 32MB，返回逐项结果，允许部分成功。",
+        "tags": [
+          "技能广场管理"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillHubBatchUploadCommitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "逐项返回 success、skipped 或 failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubBatchUploadCommitApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionAuth": [],
+            "NewApiUser": []
+          },
+          {
+            "AccessToken": [],
+            "NewApiUser": []
+          }
+        ]
+      }
+    },
+    "/api/admin/skill-hub/batch-upload/discard": {
+      "post": {
+        "summary": "批量丢弃 Skill Hub 临时上传",
+        "deprecated": false,
+        "description": "需要 skill_hub.content.manage 权限；一次清理 1 至 400 张未提交上传票据对应的 _tmp 临时 OSS 对象。重复票据会去重，响应只返回成功和失败数量，不回显票据。",
+        "tags": [
+          "技能广场管理"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillHubBatchUploadDiscardRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "返回清理成功和失败数量",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillHubBatchUploadDiscardApiResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "SessionAuth": [],
+            "NewApiUser": []
+          },
+          {
+            "AccessToken": [],
+            "NewApiUser": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -2054,6 +2183,399 @@
           },
           "data": {
             "nullable": true
+          }
+        }
+      },
+      "SkillHubBatchUploadFileRequest": {
+        "type": "object",
+        "required": [
+          "fileName",
+          "size"
+        ],
+        "properties": {
+          "fileName": {
+            "type": "string",
+            "description": "原始文件名；Zip 只接受 .zip，图标只接受 .png、.jpg、.jpeg 或 .webp"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "文件大小，单位 byte；Zip 最大 50MB，图标最大 1MB"
+          }
+        }
+      },
+      "SkillHubBatchUploadInitItemRequest": {
+        "type": "object",
+        "required": [
+          "index",
+          "id",
+          "version",
+          "zip"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 199,
+            "description": "manifest 中从 0 开始的稳定索引，提交阶段须复用"
+          },
+          "id": {
+            "type": "string",
+            "description": "技能 ID；同一批次内不可重复"
+          },
+          "version": {
+            "type": "string",
+            "description": "技能版本"
+          },
+          "zip": {
+            "$ref": "#/components/schemas/SkillHubBatchUploadFileRequest"
+          },
+          "icon": {
+            "$ref": "#/components/schemas/SkillHubBatchUploadFileRequest"
+          }
+        }
+      },
+      "SkillHubBatchUploadInitRequest": {
+        "type": "object",
+        "required": [
+          "mode",
+          "items"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "skip",
+              "update",
+              "fail"
+            ],
+            "description": "已有 Skill 的处理策略"
+          },
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/SkillHubBatchUploadInitItemRequest"
+            }
+          }
+        }
+      },
+      "SkillHubBatchUploadInitItemResult": {
+        "type": "object",
+        "required": [
+          "index",
+          "id",
+          "status"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "skipped",
+              "failed"
+            ]
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update",
+              "exists"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "zip": {
+            "$ref": "#/components/schemas/SkillHubDirectUploadInitResult"
+          },
+          "icon": {
+            "$ref": "#/components/schemas/SkillHubDirectUploadInitResult"
+          }
+        }
+      },
+      "SkillHubBatchUploadInitApiResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SkillHubBatchUploadInitItemResult"
+                }
+              }
+            }
+          }
+        }
+      },
+      "SkillHubBatchUploadOptions": {
+        "type": "object",
+        "required": [
+          "published",
+          "recommended",
+          "sortMode",
+          "fixedSort",
+          "sortStart",
+          "sortStep",
+          "verifiedMode",
+          "tagMode",
+          "commonTags",
+          "overrideOrigin",
+          "origin",
+          "missingIcon",
+          "missingTestcases",
+          "missingEvaluation"
+        ],
+        "properties": {
+          "published": {
+            "type": "boolean",
+            "description": "强制保存状态；false 为草稿，true 为发布"
+          },
+          "recommended": {
+            "type": "boolean",
+            "description": "强制推荐状态"
+          },
+          "sortMode": {
+            "type": "string",
+            "enum": [
+              "fixed",
+              "sequence"
+            ],
+            "description": "固定排序值或按索引生成序列"
+          },
+          "fixedSort": {
+            "type": "integer",
+            "format": "int32",
+            "description": "sortMode=fixed 时强制写入的排序值"
+          },
+          "sortStart": {
+            "type": "integer",
+            "format": "int32",
+            "description": "sortMode=sequence 时的起始值"
+          },
+          "sortStep": {
+            "type": "integer",
+            "format": "int32",
+            "description": "sortMode=sequence 时每个 manifest 索引的步长"
+          },
+          "verifiedMode": {
+            "type": "string",
+            "enum": [
+              "manifest",
+              "verified",
+              "unverified"
+            ]
+          },
+          "tagMode": {
+            "type": "string",
+            "enum": [
+              "manifest",
+              "append",
+              "replace"
+            ]
+          },
+          "commonTags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "overrideOrigin": {
+            "type": "boolean"
+          },
+          "origin": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "missingIcon": {
+            "$ref": "#/components/schemas/SkillHubBatchMissingResourcePolicy"
+          },
+          "missingTestcases": {
+            "$ref": "#/components/schemas/SkillHubBatchMissingResourcePolicy"
+          },
+          "missingEvaluation": {
+            "$ref": "#/components/schemas/SkillHubBatchMissingResourcePolicy"
+          }
+        }
+      },
+      "SkillHubBatchMissingResourcePolicy": {
+        "type": "string",
+        "enum": [
+          "retain",
+          "clear"
+        ],
+        "description": "更新已有 Skill 且本批次未提供资源时，保留或清空原值"
+      },
+      "SkillHubBatchUploadCommitItemRequest": {
+        "type": "object",
+        "required": [
+          "index",
+          "skill",
+          "zipUploadTicket"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 199,
+            "description": "初始化阶段使用的 manifest 索引"
+          },
+          "skill": {
+            "$ref": "#/components/schemas/SkillHubSkillRequest"
+          },
+          "zipUploadTicket": {
+            "type": "string",
+            "description": "批量初始化返回的 Zip 上传票据"
+          },
+          "iconUploadTicket": {
+            "type": "string",
+            "description": "批量初始化返回的可选图标上传票据"
+          }
+        }
+      },
+      "SkillHubBatchUploadCommitRequest": {
+        "type": "object",
+        "required": [
+          "mode",
+          "options",
+          "items"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "skip",
+              "update",
+              "fail"
+            ]
+          },
+          "options": {
+            "$ref": "#/components/schemas/SkillHubBatchUploadOptions"
+          },
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/SkillHubBatchUploadCommitItemRequest"
+            }
+          }
+        }
+      },
+      "SkillHubBatchUploadCommitItemResult": {
+        "type": "object",
+        "required": [
+          "index",
+          "id",
+          "status"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "skipped",
+              "failed"
+            ]
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update",
+              "exists"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "skill": {
+            "$ref": "#/components/schemas/SkillHubSkill"
+          }
+        }
+      },
+      "SkillHubBatchUploadCommitApiResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SkillHubBatchUploadCommitItemResult"
+                }
+              }
+            }
+          }
+        }
+      },
+      "SkillHubBatchUploadDiscardRequest": {
+        "type": "object",
+        "required": [
+          "uploadTickets"
+        ],
+        "properties": {
+          "uploadTickets": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 400,
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SkillHubBatchUploadDiscardApiResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "discarded": {
+                "type": "integer",
+                "description": "成功清理的去重票据数量"
+              },
+              "failed": {
+                "type": "integer",
+                "description": "空票据或清理失败数量"
+              }
+            }
           }
         }
       },

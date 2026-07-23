@@ -232,6 +232,15 @@ func TestValidateSkillHubSkillAcceptsZipSource(t *testing.T) {
 	}
 }
 
+func TestValidateSkillHubSkillIDRejectsWhitespace(t *testing.T) {
+	if err := ValidateSkillHubSkillID(" demo.skill "); err == nil {
+		t.Fatal("ValidateSkillHubSkillID() accepted surrounding whitespace")
+	}
+	if err := ValidateSkillHubSkillID("demo.skill"); err != nil {
+		t.Fatalf("ValidateSkillHubSkillID() error = %v", err)
+	}
+}
+
 func TestValidateSkillHubSkillNameLength(t *testing.T) {
 	base := SkillHubSkill{
 		SkillID: "name-length-skill", Version: "1.0.0",

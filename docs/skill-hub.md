@@ -182,9 +182,44 @@ Skill 名称必填，去除首尾空白后最多 100 个 Unicode 字符；后台
 
 ## 批量导入与导出
 
-批量上传脚本的 manifest 使用本地文件路径引用 Zip、图标和案例文件。`testcases` 字段应填写本地 `.json` 文件路径；脚本会按 manifest 所在目录解析相对路径，在联网前完成 2 MB 大小限制和案例结构校验，再将解析后的对象提交给管理接口。管理接口本身仍使用 `SkillHubTestcases` JSON 对象，不接受本地路径或远程 URL。
+default 与 classic 管理后台的技能管理页均提供“批量上传”。选择的是一个已解压的本地文件夹，目录格式与 `scripts/skill-hub-batch-upload` 一致：
 
-批量上传时，manifest 的 `sort` 为 `0` 或省略时，请求会写入 `1000000`，使未显式排序的批量导入项默认位于列表后部；其他整数保持不变。该转换只属于批量上传脚本，管理接口和后台表单仍按提交值保存。
+```text
+batch-folder/
+├── manifest.json              # 也可使用 manifest.jsonl，根目录只能存在其中一个
+├── packages/
+│   ├── skill-a.zip
+│   └── skill-b.zip
+├── icons/                     # 可选
+│   └── skill-a.png
+└── testcases/                 # 可选
+    └── skill-a.json
+```
+
+manifest 使用相对于该目录的本地路径引用 Zip、图标和案例文件。`testcases` 字段应填写 `.json` 文件路径；浏览器会在联网前完成安全相对路径、重复路径、UTF-8、文件类型、大小和案例结构校验，再把解析后的 `SkillHubTestcases` 对象提交给管理接口。禁止绝对路径、盘符、反斜杠、URL、`.`、`..` 和大小写不敏感的重复路径。
+
+单个目录最多包含 200 个技能和 5000 个文件；manifest 最大 10 MB，Zip 最大 50 MB，图标最大 1 MB，案例文件最大 2 MB。服务端仍会重新校验上传票据、文件大小、Zip 或图标文件头、Zip 内 `SKILL.md` 和最终 Skill 数据，不能把浏览器校验当作安全边界。
+
+批量配置会强制覆盖以下字段：
+
+- 保存状态：全部草稿或全部发布。
+- 推荐状态：全部不推荐或全部推荐。
+- 排序：统一固定值，或按 `起始值 + manifest 索引 × 步长` 生成；不会采用 manifest 的 `sort`。
+
+还可配置已有 Skill 的冲突策略（跳过、更新、报错）、上传并发数（1 至 10，默认 2）、首错停止、验证状态、公共标签追加或替换、统一来源，以及更新时缺少图标、案例或评测的保留/清空策略。默认值采用低风险配置：保存为草稿、不推荐、跳过已有 Skill、保留已有可选资源。
+
+后台批量上传使用三组管理接口：
+
+1. `POST /api/admin/skill-hub/batch-upload/init`：一次初始化最多 200 项，批量返回 Zip 和可选图标的 OSS PUT signed URL。
+2. 浏览器按配置的有限并发直接 PUT 到 OSS，不让文件内容经过 New API。
+3. `POST /api/admin/skill-hub/batch-upload/commit`：一次验证上传票据并保存最多 200 项；前端会把过大的提交体按约 8 MB 分片，服务端请求体上限为 32 MB。
+4. `POST /api/admin/skill-hub/batch-upload/discard`：一次清理最多 400 个未提交的临时上传票据。
+
+这样每批只产生少量 New API 请求和使用日志，不会为每个文件分别调用初始化、完成、保存和丢弃接口。服务端只用固定 2 个 worker 并发读取并校验 OSS 对象，数据库写入保持串行，避免在批量请求内制造数据库写竞争；单项失败不会回滚已经成功的其他项。
+
+提交接口返回逐项结果。网络断开时，服务端可能已经完成提交但浏览器没有收到响应，因此前端会把对应项标记为“待确认”，不会自动重试，也不会自动丢弃该项票据；管理员应先刷新技能列表确认，再决定是否重新上传。上传失败或主动取消的临时对象会 best-effort 批量清理，仍须给两个 `_tmp/` 前缀配置 OSS 生命周期规则作为兜底。
+
+`scripts/skill-hub-batch-upload` 仍可用于命令行批量上传。脚本的默认排序兼容规则保持不变：manifest 的 `sort` 为 `0` 或省略时写入 `1000000`；后台批量上传则始终使用界面配置的强制排序策略。
 
 后台批量导出的 ZIP 包包含 `manifest.json`、`packages/`、可选的 `icons/`，以及可选的 `testcases/`。每个有案例的 Skill 会生成 `testcases/<skill-id>.json`，manifest 通过相对路径引用该文件，因此导出包解压后可直接交给批量上传脚本重新导入。
 

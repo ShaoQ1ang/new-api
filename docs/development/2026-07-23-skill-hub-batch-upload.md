@@ -1,0 +1,41 @@
+# Skill Hub 后台批量上传
+
+## 变更范围
+
+- default 与 classic 技能管理页新增基于本地文件夹的批量上传入口。
+- 文件夹格式复用 `scripts/skill-hub-batch-upload` 的 `manifest.json` / `manifest.jsonl`、`packages/`、`icons/`、`testcases/` 约定。
+- 新增批量初始化、批量提交和批量丢弃三个管理接口，避免逐文件请求产生大量使用日志。
+- 新增统一草稿/发布、推荐、强制排序，以及冲突、并发、验证、标签、来源和缺失资源策略。
+
+## 请求流程
+
+1. 浏览器在本地解析目录并完成路径、格式、大小和引用完整性校验。
+2. `POST /api/admin/skill-hub/batch-upload/init` 一次返回所有可处理项的临时 OSS PUT signed URL。
+3. 浏览器以 1 至 10 的有限并发直接上传 Zip 和图标到 OSS。
+4. `POST /api/admin/skill-hub/batch-upload/commit` 批量完成 OSS 校验、对象转正和数据库保存；前端按约 8 MB 对提交项分片。
+5. 未进入提交或确定失败的临时上传通过 `POST /api/admin/skill-hub/batch-upload/discard` 批量清理。
+
+批量提交返回逐项状态，允许部分成功。提交响应不明确时，前端使用 `unknown` 本地状态，不自动重试或清理票据，避免服务端已提交后发生重复操作。
+
+## 安全与并发
+
+- 三个接口均沿用 `UserAuth` 和 `skill_hub.content.manage` 权限校验。
+- 初始化与丢弃请求体限制为 2 MB，提交请求体限制为 32 MB；单批最多 200 个技能、400 张清理票据。
+- 客户端拒绝不安全路径、URL 引用、重复路径和重复 Skill ID；服务端再次校验 Skill ID、索引、上传票据唯一性、票据与 Skill ID/资源类型绑定关系。
+- 服务端先校验元数据、标签、评测、案例和统一覆盖配置，再读取并哈希 OSS 对象，避免明显无效的批次先消耗大文件 I/O。
+- OSS 完成校验固定使用 2 个 worker；每个 worker 只写独立结果槽。对象校验结束后，数据库保存与旧对象清理按请求项串行执行。
+- OSS 转正使用禁止覆盖的复制操作，数据库使用 Skill ID 唯一约束；并发请求不能静默覆盖同一正式对象或创建重复 Skill。
+- Zip 与图标仍执行服务端大小、哈希、文件头和受管前缀校验；Zip 内 `SKILL.md` 继续执行路径穿越、符号链接、层级、编码和大小限制。
+- 临时对象清理是 best-effort，部署端仍需为 Zip 与图标 `_tmp/` 前缀配置生命周期规则。
+
+## 前端一致性
+
+两个前端实现相同的目录格式、默认值、覆盖策略、有限并发、取消、失败重试和 JSON 报告下载。default 前端使用共享解析模块的六语言 i18n；classic 沿用该页面当前的中文管理界面。
+
+## 验证
+
+- Go：`GOENV=off go test ./controller ./model ./service`
+- 共享目录解析：`node --test web/shared/skill-hub-batch-import.test.mjs`
+- 脚本兼容：`node --test scripts/skill-hub-batch-upload/upload.test.js`
+- default：`bun run build`、`bun run i18n:sync`
+- classic：`bun run build`
