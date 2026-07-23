@@ -34,6 +34,9 @@
 
 ## 验证
 
+- Docker 的 default/classic 前端构建阶段保留 `web/{default,classic}` 与 `web/shared` 的相对目录结构，确保两个前端都能解析共享的 ZIP 解析模块。
+- 本地 Compose 完整构建与启动：`docker compose -f docker-compose.local.yml up -d --build`
+
 - Go：`GOENV=off go test ./controller ./model ./service`
 - 共享目录解析：`node --test web/shared/skill-hub-batch-import.test.mjs`
 - 脚本兼容：`node --test scripts/skill-hub-batch-upload/upload.test.js`
