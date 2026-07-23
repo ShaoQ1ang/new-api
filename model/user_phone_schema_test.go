@@ -49,7 +49,7 @@ CREATE TABLE users (
 	require.EqualValues(t, 1, cnt)
 
 	// Alternate names should be dropped if present; re-run must stay green.
-	require.NoError(t, db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone)`).Error)
+	require.NoError(t, db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uni_users_phone ON users(phone)`).Error)
 	require.NoError(t, ensureUsersPhoneSchema())
 	require.NoError(t, db.Raw(
 		`SELECT COUNT(1) FROM sqlite_master WHERE type='index' AND name=?`,
@@ -57,7 +57,7 @@ CREATE TABLE users (
 	).Scan(&cnt).Error)
 	require.EqualValues(t, 1, cnt)
 	require.NoError(t, db.Raw(
-		`SELECT COUNT(1) FROM sqlite_master WHERE type='index' AND name='idx_users_phone'`,
+		`SELECT COUNT(1) FROM sqlite_master WHERE type='index' AND name='uni_users_phone'`,
 	).Scan(&cnt).Error)
 	require.EqualValues(t, 0, cnt)
 
