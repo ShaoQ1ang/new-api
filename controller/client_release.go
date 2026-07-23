@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
@@ -28,8 +30,6 @@ type clientReleaseRequest struct {
 	ReleaseNotes string `json:"releaseNotes"`
 	MinVersion   string `json:"minVersion"`
 	Forced       bool   `json:"forced"`
-	Published    bool   `json:"published"`
-	Status       *int   `json:"status"`
 }
 
 type clientReleaseDirectUploadInitRequest struct {
@@ -290,9 +290,13 @@ func AdminUpdateClientRelease(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	oldObjectKey, err := release.UpdateReturningPreviousObjectKey()
+	oldObjectKey, err := release.UpdateReturningPreviousObjectKey(c.GetInt("id"))
 	if err != nil {
 		cleanupPromotedClientReleaseFinal(promotion)
+		if errors.Is(err, model.ErrClientReleasePublishPermissionRequired) {
+			common.ApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
+			return
+		}
 		common.ApiError(c, err)
 		return
 	}
@@ -307,11 +311,16 @@ func AdminDeleteClientRelease(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if err := model.DeleteClientRelease(release); err != nil {
+	objectKey, err := model.DeleteClientRelease(release.Id, c.GetInt("id"))
+	if err != nil {
+		if errors.Is(err, model.ErrClientReleasePublishPermissionRequired) {
+			common.ApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
+			return
+		}
 		common.ApiError(c, err)
 		return
 	}
-	cleanupClientReleaseObject(release.ObjectKey)
+	cleanupClientReleaseObject(objectKey)
 	common.ApiSuccess(c, nil)
 }
 
@@ -324,13 +333,17 @@ func AdminUnpublishClientRelease(c *gin.Context) {
 }
 
 func updateClientReleasePublishStatus(c *gin.Context, status int) {
-	release, err := clientReleaseByParam(c)
-	if err != nil {
-		common.ApiError(c, err)
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiError(c, fmt.Errorf("invalid client release id"))
 		return
 	}
-	release.Status = status
-	if err := release.Update(); err != nil {
+	release, err := model.UpdateClientReleaseStatus(id, status, c.GetInt("id"))
+	if err != nil {
+		if errors.Is(err, model.ErrClientReleasePublishPermissionRequired) {
+			common.ApiErrorI18n(c, i18n.MsgAuthInsufficientPrivilege)
+			return
+		}
 		common.ApiError(c, err)
 		return
 	}
@@ -355,11 +368,7 @@ func clientReleaseRequestToModel(request clientReleaseRequest, existing *model.C
 	release.ReleaseNotes = strings.TrimSpace(request.ReleaseNotes)
 	release.MinVersion = strings.TrimSpace(request.MinVersion)
 	release.Forced = request.Forced
-	if request.Status != nil {
-		release.Status = *request.Status
-	} else if request.Published {
-		release.Status = model.ClientReleaseStatusPublished
-	} else {
+	if existing == nil {
 		release.Status = model.ClientReleaseStatusDraft
 	}
 	return release

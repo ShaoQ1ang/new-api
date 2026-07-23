@@ -4567,6 +4567,25 @@
     "Zhipu": "智谱",
     "Zhipu V4": "智谱 V4",
     "Zip URL must use HTTPS, except localhost or private network hosts during development": "Zip 包地址必须使用 HTTPS，本地调试可使用 localhost 或局域网地址 HTTP",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Failed to load management permissions": "加载管理权限失败",
+    "Failed to save management permissions": "保存管理权限失败",
+    "Management permissions saved": "管理权限已保存",
+    "Confirm your identity before changing management permissions.": "修改管理权限前，请先验证您的身份。",
+    "Management Permissions": "管理权限",
+    "Grant individual management capabilities without promoting this user to administrator.": "无需提升为管理员，即可为该用户授予指定的管理能力。",
+    "Administrators receive all management permissions automatically. Explicit permissions can only be assigned to common users.": "管理员自动拥有全部管理权限；显式权限只能授予普通用户。",
+    "Available capabilities": "可用权限",
+    "Save management permissions": "保存管理权限",
+    "Skill Hub content management": "技能广场内容管理",
+    "Create, edit, publish, and delete skills and tags.": "创建、编辑、发布和删除技能与标签。",
+    "Skill Hub report management": "技能广场举报管理",
+    "Review and update Skill Hub reports.": "查看并更新技能广场举报。",
+    "Chat model management": "对话模型管理",
+    "Manage models shown in chat model selectors.": "管理聊天模型选择器中展示的模型。",
+    "Client release management": "客户端版本管理",
+    "Create, edit, upload, and delete client releases.": "创建、编辑、上传和删除客户端版本。",
+    "Client release publishing": "客户端版本发布",
+    "Publish or unpublish existing client releases.": "发布或取消发布已有客户端版本。"
   }
 }

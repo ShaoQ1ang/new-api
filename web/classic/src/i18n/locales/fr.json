@@ -4266,6 +4266,22 @@
     "这是 Token 容量，不是价格；建议为原生窗口的 75%–80%（{{min}}–{{max}} Token）；0 表示不额外限制": "Il s'agit d'une capacité en tokens, pas d'un prix. Recommandé : 75 % à 80 % de la fenêtre native ({{min}}–{{max}} tokens) ; 0 signifie aucune limite supplémentaire",
     "这是 Token 容量，不是价格；建议为原生窗口的 75%–80%；0 表示不额外限制": "Il s'agit d'une capacité en tokens, pas d'un prix. Recommandé : 75 % à 80 % de la fenêtre native ; 0 signifie aucune limite supplémentaire",
     "建议按模型官方公布的最大输出填写；0 表示未配置": "Utilisez la sortie maximale publiée officiellement pour le modèle ; 0 signifie non configuré",
-    "0 表示未配置": "0 signifie non configuré"
+    "0 表示未配置": "0 signifie non configuré",
+    "保存管理权限失败": "Échec de l’enregistrement des autorisations de gestion",
+    "管理权限已保存": "Autorisations de gestion enregistrées",
+    "修改管理权限前，请先验证您的身份。": "Confirmez votre identité avant de modifier les autorisations de gestion.",
+    "管理权限": "Autorisations de gestion",
+    "无需提升为管理员，即可为普通用户授予指定的管理能力。": "Accordez des capacités de gestion précises sans promouvoir cet utilisateur au rôle d’administrateur.",
+    "管理员自动拥有全部管理权限；显式权限只能授予普通用户。": "Les administrateurs reçoivent automatiquement toutes les autorisations de gestion. Les autorisations explicites ne peuvent être attribuées qu’aux utilisateurs ordinaires.",
+    "保存管理权限": "Enregistrer les autorisations de gestion",
+    "技能广场内容管理": "Gestion du contenu de l’espace des compétences",
+    "创建、编辑、发布和删除技能与标签。": "Créer, modifier, publier et supprimer des compétences et des étiquettes.",
+    "技能广场举报管理": "Gestion des signalements de l’espace des compétences",
+    "查看并处理技能广场举报。": "Examiner et mettre à jour les signalements de l’espace des compétences.",
+    "管理聊天模型选择器中展示的模型。": "Gérer les modèles affichés dans les sélecteurs de modèles de conversation.",
+    "客户端版本管理": "Gestion des versions du client",
+    "创建、编辑、上传和删除客户端版本。": "Créer, modifier, téléverser et supprimer les versions du client.",
+    "客户端版本发布": "Publication des versions du client",
+    "发布或取消发布已有客户端版本。": "Publier ou dépublier les versions existantes du client."
   }
 }

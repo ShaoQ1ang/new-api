@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
+import type { ManagementPermission } from '@/lib/management-permissions'
 
 // ============================================================================
 // User Schema & Types
@@ -122,6 +123,15 @@ export interface ManageUserQuotaPayload {
   action: 'add_quota'
   mode: QuotaAdjustMode
   value: number
+}
+
+export interface UserManagementPermissions {
+  user_id: number
+  role: number
+  status: number
+  permissions: ManagementPermission[]
+  effective_permissions: ManagementPermission[]
+  available_permissions: ManagementPermission[]
 }
 
 // ============================================================================

@@ -17,14 +17,22 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { SkillHub } from '@/features/skill-hub'
-import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
+import {
+  MANAGEMENT_PERMISSION,
+  hasManagementPermission,
+} from '@/lib/management-permissions'
+import { SkillHub } from '@/features/skill-hub'
 
 export const Route = createFileRoute('/_authenticated/skill-hub/')({
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
-    if (!auth.user || auth.user.role < ROLE.ADMIN) {
+    if (
+      !hasManagementPermission(
+        auth.user,
+        MANAGEMENT_PERMISSION.SKILL_HUB_CONTENT
+      )
+    ) {
       throw redirect({ to: '/403' })
     }
   },

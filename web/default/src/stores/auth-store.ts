@@ -48,6 +48,7 @@ export interface AuthUser {
   stripe_customer?: string
   sidebar_modules?: string
   permissions?: UserPermissions
+  management_permissions?: string[]
 }
 
 interface AuthState {

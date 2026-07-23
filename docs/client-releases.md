@@ -55,7 +55,9 @@ CLIENT_RELEASE_OSS_MAX_BYTES=524288000
 
 ## 安全边界
 
-- 管理接口都挂在 `/api/admin/client-releases` 下，并要求 `AdminAuth`；公开接口只提供已发布版本的读取、`latest.yml` 和下载跳转。
+- 管理接口都挂在 `/api/admin/client-releases` 下，并要求登录。管理员/超级管理员隐式拥有全部能力；普通用户需要细粒度权限：列表和详情接受 `client_releases.manage` 或 `client_releases.publish`，创建、编辑、上传和删除要求 `client_releases.manage`，发布和取消发布要求 `client_releases.publish`。
+- 创建和编辑接口不会接受请求体中的发布状态，新增记录始终为草稿，编辑时在行锁内保留数据库中的真实状态。发布状态只能通过独立的 `publish` / `unpublish` 接口修改，避免编辑权限绕过发布权限。
+- 仅有 `client_releases.manage` 的用户可以维护草稿。修改或删除已发布记录还需要 `client_releases.publish`，检查在锁定记录后执行，避免与并发发布请求竞态。
 - OSS Bucket 应保持私有。客户端只访问 New API，New API 再为已发布版本生成短时 signed URL；不要把 OSS Bucket 改成公开读。
 - 直传初始化会限制文件大小，默认最大 `500MB`；文件扩展名、`version / platform / arch / channel` 会在生成 signed URL 前校验。
 - signed URL 只允许上传到后端生成的单个 `_tmp/` OSS Object，前端不会拿到 OSS AccessKey；完成确认必须携带后端签发的短时上传票据。
@@ -73,7 +75,7 @@ CLIENT_RELEASE_OSS_MAX_BYTES=524288000
 - 保存版本记录时，后端在写数据库前把 `_tmp/` 对象复制到带时间戳的正式 object key；数据库保存失败会 best-effort 删除刚复制出的正式对象。
 - 更新已有版本时，后端会在数据库事务中锁定当前记录并读取真正被本次更新覆盖的旧 object key，再执行旧对象清理，降低并发保存留下正式目录孤儿对象的风险。
 - 初始化上传和完成确认没有写数据库；管理员仍需保存版本记录才会创建或更新发布元数据。
-- 发布、取消发布和更新记录没有额外应用层锁；同一条记录的并发编辑采用数据库最后一次写入生效。运营上应避免多人同时编辑同一版本。
+- 更新记录、删除记录、发布和取消发布都会在数据库事务中重新校验操作者权限，并依次锁定操作者用户行与当前版本行。元数据更新保留锁内读到的发布状态，发布状态更新也只基于锁内最新记录，避免撤权竞争或并发请求使用旧对象覆盖发布状态及其他字段。
 - `latest` 和 `latest.yml` 总是读取同一目标下 `id` 最大的已发布记录；如果下载过程中又发布了新记录，已开始的下载仍按当次 `latest.yml` 中的 `id` 获取安装包。
 - 客户端更新检查本身做进程内去重；同一客户端同时触发自动检查和手动检查时，会复用同一次后端请求结果。
 

@@ -4567,6 +4567,25 @@
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
     "Zip URL must use HTTPS, except localhost or private network hosts during development": "Zip URL must use HTTPS, except localhost or private network hosts during development",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Failed to load management permissions": "Failed to load management permissions",
+    "Failed to save management permissions": "Failed to save management permissions",
+    "Management permissions saved": "Management permissions saved",
+    "Confirm your identity before changing management permissions.": "Confirm your identity before changing management permissions.",
+    "Management Permissions": "Management Permissions",
+    "Grant individual management capabilities without promoting this user to administrator.": "Grant individual management capabilities without promoting this user to administrator.",
+    "Administrators receive all management permissions automatically. Explicit permissions can only be assigned to common users.": "Administrators receive all management permissions automatically. Explicit permissions can only be assigned to common users.",
+    "Available capabilities": "Available capabilities",
+    "Save management permissions": "Save management permissions",
+    "Skill Hub content management": "Skill Hub content management",
+    "Create, edit, publish, and delete skills and tags.": "Create, edit, publish, and delete skills and tags.",
+    "Skill Hub report management": "Skill Hub report management",
+    "Review and update Skill Hub reports.": "Review and update Skill Hub reports.",
+    "Chat model management": "Chat model management",
+    "Manage models shown in chat model selectors.": "Manage models shown in chat model selectors.",
+    "Client release management": "Client release management",
+    "Create, edit, upload, and delete client releases.": "Create, edit, upload, and delete client releases.",
+    "Client release publishing": "Client release publishing",
+    "Publish or unpublish existing client releases.": "Publish or unpublish existing client releases."
   }
 }

@@ -4785,6 +4785,22 @@
     "这是 Token 容量，不是价格；建议为原生窗口的 75%–80%（{{min}}–{{max}} Token）；0 表示不额外限制": "Đây là dung lượng token, không phải giá. Khuyến nghị 75%–80% cửa sổ gốc ({{min}}–{{max}} token); 0 nghĩa là không giới hạn thêm",
     "这是 Token 容量，不是价格；建议为原生窗口的 75%–80%；0 表示不额外限制": "Đây là dung lượng token, không phải giá. Khuyến nghị 75%–80% cửa sổ gốc; 0 nghĩa là không giới hạn thêm",
     "建议按模型官方公布的最大输出填写；0 表示未配置": "Dùng mức đầu ra tối đa do nhà cung cấp mô hình công bố; 0 nghĩa là chưa cấu hình",
-    "0 表示未配置": "0 nghĩa là chưa cấu hình"
+    "0 表示未配置": "0 nghĩa là chưa cấu hình",
+    "保存管理权限失败": "Không thể lưu quyền quản lý",
+    "管理权限已保存": "Đã lưu quyền quản lý",
+    "修改管理权限前，请先验证您的身份。": "Hãy xác minh danh tính trước khi thay đổi quyền quản lý.",
+    "管理权限": "Quyền quản lý",
+    "无需提升为管理员，即可为普通用户授予指定的管理能力。": "Cấp từng khả năng quản lý mà không cần nâng người dùng này lên quản trị viên.",
+    "管理员自动拥有全部管理权限；显式权限只能授予普通用户。": "Quản trị viên tự động có mọi quyền quản lý. Chỉ người dùng thông thường mới có thể được cấp quyền tường minh.",
+    "保存管理权限": "Lưu quyền quản lý",
+    "技能广场内容管理": "Quản lý nội dung Kho kỹ năng",
+    "创建、编辑、发布和删除技能与标签。": "Tạo, chỉnh sửa, xuất bản và xóa kỹ năng cùng thẻ.",
+    "技能广场举报管理": "Quản lý báo cáo Kho kỹ năng",
+    "查看并处理技能广场举报。": "Xem xét và cập nhật báo cáo trong Kho kỹ năng.",
+    "管理聊天模型选择器中展示的模型。": "Quản lý các mô hình hiển thị trong bộ chọn mô hình trò chuyện.",
+    "客户端版本管理": "Quản lý bản phát hành ứng dụng",
+    "创建、编辑、上传和删除客户端版本。": "Tạo, chỉnh sửa, tải lên và xóa bản phát hành ứng dụng.",
+    "客户端版本发布": "Xuất bản bản phát hành ứng dụng",
+    "发布或取消发布已有客户端版本。": "Xuất bản hoặc hủy xuất bản các bản phát hành ứng dụng hiện có."
   }
 }

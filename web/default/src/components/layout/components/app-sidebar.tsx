@@ -16,15 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo } from 'react'
 import { useLocation } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
-import { ROLE } from '@/lib/roles'
 import { useLayout } from '@/context/layout-provider'
 import { useSidebarConfig } from '@/hooks/use-sidebar-config'
 import { useSidebarData } from '@/hooks/use-sidebar-data'
 import { Sidebar, SidebarContent, SidebarRail } from '@/components/ui/sidebar'
+import { filterNavigationByManagementPermissions } from '../lib/filter-management-navigation'
 import { getNavGroupsForPath } from '../lib/workspace-registry'
 import { NavGroup } from './nav-group'
 
@@ -40,7 +39,7 @@ export function AppSidebar() {
   const { t } = useTranslation()
   const { collapsible, variant } = useLayout()
   const { pathname } = useLocation()
-  const userRole = useAuthStore((state) => state.auth.user?.role)
+  const user = useAuthStore((state) => state.auth.user)
   const sidebarData = useSidebarData()
 
   // Get navigation group configuration corresponding to current path from workspace registry
@@ -49,17 +48,10 @@ export function AppSidebar() {
   // Filter sidebar navigation items based on backend configuration
   const configFilteredNavGroups = useSidebarConfig(allNavGroups)
 
-  // Filter navigation groups based on user role
-  // Non-Admin users cannot see Admin navigation group
-  const currentNavGroups = useMemo(() => {
-    const isAdmin = userRole && userRole >= ROLE.ADMIN
-    return configFilteredNavGroups.filter((group) => {
-      if (group.id === 'admin') {
-        return isAdmin
-      }
-      return true
-    })
-  }, [configFilteredNavGroups, userRole])
+  const currentNavGroups = filterNavigationByManagementPermissions(
+    configFilteredNavGroups,
+    user
+  )
 
   return (
     <Sidebar collapsible={collapsible} variant={variant}>

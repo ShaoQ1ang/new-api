@@ -4567,6 +4567,25 @@
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
     "Zip URL must use HTTPS, except localhost or private network hosts during development": "URL ZIP-архива должен использовать HTTPS, кроме localhost или хостов частной сети при разработке",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Failed to load management permissions": "Не удалось загрузить разрешения на управление",
+    "Failed to save management permissions": "Не удалось сохранить разрешения на управление",
+    "Management permissions saved": "Разрешения на управление сохранены",
+    "Confirm your identity before changing management permissions.": "Подтвердите личность перед изменением разрешений на управление.",
+    "Management Permissions": "Разрешения на управление",
+    "Grant individual management capabilities without promoting this user to administrator.": "Предоставляйте отдельные возможности управления без назначения пользователя администратором.",
+    "Administrators receive all management permissions automatically. Explicit permissions can only be assigned to common users.": "Администраторы автоматически получают все разрешения на управление. Явные разрешения можно назначать только обычным пользователям.",
+    "Available capabilities": "Доступные возможности",
+    "Save management permissions": "Сохранить разрешения на управление",
+    "Skill Hub content management": "Управление содержимым каталога навыков",
+    "Create, edit, publish, and delete skills and tags.": "Создание, изменение, публикация и удаление навыков и тегов.",
+    "Skill Hub report management": "Управление жалобами каталога навыков",
+    "Review and update Skill Hub reports.": "Просмотр и обновление жалоб каталога навыков.",
+    "Chat model management": "Управление моделями чата",
+    "Manage models shown in chat model selectors.": "Управление моделями, отображаемыми в списках выбора моделей чата.",
+    "Client release management": "Управление выпусками клиента",
+    "Create, edit, upload, and delete client releases.": "Создание, изменение, загрузка и удаление выпусков клиента.",
+    "Client release publishing": "Публикация выпусков клиента",
+    "Publish or unpublish existing client releases.": "Публикация или снятие с публикации существующих выпусков клиента."
   }
 }

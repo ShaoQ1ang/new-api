@@ -21,6 +21,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SectionPageLayout } from '@/components/layout'
@@ -38,7 +39,7 @@ import { deploymentsQueryKeys } from './lib'
 import {
   type ModelsSectionId,
   MODELS_DEFAULT_SECTION,
-  MODELS_SECTION_IDS,
+  getAccessibleModelsSections,
 } from './section-registry'
 
 const route = getRouteApi('/_authenticated/models/$section')
@@ -65,10 +66,12 @@ function ModelsContent() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const user = useAuthStore((state) => state.auth.user)
   const { tabCategory, setTabCategory } = useModels()
   const params = route.useParams()
   const activeSection = (params.section ??
     MODELS_DEFAULT_SECTION) as ModelsSectionId
+  const accessibleSections = getAccessibleModelsSections(user)
 
   // Deployment create dialog state
   const [createDeploymentOpen, setCreateDeploymentOpen] = useState(false)
@@ -89,7 +92,7 @@ function ModelsContent() {
     connectionError,
     testConnection,
     refresh: refreshDeploymentSettings,
-  } = useModelDeploymentSettings()
+  } = useModelDeploymentSettings(activeSection === 'deployments')
 
   // Ensure settings are fresh when switching to deployments section
   useEffect(() => {
@@ -148,7 +151,7 @@ function ModelsContent() {
           <div className='space-y-4'>
             <Tabs value={activeSection} onValueChange={handleSectionChange}>
               <TabsList className='h-auto max-w-full flex-wrap justify-start'>
-                {MODELS_SECTION_IDS.map((section) => (
+                {accessibleSections.map((section) => (
                   <TabsTrigger key={section} value={section}>
                     {t(SECTION_META[section].titleKey)}
                   </TabsTrigger>
@@ -176,11 +179,13 @@ function ModelsContent() {
         </SectionPageLayout.Content>
       </SectionPageLayout>
 
-      <ModelsDialogs />
-      <CreateDeploymentDrawer
-        open={createDeploymentOpen}
-        onOpenChange={setCreateDeploymentOpen}
-      />
+      {activeSection === 'metadata' ? <ModelsDialogs /> : null}
+      {activeSection === 'deployments' ? (
+        <CreateDeploymentDrawer
+          open={createDeploymentOpen}
+          onOpenChange={setCreateDeploymentOpen}
+        />
+      ) : null}
     </>
   )
 }

@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
+import type { ManagementPermission } from '@/lib/management-permissions'
 import type {
   User,
   GetUsersParams,
@@ -26,6 +27,7 @@ import type {
   ManageUserAction,
   ManageUserQuotaPayload,
   ApiResponse,
+  UserManagementPermissions,
 } from './types'
 
 // ============================================================================
@@ -134,6 +136,23 @@ export async function resetUserTwoFA(id: number): Promise<ApiResponse> {
  */
 export async function getGroups(): Promise<ApiResponse<string[]>> {
   const res = await api.get('/api/group/')
+  return res.data
+}
+
+export async function getUserManagementPermissions(
+  id: number
+): Promise<ApiResponse<UserManagementPermissions>> {
+  const res = await api.get(`/api/user/${id}/management-permissions`)
+  return res.data
+}
+
+export async function updateUserManagementPermissions(
+  id: number,
+  permissions: ManagementPermission[]
+): Promise<ApiResponse<UserManagementPermissions>> {
+  const res = await api.put(`/api/user/${id}/management-permissions`, {
+    permissions,
+  })
   return res.data
 }
 

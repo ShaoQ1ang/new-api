@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
 
@@ -174,6 +175,18 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/2fa/stats", controller.Admin2FAStats)
 				adminRoute.DELETE("/:id/2fa", controller.AdminDisable2FA)
 			}
+
+			managementPermissionRoute := userRoute.Group("/:id/management-permissions")
+			managementPermissionRoute.Use(middleware.RootAuth())
+			{
+				managementPermissionRoute.GET("", controller.GetUserManagementPermissions)
+				managementPermissionRoute.PUT(
+					"",
+					middleware.CriticalRateLimit(),
+					middleware.SecureVerificationRequired(),
+					controller.UpdateUserManagementPermissions,
+				)
+			}
 		}
 
 		// Subscription billing (plans, purchase, admin management)
@@ -238,7 +251,10 @@ func SetApiRouter(router *gin.Engine) {
 			customOAuthRoute.DELETE("/:id", controller.DeleteCustomOAuthProvider)
 		}
 		adminSkillHubRoute := apiRouter.Group("/admin/skill-hub")
-		adminSkillHubRoute.Use(middleware.AdminAuth())
+		adminSkillHubRoute.Use(
+			middleware.UserAuth(),
+			middleware.RequireManagementPermission(constant.PermissionSkillHubContentManage),
+		)
 		{
 			adminSkillHubRoute.POST("/direct-upload/init", controller.AdminInitSkillHubDirectUpload)
 			adminSkillHubRoute.POST("/direct-upload/complete", controller.AdminCompleteSkillHubDirectUpload)
@@ -247,9 +263,6 @@ func SetApiRouter(router *gin.Engine) {
 			adminSkillHubRoute.GET("/tags/skills", controller.AdminListSkillHubSkillsByTags)
 			adminSkillHubRoute.POST("/tags", controller.AdminCreateSkillHubTag)
 			adminSkillHubRoute.DELETE("/tags/:name", controller.AdminDeleteSkillHubTag)
-			adminSkillHubRoute.GET("/reports", controller.AdminListSkillHubReports)
-			adminSkillHubRoute.GET("/reports/:id", controller.AdminGetSkillHubReport)
-			adminSkillHubRoute.PUT("/reports/:id", controller.AdminUpdateSkillHubReport)
 			adminSkillHubRoute.GET("/skills", controller.AdminListSkillHubSkills)
 			adminSkillHubRoute.POST("/skills", controller.AdminCreateSkillHubSkill)
 			adminSkillHubRoute.POST("/skills/batch-delete", controller.AdminBatchDeleteSkillHubSkills)
@@ -260,19 +273,41 @@ func SetApiRouter(router *gin.Engine) {
 			adminSkillHubRoute.POST("/skills/:id/publish", controller.AdminPublishSkillHubSkill)
 			adminSkillHubRoute.POST("/skills/:id/unpublish", controller.AdminUnpublishSkillHubSkill)
 		}
-		adminClientReleaseRoute := apiRouter.Group("/admin/client-releases")
-		adminClientReleaseRoute.Use(middleware.AdminAuth())
+
+		adminSkillHubReportRoute := apiRouter.Group("/admin/skill-hub/reports")
+		adminSkillHubReportRoute.Use(
+			middleware.UserAuth(),
+			middleware.RequireManagementPermission(constant.PermissionSkillHubReportsManage),
+		)
 		{
-			adminClientReleaseRoute.POST("/direct-upload/init", controller.AdminInitClientReleaseDirectUpload)
-			adminClientReleaseRoute.POST("/direct-upload/complete", controller.AdminCompleteClientReleaseDirectUpload)
-			adminClientReleaseRoute.POST("/direct-upload/discard", controller.AdminDiscardClientReleaseDirectUpload)
-			adminClientReleaseRoute.GET("/", controller.AdminListClientReleases)
-			adminClientReleaseRoute.POST("/", controller.AdminCreateClientRelease)
-			adminClientReleaseRoute.GET("/:id", controller.AdminGetClientRelease)
-			adminClientReleaseRoute.PUT("/:id", controller.AdminUpdateClientRelease)
-			adminClientReleaseRoute.DELETE("/:id", controller.AdminDeleteClientRelease)
-			adminClientReleaseRoute.POST("/:id/publish", controller.AdminPublishClientRelease)
-			adminClientReleaseRoute.POST("/:id/unpublish", controller.AdminUnpublishClientRelease)
+			adminSkillHubReportRoute.GET("", controller.AdminListSkillHubReports)
+			adminSkillHubReportRoute.GET("/:id", controller.AdminGetSkillHubReport)
+			adminSkillHubReportRoute.PUT("/:id", controller.AdminUpdateSkillHubReport)
+		}
+
+		adminClientReleaseRoute := apiRouter.Group("/admin/client-releases")
+		adminClientReleaseRoute.Use(middleware.UserAuth())
+		{
+			canReadClientReleases := middleware.RequireAnyManagementPermission(
+				constant.PermissionClientReleasesManage,
+				constant.PermissionClientReleasesPublish,
+			)
+			canManageClientReleases := middleware.RequireManagementPermission(
+				constant.PermissionClientReleasesManage,
+			)
+			canPublishClientReleases := middleware.RequireManagementPermission(
+				constant.PermissionClientReleasesPublish,
+			)
+			adminClientReleaseRoute.POST("/direct-upload/init", canManageClientReleases, controller.AdminInitClientReleaseDirectUpload)
+			adminClientReleaseRoute.POST("/direct-upload/complete", canManageClientReleases, controller.AdminCompleteClientReleaseDirectUpload)
+			adminClientReleaseRoute.POST("/direct-upload/discard", canManageClientReleases, controller.AdminDiscardClientReleaseDirectUpload)
+			adminClientReleaseRoute.GET("/", canReadClientReleases, controller.AdminListClientReleases)
+			adminClientReleaseRoute.POST("/", canManageClientReleases, controller.AdminCreateClientRelease)
+			adminClientReleaseRoute.GET("/:id", canReadClientReleases, controller.AdminGetClientRelease)
+			adminClientReleaseRoute.PUT("/:id", canManageClientReleases, controller.AdminUpdateClientRelease)
+			adminClientReleaseRoute.DELETE("/:id", canManageClientReleases, controller.AdminDeleteClientRelease)
+			adminClientReleaseRoute.POST("/:id/publish", canPublishClientReleases, controller.AdminPublishClientRelease)
+			adminClientReleaseRoute.POST("/:id/unpublish", canPublishClientReleases, controller.AdminUnpublishClientRelease)
 		}
 		performanceRoute := apiRouter.Group("/performance")
 		performanceRoute.Use(middleware.RootAuth())
@@ -446,7 +481,10 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		chatModelsRoute := apiRouter.Group("/chat-models")
-		chatModelsRoute.Use(middleware.AdminAuth())
+		chatModelsRoute.Use(
+			middleware.UserAuth(),
+			middleware.RequireManagementPermission(constant.PermissionChatModelsManage),
+		)
 		{
 			chatModelsRoute.GET("/", controller.ListChatModels)
 			chatModelsRoute.GET("/candidates", controller.ListChatModelCandidates)
