@@ -179,9 +179,7 @@ function getUsageBillingPathLabel(
   }
 }
 
-function isUsageBillingPathLocal(
-  adminInfo: LogOtherData['admin_info']
-): boolean {
+function isUsageBillingPathLocal(adminInfo: LogOtherData['admin_info']): boolean {
   if (adminInfo?.usage_billing_path) {
     return adminInfo.usage_billing_path === USAGE_BILLING_PATH.LOCAL
   }
@@ -1063,15 +1061,6 @@ export function DetailsDialog(props: DetailsDialogProps) {
               billingExpr={decodeBillingExprB64(other.expr_b64)}
               matchedTierLabel={other.matched_tier}
               hideCacheColumns={!hasAnyCacheTokens(other)}
-              inputTokens={props.log.prompt_tokens}
-              outputTokens={props.log.completion_tokens}
-              groupRatio={
-                other.user_group_ratio != null &&
-                Number.isFinite(other.user_group_ratio) &&
-                other.user_group_ratio !== -1
-                  ? other.user_group_ratio
-                  : other.group_ratio
-              }
             />
           </DetailSection>
         )}

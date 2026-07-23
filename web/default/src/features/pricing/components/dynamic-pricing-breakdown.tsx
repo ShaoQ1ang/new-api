@@ -22,7 +22,6 @@ import { useTranslation } from 'react-i18next'
 
 import { StaticDataTable } from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
-import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
@@ -65,9 +64,6 @@ type DynamicPricingBreakdownProps = {
    * icon header and uses the dialog's small text sizes. Defaults to false.
    */
   compact?: boolean
-  inputTokens?: number
-  outputTokens?: number
-  groupRatio?: number
 }
 
 const VAR_LABELS: Record<string, string> = {
@@ -162,9 +158,6 @@ export function DynamicPricingBreakdown({
   matchedTierLabel,
   hideCacheColumns = false,
   compact = false,
-  inputTokens,
-  outputTokens,
-  groupRatio = 1,
 }: DynamicPricingBreakdownProps) {
   const { t } = useTranslation()
   const expr = billingExpr || ''
@@ -198,19 +191,6 @@ export function DynamicPricingBreakdown({
   const normalizedMatchedTierLabel = normalizeTierLabel(
     matchedTierLabel ?? undefined
   )
-  const matchedTier =
-    tiers.find(
-      (tier) => normalizeTierLabel(tier.label) === normalizedMatchedTierLabel
-    ) || tiers[0]
-  const hasUsage =
-    inputTokens != null && outputTokens != null && matchedTier != null
-  const inputPrice = hasUsage ? Number(matchedTier?.inputPrice || 0) : 0
-  const outputPrice = hasUsage ? Number(matchedTier?.outputPrice || 0) : 0
-  const effectiveGroupRatio = Number.isFinite(groupRatio) ? groupRatio : 1
-  const totalCost =
-    (((inputTokens || 0) * inputPrice + (outputTokens || 0) * outputPrice) /
-      1_000_000) *
-    effectiveGroupRatio
 
   if (!expr) return null
 
@@ -280,7 +260,7 @@ export function DynamicPricingBreakdown({
             {t('Tiered price table')}
           </div>
           <div className='space-y-1.5 sm:hidden'>
-            {tiers.map((tier) => {
+            {tiers.map((tier, i) => {
               const condSummary = formatConditionSummary(tier.conditions, t)
               const isMatched =
                 matchedTierLabel != null &&
@@ -288,7 +268,7 @@ export function DynamicPricingBreakdown({
                 tier.label === matchedTierLabel
               return (
                 <div
-                  key={`tier-mobile-${tier.label || condSummary || 'default'}`}
+                  key={`tier-mobile-${i}`}
                   className={cn(
                     'rounded-md border p-2',
                     isMatched && 'border-emerald-500/40 bg-emerald-500/10'
@@ -433,43 +413,6 @@ export function DynamicPricingBreakdown({
         </div>
       )}
 
-      {hasUsage && inputPrice > 0 && outputPrice > 0 && (
-        <div className='text-muted-foreground mb-2 rounded-md border border-dashed px-3 py-2 text-xs leading-relaxed'>
-          <div className='font-medium'>{t('Billing calculation')}</div>
-          <div className='font-mono break-all'>
-            {t(
-              '({{inputTokens}} {{inputLabel}} / 1M tokens * {{inputPrice}} + {{outputTokens}} {{outputLabel}} / 1M tokens * {{outputPrice}}) * {{groupLabel}} {{groupRatio}} = {{total}}',
-              {
-                inputTokens: inputTokens.toLocaleString(),
-                inputLabel: t('Input'),
-                inputPrice: formatBillingCurrencyFromUSD(inputPrice, {
-                  digitsLarge: 6,
-                  digitsSmall: 6,
-                  abbreviate: false,
-                }),
-                outputTokens: outputTokens.toLocaleString(),
-                outputLabel: t('Output'),
-                outputPrice: formatBillingCurrencyFromUSD(outputPrice, {
-                  digitsLarge: 6,
-                  digitsSmall: 6,
-                  abbreviate: false,
-                }),
-                groupLabel: t('Group Ratio'),
-                groupRatio: effectiveGroupRatio,
-                total: formatBillingCurrencyFromUSD(totalCost, {
-                  digitsLarge: 6,
-                  digitsSmall: 6,
-                  abbreviate: false,
-                }),
-              }
-            )}
-          </div>
-          <div className='mt-1'>
-            {t('For reference only; actual charge may vary')}
-          </div>
-        </div>
-      )}
-
       {hasRules && (
         <div>
           <div
@@ -482,9 +425,9 @@ export function DynamicPricingBreakdown({
             {t('Conditional multipliers')}
           </div>
           <ul className='space-y-1.5'>
-            {ruleGroups.map((group) => (
+            {ruleGroups.map((group, gi) => (
               <li
-                key={`group-${describeGroup(group, t)}-${group.multiplier}`}
+                key={`group-${gi}`}
                 className='bg-muted/50 flex items-center justify-between gap-3 rounded-md px-3 py-2'
               >
                 <span
