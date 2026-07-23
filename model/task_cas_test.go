@@ -60,10 +60,6 @@ func TestMain(m *testing.M) {
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
-	// Phone uniqueness is managed outside GORM AutoMigrate tags.
-	if err := ensureUsersPhoneSchema(); err != nil {
-		panic("failed to ensure users.phone schema: " + err.Error())
-	}
 
 	os.Exit(m.Run())
 }
