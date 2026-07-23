@@ -674,6 +674,7 @@ func dropAlternateUsersPhoneUniques() error {
 	alternateIndexes := []string{
 		"uni_users_phone",
 		"users_phone_key",
+		"idx_users_phone",
 	}
 
 	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
