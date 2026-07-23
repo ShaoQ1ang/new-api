@@ -4349,6 +4349,7 @@
     "Official OpenAI Embeddings": "Официальные OpenAI Embeddings",
     "Official Claude Messages": "Официальные Claude Messages",
     "Official Gemini Native": "Официальный Gemini Native",
-    "Official Gemini from OpenAI Chat": "Официальный Gemini из OpenAI Chat"
+    "Official Gemini from OpenAI Chat": "Официальный Gemini из OpenAI Chat",
+    "计费公式：({{inputTokens}} 输入 / 1M tokens * {{inputPrice}} + {{outputTokens}} 输出 / 1M tokens * {{outputPrice}}) * {{ratioLabel}} {{groupRatio}} = {{total}}": "Формула расчёта: ({{inputTokens}} Ввод / 1M tokens * {{inputPrice}} + {{outputTokens}} Вывод / 1M tokens * {{outputPrice}}) * {{ratioLabel}} {{groupRatio}} = {{total}}"
   }
 }

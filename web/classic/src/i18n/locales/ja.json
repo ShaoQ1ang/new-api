@@ -4298,6 +4298,7 @@
     "Official OpenAI Embeddings": "公式 OpenAI Embeddings",
     "Official Claude Messages": "公式 Claude Messages",
     "Official Gemini Native": "公式 Gemini ネイティブ",
-    "Official Gemini from OpenAI Chat": "OpenAI Chat から公式 Gemini"
+    "Official Gemini from OpenAI Chat": "OpenAI Chat から公式 Gemini",
+    "计费公式：({{inputTokens}} 输入 / 1M tokens * {{inputPrice}} + {{outputTokens}} 输出 / 1M tokens * {{outputPrice}}) * {{ratioLabel}} {{groupRatio}} = {{total}}": "課金式: ({{inputTokens}} 入力 / 1M tokens * {{inputPrice}} + {{outputTokens}} 出力 / 1M tokens * {{outputPrice}}) * {{ratioLabel}} {{groupRatio}} = {{total}}"
   }
 }

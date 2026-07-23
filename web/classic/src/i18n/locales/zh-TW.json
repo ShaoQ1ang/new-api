@@ -4412,6 +4412,7 @@
     "Official OpenAI Embeddings": "官方 OpenAI Embeddings",
     "Official Claude Messages": "官方 Claude Messages",
     "Official Gemini Native": "官方 Gemini 原生",
-    "Official Gemini from OpenAI Chat": "官方 Gemini（OpenAI Chat 入口）"
+    "Official Gemini from OpenAI Chat": "官方 Gemini（OpenAI Chat 入口）",
+    "计费公式：({{inputTokens}} 输入 / 1M tokens * {{inputPrice}} + {{outputTokens}} 输出 / 1M tokens * {{outputPrice}}) * {{ratioLabel}} {{groupRatio}} = {{total}}": "計費公式：({{inputTokens}} 輸入 / 1M tokens * {{inputPrice}} + {{outputTokens}} 輸出 / 1M tokens * {{outputPrice}}) * {{ratioLabel}} {{groupRatio}} = {{total}}"
   }
 }

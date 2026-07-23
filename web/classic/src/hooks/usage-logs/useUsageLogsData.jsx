@@ -489,7 +489,11 @@ export const useLogsData = () => {
       }
       if (logs[i].type === 2) {
         const isTaskUsageLog = isTaskLog(other);
-        const tieredBillingContent = renderTieredModelPrice(other);
+        const tieredBillingContent = renderTieredModelPrice(
+          other,
+          logs[i].prompt_tokens,
+          logs[i].completion_tokens,
+        );
         expandDataLocal.push({
           key: t('日志详情'),
           value: tieredBillingContent || (isTaskUsageLog
@@ -570,7 +574,11 @@ export const useLogsData = () => {
         let content = '';
         if (!isViolationFeeLog) {
           const isTaskLog = other?.is_task === true || other?.task_id != null;
-          const tieredBillingContent = renderTieredModelPrice(other);
+          const tieredBillingContent = renderTieredModelPrice(
+            other,
+            logs[i].prompt_tokens,
+            logs[i].completion_tokens,
+          );
           if (tieredBillingContent) {
             content = tieredBillingContent;
           } else if (

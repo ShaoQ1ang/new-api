@@ -1701,7 +1701,7 @@ function decodeBillingExpr(exprB64) {
   }
 }
 
-export function renderTieredModelPrice(other) {
+export function renderTieredModelPrice(other, inputTokens = 0, outputTokens = 0) {
   if (other?.billing_mode !== 'tiered_expr') return null;
 
   const expression = decodeBillingExpr(other.expr_b64);
@@ -1752,6 +1752,36 @@ export function renderTieredModelPrice(other) {
     ),
     i18next.t('分组倍率') + ': ' + groupRatio + 'x',
   ];
+
+  const inputPrice = Number(tier.inputPrice || 0);
+  const outputPrice = Number(tier.outputPrice || 0);
+  const inputTokenCount = Number(inputTokens || 0);
+  const outputTokenCount = Number(outputTokens || 0);
+  if (
+    inputPrice > 0 &&
+    outputPrice > 0 &&
+    inputTokenCount >= 0 &&
+    outputTokenCount >= 0
+  ) {
+    const total =
+      ((inputTokenCount * inputPrice + outputTokenCount * outputPrice) /
+        1000000) *
+      groupRatio;
+    lines.push(
+      buildBillingText(
+        '计费公式：({{inputTokens}} 输入 / 1M tokens * {{inputPrice}} + {{outputTokens}} 输出 / 1M tokens * {{outputPrice}}) * {{ratioLabel}} {{groupRatio}} = {{total}}',
+        {
+          inputTokens: inputTokenCount.toLocaleString(),
+          inputPrice: `${symbol}${formatBillingDisplayPrice(inputPrice, rate)}`,
+          outputTokens: outputTokenCount.toLocaleString(),
+          outputPrice: `${symbol}${formatBillingDisplayPrice(outputPrice, rate)}`,
+          ratioLabel: i18next.t('分组倍率'),
+          groupRatio,
+          total: `${symbol}${formatBillingDisplayPrice(total, rate)}`,
+        },
+      ),
+    );
+  }
 
   return renderBillingArticle(lines);
 }

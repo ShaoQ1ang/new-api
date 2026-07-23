@@ -4847,6 +4847,7 @@
     "Official OpenAI Embeddings": "OpenAI Embeddings chính thức",
     "Official Claude Messages": "Claude Messages chính thức",
     "Official Gemini Native": "Gemini native chính thức",
-    "Official Gemini from OpenAI Chat": "Gemini chính thức từ OpenAI Chat"
+    "Official Gemini from OpenAI Chat": "Gemini chính thức từ OpenAI Chat",
+    "计费公式：({{inputTokens}} 输入 / 1M tokens * {{inputPrice}} + {{outputTokens}} 输出 / 1M tokens * {{outputPrice}}) * {{ratioLabel}} {{groupRatio}} = {{total}}": "Công thức tính phí: ({{inputTokens}} Đầu vào / 1M tokens * {{inputPrice}} + {{outputTokens}} Đầu ra / 1M tokens * {{outputPrice}}) * {{ratioLabel}} {{groupRatio}} = {{total}}"
   }
 }

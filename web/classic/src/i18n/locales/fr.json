@@ -4329,6 +4329,7 @@
     "Official OpenAI Embeddings": "Embeddings OpenAI officiels",
     "Official Claude Messages": "Messages Claude officiels",
     "Official Gemini Native": "Gemini natif officiel",
-    "Official Gemini from OpenAI Chat": "Gemini officiel depuis OpenAI Chat"
+    "Official Gemini from OpenAI Chat": "Gemini officiel depuis OpenAI Chat",
+    "计费公式：({{inputTokens}} 输入 / 1M tokens * {{inputPrice}} + {{outputTokens}} 输出 / 1M tokens * {{outputPrice}}) * {{ratioLabel}} {{groupRatio}} = {{total}}": "Formule de facturation : ({{inputTokens}} Entrée / 1M tokens * {{inputPrice}} + {{outputTokens}} Sortie / 1M tokens * {{outputPrice}}) * {{ratioLabel}} {{groupRatio}} = {{total}}"
   }
 }
