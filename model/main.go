@@ -636,7 +636,7 @@ func ensureUsersPhoneSchema() error {
 	}
 
 	if !DB.Migrator().HasColumn(&User{}, "Phone") {
-		if err := addUsersPhoneColumn(); err != nil {
+		if err := DB.Migrator().AddColumn(&User{}, "Phone"); err != nil {
 			return fmt.Errorf("add users.phone column: %w", err)
 		}
 		common.SysLog("added users.phone column")
@@ -649,19 +649,6 @@ func ensureUsersPhoneSchema() error {
 		return err
 	}
 	return nil
-}
-
-func addUsersPhoneColumn() error {
-	switch {
-	case common.UsingMainDatabase(common.DatabaseTypePostgreSQL):
-		return DB.Exec(`ALTER TABLE "users" ADD COLUMN "phone" varchar(32)`).Error
-	case common.UsingMainDatabase(common.DatabaseTypeMySQL):
-		return DB.Exec("ALTER TABLE `users` ADD COLUMN `phone` varchar(32)").Error
-	case common.UsingMainDatabase(common.DatabaseTypeSQLite):
-		return DB.Exec("ALTER TABLE `users` ADD COLUMN `phone` varchar(32)").Error
-	default:
-		return fmt.Errorf("unsupported database for users.phone column")
-	}
 }
 
 func dropAlternateUsersPhoneUniques() error {
