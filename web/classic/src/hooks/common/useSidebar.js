@@ -143,6 +143,19 @@ export const useSidebar = () => {
       }
 
       const res = await API.get('/api/user/self');
+      if (res.data.success && res.data.data) {
+        const currentUser = (() => {
+          try {
+            return JSON.parse(localStorage.getItem('user')) || {};
+          } catch {
+            return {};
+          }
+        })();
+        localStorage.setItem(
+          'user',
+          JSON.stringify({ ...currentUser, ...res.data.data }),
+        );
+      }
       if (res.data.success && res.data.data.sidebar_modules) {
         let config;
         // 检查sidebar_modules是字符串还是对象

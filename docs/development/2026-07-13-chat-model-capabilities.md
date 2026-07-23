@@ -14,7 +14,7 @@
 - `reasoning`：兼容旧客户端的粗粒度推理标志。配置了 `thinkingLevels` 时由后端根据列表是否包含非 `off` 档位派生；未配置列表时仍可单独维护。
 - `supportsFastMode`：当前模型和 provider 是否支持 OpenClaw 快速模式。默认 `false`；客户端只有在该字段为 `true` 时才展示“标准 / 快速”选择。
 
-管理员可通过 `POST /api/chat-models/` 和 `PATCH /api/chat-models/{id}` 写入这些字段。`thinkingLevels` 最多 32 项，服务端只做格式、去重和默认值归属校验，不按模型名猜测能力，也不内置 OpenAI、MiniMax 或其他 provider 的档位表。传空数组可清除模型的思考档位和默认值；此时 `reasoning` 仍按请求中的兼容开关维护。快速模式同样不按模型名称或 provider 猜测，必须由管理员为确认支持的模型显式开启 `supportsFastMode`。
+管理员、超级管理员或获得 `chat_models.manage` 权限的普通用户可通过 `POST /api/chat-models/` 和 `PATCH /api/chat-models/{id}` 写入这些字段。该权限只开放对话模型配置，不开放模型广场元数据或模型部署。`thinkingLevels` 最多 32 项，服务端只做格式、去重和默认值归属校验，不按模型名猜测能力，也不内置 OpenAI、MiniMax 或其他 provider 的档位表。传空数组可清除模型的思考档位和默认值；此时 `reasoning` 仍按请求中的兼容开关维护。快速模式同样不按模型名称或 provider 猜测，必须由获授权人员为确认支持的模型显式开启 `supportsFastMode`。
 
 思考档位 ID 会由 OpenClaw 作为 `reasoning_effort` 发送，后续是否直传或转换由对应 relay channel adapter 决定。只有上游模型和 adapter 都实际支持的值才应写入列表；例如 GPT 模型可以配置其上游支持的 `xhigh` / `max`，MiniMax 等模型必须按对应渠道的真实请求契约单独配置，不能因为模型名称相近而复用。
 

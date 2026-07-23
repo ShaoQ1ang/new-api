@@ -36,6 +36,11 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { useAuthStore } from '@/stores/auth-store'
+import {
+  MANAGEMENT_PERMISSION,
+  hasManagementPermission,
+} from '@/lib/management-permissions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -74,6 +79,15 @@ const channelOptions: ClientReleaseChannel[] = ['stable', 'beta']
 
 export function ClientReleases() {
   const { t } = useTranslation()
+  const user = useAuthStore((state) => state.auth.user)
+  const canManage = hasManagementPermission(
+    user,
+    MANAGEMENT_PERMISSION.CLIENT_RELEASES
+  )
+  const canPublish = hasManagementPermission(
+    user,
+    MANAGEMENT_PERMISSION.CLIENT_RELEASES_PUBLISH
+  )
   const [releases, setReleases] = useState<ClientRelease[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [form, setForm] = useState<ClientReleaseForm>(() =>
@@ -95,6 +109,9 @@ export function ClientReleases() {
     () => releases.find((release) => release.id === selectedId),
     [selectedId, releases]
   )
+  const selectedPublished =
+    selected?.published === true || selected?.status === 1
+  const canEditSelected = canManage && (!selectedPublished || canPublish)
 
   async function loadReleases() {
     setLoading(true)
@@ -370,10 +387,23 @@ export function ClientReleases() {
           <RefreshCw className='h-4 w-4' />
           {loading ? t('Refreshing') : t('Refresh')}
         </Button>
-        <Button onClick={createDraft}>
-          <Plus className='h-4 w-4' />
-          {t('New version')}
-        </Button>
+        {!canManage && canPublish && selected ? (
+          <Button
+            disabled={saving}
+            onClick={() => void togglePublish(selected)}
+          >
+            <Check className='h-4 w-4' />
+            {selected.published || selected.status === 1
+              ? t('Unpublish')
+              : t('Publish')}
+          </Button>
+        ) : null}
+        {canManage ? (
+          <Button onClick={createDraft}>
+            <Plus className='h-4 w-4' />
+            {t('New version')}
+          </Button>
+        ) : null}
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
         <div className='grid items-start gap-4 lg:grid-cols-[minmax(300px,420px)_minmax(0,1fr)]'>
@@ -505,215 +535,231 @@ export function ClientReleases() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className='grid gap-4'>
-                <FormSection
-                  title={t('Target')}
-                  description={t('Choose the client version and update lane.')}
-                >
-                  <div className='grid gap-3 md:grid-cols-[minmax(220px,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]'>
-                    <Field label={t('Version')}>
-                      <VersionInput
-                        value={form.version}
-                        onChange={(value) => update('version', value)}
-                      />
-                    </Field>
-                    <Field label={t('Platform')}>
-                      <NativeSelect
-                        className='w-full'
-                        value={form.platform}
-                        onChange={(event) =>
-                          update(
-                            'platform',
-                            event.target.value as ClientReleasePlatform
-                          )
-                        }
-                      >
-                        {platformOptions.map((platform) => (
-                          <NativeSelectOption key={platform} value={platform}>
-                            {platform}
-                          </NativeSelectOption>
-                        ))}
-                      </NativeSelect>
-                    </Field>
-                    <Field label={t('Arch')}>
-                      <NativeSelect
-                        className='w-full'
-                        value={form.arch}
-                        onChange={(event) =>
-                          update(
-                            'arch',
-                            event.target.value as ClientReleaseArch
-                          )
-                        }
-                      >
-                        {archOptions.map((arch) => (
-                          <NativeSelectOption key={arch} value={arch}>
-                            {arch}
-                          </NativeSelectOption>
-                        ))}
-                      </NativeSelect>
-                    </Field>
-                    <Field label={t('Channel')}>
-                      <NativeSelect
-                        className='w-full'
-                        value={form.channel}
-                        onChange={(event) =>
-                          update(
-                            'channel',
-                            event.target.value as ClientReleaseChannel
-                          )
-                        }
-                      >
-                        {channelOptions.map((channel) => (
-                          <NativeSelectOption key={channel} value={channel}>
-                            {channel}
-                          </NativeSelectOption>
-                        ))}
-                      </NativeSelect>
-                    </Field>
-                  </div>
-                </FormSection>
-
-                <FormSection
-                  title={t('Installer package')}
-                  description={t(
-                    'Upload exe, msi, dmg, pkg, zip, AppImage, deb, rpm, yml, or yaml files.'
-                  )}
-                >
-                  <div className='flex flex-wrap items-center gap-2'>
-                    <input
-                      ref={fileInputRef}
-                      type='file'
-                      accept='.exe,.msi,.dmg,.pkg,.zip,.AppImage,.deb,.rpm,.yml,.yaml'
-                      className='hidden'
-                      onChange={(event) =>
-                        void uploadPackage(event.target.files?.[0])
-                      }
-                    />
-                    <Button
-                      type='button'
-                      variant='outline'
-                      disabled={uploading}
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <UploadCloud className='h-4 w-4' />
-                      {uploading ? t('Uploading') : t('Upload to OSS')}
-                    </Button>
-                    {form.fileName && (
-                      <Badge variant='secondary'>
-                        {formatBytes(form.size)}
-                      </Badge>
+              <fieldset disabled={!canEditSelected} className='contents'>
+                <div className='grid gap-4'>
+                  <FormSection
+                    title={t('Target')}
+                    description={t(
+                      'Choose the client version and update lane.'
                     )}
-                  </div>
-                  <Field label={t('File name')}>
-                    <ReadonlyValue value={form.fileName} />
-                  </Field>
-                  <Field label={t('OSS object')}>
-                    <ReadonlyValue value={form.objectKey} />
-                  </Field>
-                  <div className='grid gap-3 md:grid-cols-2'>
-                    <Field label='SHA256'>
-                      <ReadonlyValue value={form.sha256} />
-                    </Field>
-                    <Field label='SHA512'>
-                      <ReadonlyValue value={form.sha512} />
-                    </Field>
-                  </div>
-                  {selected?.downloadUrl && (
-                    <div className='flex flex-wrap gap-2'>
-                      <Button
-                        variant='outline'
-                        render={
-                          <a
-                            href={selected.downloadUrl}
-                            target='_blank'
-                            rel='noreferrer'
-                          />
-                        }
-                      >
-                        <Download className='h-4 w-4' />
-                        {t('Download')}
-                      </Button>
-                      <Button
-                        variant='outline'
-                        render={
-                          <a
-                            href={`/api/client-releases/updates/${form.platform}/${form.arch}/${form.channel || 'stable'}/latest.yml`}
-                            target='_blank'
-                            rel='noreferrer'
-                          />
-                        }
-                      >
-                        <Package className='h-4 w-4' />
-                        latest.yml
-                      </Button>
+                  >
+                    <div className='grid gap-3 md:grid-cols-[minmax(220px,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]'>
+                      <Field label={t('Version')}>
+                        <VersionInput
+                          value={form.version}
+                          onChange={(value) => update('version', value)}
+                        />
+                      </Field>
+                      <Field label={t('Platform')}>
+                        <NativeSelect
+                          className='w-full'
+                          value={form.platform}
+                          onChange={(event) =>
+                            update(
+                              'platform',
+                              event.target.value as ClientReleasePlatform
+                            )
+                          }
+                        >
+                          {platformOptions.map((platform) => (
+                            <NativeSelectOption key={platform} value={platform}>
+                              {platform}
+                            </NativeSelectOption>
+                          ))}
+                        </NativeSelect>
+                      </Field>
+                      <Field label={t('Arch')}>
+                        <NativeSelect
+                          className='w-full'
+                          value={form.arch}
+                          onChange={(event) =>
+                            update(
+                              'arch',
+                              event.target.value as ClientReleaseArch
+                            )
+                          }
+                        >
+                          {archOptions.map((arch) => (
+                            <NativeSelectOption key={arch} value={arch}>
+                              {arch}
+                            </NativeSelectOption>
+                          ))}
+                        </NativeSelect>
+                      </Field>
+                      <Field label={t('Channel')}>
+                        <NativeSelect
+                          className='w-full'
+                          value={form.channel}
+                          onChange={(event) =>
+                            update(
+                              'channel',
+                              event.target.value as ClientReleaseChannel
+                            )
+                          }
+                        >
+                          {channelOptions.map((channel) => (
+                            <NativeSelectOption key={channel} value={channel}>
+                              {channel}
+                            </NativeSelectOption>
+                          ))}
+                        </NativeSelect>
+                      </Field>
                     </div>
-                  )}
-                </FormSection>
+                  </FormSection>
 
-                <FormSection
-                  title={t('Release policy')}
-                  description={t('Control visibility and forced update rules.')}
-                >
-                  <Field label={t('Minimum supported version')}>
-                    <VersionInput
-                      value={form.minVersion}
-                      onChange={(value) => update('minVersion', value)}
-                    />
-                  </Field>
-                  <Field label={t('Release notes')}>
-                    <Textarea
-                      value={form.releaseNotes}
-                      onChange={(event) =>
-                        update('releaseNotes', event.target.value)
-                      }
-                    />
-                  </Field>
-                  <div className='flex flex-wrap gap-4'>
-                    <SwitchField
-                      label={t('Published')}
-                      checked={form.published}
-                      onChange={(checked) => update('published', checked)}
-                    />
-                    <SwitchField
-                      label={t('Force update below minimum version')}
-                      checked={form.forced}
-                      onChange={(checked) => update('forced', checked)}
-                    />
-                  </div>
-                </FormSection>
-
-                <div className='flex flex-wrap justify-between gap-2'>
-                  <div className='flex gap-2'>
-                    {selected && (
-                      <>
+                  <FormSection
+                    title={t('Installer package')}
+                    description={t(
+                      'Upload exe, msi, dmg, pkg, zip, AppImage, deb, rpm, yml, or yaml files.'
+                    )}
+                  >
+                    <div className='flex flex-wrap items-center gap-2'>
+                      <input
+                        ref={fileInputRef}
+                        type='file'
+                        accept='.exe,.msi,.dmg,.pkg,.zip,.AppImage,.deb,.rpm,.yml,.yaml'
+                        className='hidden'
+                        onChange={(event) =>
+                          void uploadPackage(event.target.files?.[0])
+                        }
+                      />
+                      <Button
+                        type='button'
+                        variant='outline'
+                        disabled={uploading}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <UploadCloud className='h-4 w-4' />
+                        {uploading ? t('Uploading') : t('Upload to OSS')}
+                      </Button>
+                      {form.fileName && (
+                        <Badge variant='secondary'>
+                          {formatBytes(form.size)}
+                        </Badge>
+                      )}
+                    </div>
+                    <Field label={t('File name')}>
+                      <ReadonlyValue value={form.fileName} />
+                    </Field>
+                    <Field label={t('OSS object')}>
+                      <ReadonlyValue value={form.objectKey} />
+                    </Field>
+                    <div className='grid gap-3 md:grid-cols-2'>
+                      <Field label='SHA256'>
+                        <ReadonlyValue value={form.sha256} />
+                      </Field>
+                      <Field label='SHA512'>
+                        <ReadonlyValue value={form.sha512} />
+                      </Field>
+                    </div>
+                    {selected?.downloadUrl && (
+                      <div className='flex flex-wrap gap-2'>
                         <Button
                           variant='outline'
-                          disabled={saving}
-                          onClick={() => void togglePublish(selected)}
+                          render={
+                            <a
+                              href={selected.downloadUrl}
+                              target='_blank'
+                              rel='noreferrer'
+                            />
+                          }
                         >
-                          <Check className='h-4 w-4' />
-                          {selected.published || selected.status === 1
-                            ? t('Unpublish')
-                            : t('Publish')}
+                          <Download className='h-4 w-4' />
+                          {t('Download')}
                         </Button>
                         <Button
-                          variant='destructive'
-                          disabled={saving}
-                          onClick={() => void removeRelease(selected)}
+                          variant='outline'
+                          render={
+                            <a
+                              href={`/api/client-releases/updates/${form.platform}/${form.arch}/${form.channel || 'stable'}/latest.yml`}
+                              target='_blank'
+                              rel='noreferrer'
+                            />
+                          }
                         >
-                          <Trash2 className='h-4 w-4' />
-                          {t('Delete')}
+                          <Package className='h-4 w-4' />
+                          latest.yml
                         </Button>
-                      </>
+                      </div>
                     )}
+                  </FormSection>
+
+                  <FormSection
+                    title={t('Release policy')}
+                    description={t(
+                      'Control visibility and forced update rules.'
+                    )}
+                  >
+                    <Field label={t('Minimum supported version')}>
+                      <VersionInput
+                        value={form.minVersion}
+                        onChange={(value) => update('minVersion', value)}
+                      />
+                    </Field>
+                    <Field label={t('Release notes')}>
+                      <Textarea
+                        value={form.releaseNotes}
+                        onChange={(event) =>
+                          update('releaseNotes', event.target.value)
+                        }
+                      />
+                    </Field>
+                    <div className='flex flex-wrap gap-4'>
+                      <SwitchField
+                        label={t('Published')}
+                        checked={form.published}
+                        onChange={(checked) => update('published', checked)}
+                        disabled
+                      />
+                      <SwitchField
+                        label={t('Force update below minimum version')}
+                        checked={form.forced}
+                        onChange={(checked) => update('forced', checked)}
+                      />
+                    </div>
+                  </FormSection>
+
+                  <div className='flex flex-wrap justify-between gap-2'>
+                    <div className='flex gap-2'>
+                      {selected && (canManage || canPublish) && (
+                        <>
+                          {canPublish ? (
+                            <Button
+                              variant='outline'
+                              disabled={saving}
+                              onClick={() => void togglePublish(selected)}
+                            >
+                              <Check className='h-4 w-4' />
+                              {selected.published || selected.status === 1
+                                ? t('Unpublish')
+                                : t('Publish')}
+                            </Button>
+                          ) : null}
+                          {canEditSelected ? (
+                            <Button
+                              variant='destructive'
+                              disabled={saving}
+                              onClick={() => void removeRelease(selected)}
+                            >
+                              <Trash2 className='h-4 w-4' />
+                              {t('Delete')}
+                            </Button>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                    {canEditSelected ? (
+                      <Button
+                        disabled={saving || uploading}
+                        onClick={saveRelease}
+                      >
+                        <Save className='h-4 w-4' />
+                        {saving ? t('Saving') : t('Save version')}
+                      </Button>
+                    ) : null}
                   </div>
-                  <Button disabled={saving || uploading} onClick={saveRelease}>
-                    <Save className='h-4 w-4' />
-                    {saving ? t('Saving') : t('Save version')}
-                  </Button>
                 </div>
-              </div>
+              </fieldset>
             </CardContent>
           </Card>
         </div>
@@ -882,10 +928,15 @@ function SwitchField(props: {
   label: string
   checked: boolean
   onChange: (checked: boolean) => void
+  disabled?: boolean
 }) {
   return (
     <label className='flex items-center gap-2 text-sm font-medium'>
-      <Switch checked={props.checked} onCheckedChange={props.onChange} />
+      <Switch
+        checked={props.checked}
+        disabled={props.disabled}
+        onCheckedChange={props.onChange}
+      />
       <span>{props.label}</span>
     </label>
   )

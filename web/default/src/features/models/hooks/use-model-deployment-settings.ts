@@ -52,9 +52,11 @@ export function clearConnectionCache() {
 
 type LoadingPhase = 'idle' | 'settings' | 'connection' | 'done'
 
-export function useModelDeploymentSettings() {
-  const [loading, setLoading] = useState(true)
-  const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>('settings')
+export function useModelDeploymentSettings(enabled = true) {
+  const [loading, setLoading] = useState(enabled)
+  const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>(
+    enabled ? 'settings' : 'idle'
+  )
   const [settings, setSettings] = useState<Record<string, unknown>>({
     'model_deployment.ionet.enabled': false,
   })
@@ -129,11 +131,11 @@ export function useModelDeploymentSettings() {
 
   // Initial load
   useEffect(() => {
-    if (initialLoadRef.current) {
+    if (enabled && initialLoadRef.current) {
       initialLoadRef.current = false
       fetchAll(true)
     }
-  }, [fetchAll])
+  }, [enabled, fetchAll])
 
   const isIoNetEnabled = Boolean(settings['model_deployment.ionet.enabled'])
 
@@ -171,13 +173,14 @@ export function useModelDeploymentSettings() {
 
   // Refresh on window focus (useful after saving settings in another page)
   useEffect(() => {
+    if (!enabled) return
     const handler = () => {
       // Use cache on focus to avoid unnecessary requests
       fetchAll(true)
     }
     window.addEventListener('focus', handler)
     return () => window.removeEventListener('focus', handler)
-  }, [fetchAll])
+  }, [enabled, fetchAll])
 
   return {
     loading,

@@ -25,12 +25,16 @@ import {
   showSuccess,
   renderQuota,
   getCurrencyConfig,
+  isRoot,
+  MANAGEMENT_PERMISSION,
 } from '../../../../helpers';
 import {
   quotaToDisplayAmount,
   displayAmountToQuota,
 } from '../../../../helpers/quota';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
+import { useSecureVerification } from '../../../../hooks/common/useSecureVerification';
+import SecureVerificationModal from '../../../common/modals/SecureVerificationModal';
 import {
   Button,
   Modal,
@@ -47,6 +51,8 @@ import {
   InputNumber,
   RadioGroup,
   Radio,
+  Checkbox,
+  CheckboxGroup,
 } from '@douyinfe/semi-ui';
 import {
   IconUser,
@@ -76,6 +82,24 @@ const EditUserModal = (props) => {
   const [showAdjustQuotaRaw, setShowAdjustQuotaRaw] = useState(false);
   const [showQuotaInput, setShowQuotaInput] = useState(false);
   const [inputs, setInputs] = useState(null);
+  const [managementPermissions, setManagementPermissions] = useState([]);
+  const [managementPermissionRole, setManagementPermissionRole] =
+    useState(null);
+  const [managementPermissionsLoading, setManagementPermissionsLoading] =
+    useState(false);
+  const [managementPermissionsSaving, setManagementPermissionsSaving] =
+    useState(false);
+
+  const {
+    isModalVisible,
+    verificationMethods,
+    verificationState,
+    withVerification,
+    executeVerification,
+    cancelVerification,
+    setVerificationCode,
+    switchVerificationMethod,
+  } = useSecureVerification();
 
   const isEdit = Boolean(userId);
 
@@ -118,6 +142,24 @@ const EditUserModal = (props) => {
         quotaToDisplayAmount(data.quota || 0).toFixed(6),
       );
       setInputs({ ...getInitValues(), ...data });
+      if (userId && isRoot()) {
+        setManagementPermissionsLoading(true);
+        try {
+          const permissionRes = await API.get(
+            `/api/user/${userId}/management-permissions`,
+          );
+          if (permissionRes.data.success && permissionRes.data.data) {
+            setManagementPermissions(permissionRes.data.data.permissions || []);
+            setManagementPermissionRole(permissionRes.data.data.role);
+          } else {
+            showError(permissionRes.data.message);
+          }
+        } catch (error) {
+          showError(error.message);
+        } finally {
+          setManagementPermissionsLoading(false);
+        }
+      }
     } else {
       showError(message);
     }
@@ -223,6 +265,35 @@ const EditUserModal = (props) => {
         return `${t('当前额度')}：${renderQuota(current)} → ${renderQuota(val)}`;
       default:
         return '';
+    }
+  };
+
+  const persistManagementPermissions = async () => {
+    setManagementPermissionsSaving(true);
+    try {
+      const res = await API.put(`/api/user/${userId}/management-permissions`, {
+        permissions: managementPermissions,
+      });
+      if (!res.data.success || !res.data.data) {
+        throw new Error(res.data.message || t('保存管理权限失败'));
+      }
+      setManagementPermissions(res.data.data.permissions || []);
+      setManagementPermissionRole(res.data.data.role);
+      showSuccess(t('管理权限已保存'));
+      return res.data;
+    } finally {
+      setManagementPermissionsSaving(false);
+    }
+  };
+
+  const saveManagementPermissions = async () => {
+    try {
+      await withVerification(persistManagementPermissions, {
+        title: t('安全验证'),
+        description: t('修改管理权限前，请先验证您的身份。'),
+      });
+    } catch (error) {
+      showError(error.message || t('保存管理权限失败'));
     }
   };
 
@@ -422,6 +493,65 @@ const EditUserModal = (props) => {
                   </Card>
                 )}
 
+                {userId && isRoot() && (
+                  <Card className='!rounded-2xl shadow-sm border-0'>
+                    <div className='mb-3'>
+                      <Text className='text-lg font-medium'>
+                        {t('管理权限')}
+                      </Text>
+                      <div className='text-xs text-gray-600'>
+                        {t(
+                          '无需提升为管理员，即可为普通用户授予指定的管理能力。',
+                        )}
+                      </div>
+                    </div>
+                    <Spin spinning={managementPermissionsLoading}>
+                      {managementPermissionRole !== null &&
+                      managementPermissionRole !== 1 ? (
+                        <Text type='tertiary'>
+                          {t(
+                            '管理员自动拥有全部管理权限；显式权限只能授予普通用户。',
+                          )}
+                        </Text>
+                      ) : (
+                        <div className='flex flex-col gap-3'>
+                          <CheckboxGroup
+                            value={managementPermissions}
+                            onChange={setManagementPermissions}
+                          >
+                            <div className='grid grid-cols-1 gap-3'>
+                              {MANAGEMENT_PERMISSION_OPTIONS.map((option) => (
+                                <Checkbox
+                                  key={option.value}
+                                  value={option.value}
+                                >
+                                  <div>
+                                    <div>{t(option.label)}</div>
+                                    <Text type='tertiary' size='small'>
+                                      {t(option.description)}
+                                    </Text>
+                                  </div>
+                                </Checkbox>
+                              ))}
+                            </div>
+                          </CheckboxGroup>
+                          <div>
+                            <Button
+                              type='primary'
+                              theme='outline'
+                              loading={managementPermissionsSaving}
+                              disabled={managementPermissionsLoading}
+                              onClick={saveManagementPermissions}
+                            >
+                              {t('保存管理权限')}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </Spin>
+                  </Card>
+                )}
+
                 {/* 绑定信息入口 */}
                 {userId && (
                   <Card className='!rounded-2xl shadow-sm border-0'>
@@ -465,6 +595,18 @@ const EditUserModal = (props) => {
         userId={userId}
         isMobile={isMobile}
         formApiRef={formApiRef}
+      />
+
+      <SecureVerificationModal
+        visible={isModalVisible}
+        verificationMethods={verificationMethods}
+        verificationState={verificationState}
+        onVerify={executeVerification}
+        onCancel={cancelVerification}
+        onCodeChange={setVerificationCode}
+        onMethodSwitch={switchVerificationMethod}
+        title={verificationState.title}
+        description={verificationState.description}
       />
 
       {/* 调整额度模态框 */}
@@ -577,5 +719,33 @@ const EditUserModal = (props) => {
     </>
   );
 };
+
+const MANAGEMENT_PERMISSION_OPTIONS = [
+  {
+    value: MANAGEMENT_PERMISSION.SKILL_HUB_CONTENT,
+    label: '技能广场内容管理',
+    description: '创建、编辑、发布和删除技能与标签。',
+  },
+  {
+    value: MANAGEMENT_PERMISSION.SKILL_HUB_REPORTS,
+    label: '技能广场举报管理',
+    description: '查看并处理技能广场举报。',
+  },
+  {
+    value: MANAGEMENT_PERMISSION.CHAT_MODELS,
+    label: '对话模型管理',
+    description: '管理聊天模型选择器中展示的模型。',
+  },
+  {
+    value: MANAGEMENT_PERMISSION.CLIENT_RELEASES,
+    label: '客户端版本管理',
+    description: '创建、编辑、上传和删除客户端版本。',
+  },
+  {
+    value: MANAGEMENT_PERMISSION.CLIENT_RELEASES_PUBLISH,
+    label: '客户端版本发布',
+    description: '发布或取消发布已有客户端版本。',
+  },
+];
 
 export default EditUserModal;

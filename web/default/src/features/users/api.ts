@@ -28,6 +28,7 @@ import type {
   ManageUserAction,
   ManageUserQuotaPayload,
   ApiResponse,
+  UserManagementPermissions,
 } from './types'
 
 // ============================================================================

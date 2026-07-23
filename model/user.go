@@ -797,7 +797,15 @@ func (user *User) Delete() error {
 	if user.Id == 0 {
 		return errors.New("id 为空！")
 	}
-	if err := DB.Delete(user).Error; err != nil {
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		if _, err := lockUserForUpdateTx(tx, user.Id, false); err != nil {
+			return err
+		}
+		if err := deleteUserManagementPermissionsTx(tx, user.Id); err != nil {
+			return err
+		}
+		return tx.Delete(user).Error
+	}); err != nil {
 		return err
 	}
 

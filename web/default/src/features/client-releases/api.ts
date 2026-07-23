@@ -192,6 +192,5 @@ function formToPayload(form: ClientReleaseForm) {
     releaseNotes: form.releaseNotes.trim(),
     minVersion: form.minVersion.trim(),
     forced: form.forced,
-    published: form.published,
   }
 }

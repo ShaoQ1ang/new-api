@@ -26,7 +26,8 @@ export const Route = createFileRoute('/_authenticated/models/')({
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
 
-    if (!auth.user || auth.user.role < ROLE.ADMIN) {
+    const sections = getAccessibleModelsSections(auth.user)
+    if (sections.length === 0) {
       throw redirect({
         to: '/403',
       })
@@ -34,7 +35,7 @@ export const Route = createFileRoute('/_authenticated/models/')({
 
     throw redirect({
       to: '/models/$section',
-      params: { section: MODELS_DEFAULT_SECTION },
+      params: { section: sections[0] },
     })
   },
 })

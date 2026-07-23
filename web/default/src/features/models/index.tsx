@@ -39,7 +39,7 @@ import { deploymentsQueryKeys } from './lib'
 import {
   type ModelsSectionId,
   MODELS_DEFAULT_SECTION,
-  MODELS_SECTION_IDS,
+  getAccessibleModelsSections,
 } from './section-registry'
 
 const route = getRouteApi('/_authenticated/models/$section')
@@ -60,6 +60,7 @@ function ModelsContent() {
   const params = route.useParams()
   const activeSection = (params.section ??
     MODELS_DEFAULT_SECTION) as ModelsSectionId
+  const accessibleSections = getAccessibleModelsSections(user)
 
   // Deployment create dialog state
   const [createDeploymentOpen, setCreateDeploymentOpen] = useState(false)
@@ -119,11 +120,13 @@ function ModelsContent() {
         </SectionPageLayout.Content>
       </SectionPageLayout>
 
-      <ModelsDialogs />
-      <CreateDeploymentDrawer
-        open={createDeploymentOpen}
-        onOpenChange={setCreateDeploymentOpen}
-      />
+      {activeSection === 'metadata' ? <ModelsDialogs /> : null}
+      {activeSection === 'deployments' ? (
+        <CreateDeploymentDrawer
+          open={createDeploymentOpen}
+          onOpenChange={setCreateDeploymentOpen}
+        />
+      ) : null}
     </>
   )
 }

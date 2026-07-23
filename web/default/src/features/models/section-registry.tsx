@@ -16,6 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { AuthUser } from '@/stores/auth-store'
+import {
+  MANAGEMENT_PERMISSION,
+  hasManagementPermission,
+} from '@/lib/management-permissions'
+import { ROLE } from '@/lib/roles'
 import { createSectionRegistry } from '@/features/system-settings/utils/section-registry'
 
 /**
@@ -50,3 +56,13 @@ const modelsRegistry = createSectionRegistry<
 export const MODELS_SECTION_IDS = modelsRegistry.sectionIds
 export const MODELS_DEFAULT_SECTION = modelsRegistry.defaultSection
 export const getModelsSectionNavItems = modelsRegistry.getSectionNavItems
+
+export function getAccessibleModelsSections(
+  user: AuthUser | null | undefined
+): ModelsSectionId[] {
+  if (!user) return []
+  if (user.role >= ROLE.ADMIN) return [...MODELS_SECTION_IDS]
+  return hasManagementPermission(user, MANAGEMENT_PERMISSION.CHAT_MODELS)
+    ? ['chat']
+    : []
+}

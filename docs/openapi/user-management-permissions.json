@@ -1,0 +1,188 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "用户管理权限接口",
+    "description": "超级管理员为普通用户查询或全量替换细粒度管理权限。管理员和超级管理员隐式拥有全部管理权限，不保存显式授权。",
+    "version": "1.0.0"
+  },
+  "tags": [
+    {
+      "name": "用户管理权限",
+      "description": "仅超级管理员可用；写操作还需要最近 5 分钟内完成安全验证"
+    }
+  ],
+  "paths": {
+    "/api/user/{id}/management-permissions": {
+      "get": {
+        "summary": "查询指定用户的管理权限",
+        "description": "仅超级管理员可访问。permissions 是显式授权；effective_permissions 是结合用户状态和角色计算后的有效权限。",
+        "tags": ["用户管理权限"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "目标用户 ID",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagementPermissionResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "不是超级管理员"
+          }
+        }
+      },
+      "put": {
+        "summary": "替换指定用户的管理权限",
+        "description": "仅超级管理员可访问，并要求最近 5 分钟内通过两步验证或 Passkey。请求采用全量替换语义；空数组表示撤销全部显式权限。只能给普通用户授权。",
+        "tags": ["用户管理权限"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "目标普通用户 ID",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["permissions"],
+                "properties": {
+                  "permissions": {
+                    "type": "array",
+                    "maxItems": 5,
+                    "uniqueItems": true,
+                    "items": {
+                      "$ref": "#/components/schemas/ManagementPermission"
+                    }
+                  }
+                }
+              },
+              "example": {
+                "permissions": [
+                  "chat_models.manage",
+                  "client_releases.publish"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "替换成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagementPermissionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "用户、角色、权限标识或请求体无效"
+          },
+          "403": {
+            "description": "不是超级管理员，或尚未完成安全验证"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ManagementPermission": {
+        "type": "string",
+        "description": "细粒度管理权限标识",
+        "enum": [
+          "skill_hub.content.manage",
+          "skill_hub.reports.manage",
+          "chat_models.manage",
+          "client_releases.manage",
+          "client_releases.publish"
+        ]
+      },
+      "ManagementPermissionState": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "role",
+          "status",
+          "permissions",
+          "effective_permissions",
+          "available_permissions"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "description": "目标用户 ID"
+          },
+          "role": {
+            "type": "integer",
+            "description": "当前数据库角色"
+          },
+          "status": {
+            "type": "integer",
+            "description": "当前数据库状态"
+          },
+          "permissions": {
+            "type": "array",
+            "description": "显式授权",
+            "items": {
+              "$ref": "#/components/schemas/ManagementPermission"
+            }
+          },
+          "effective_permissions": {
+            "type": "array",
+            "description": "结合角色和状态后的有效权限",
+            "items": {
+              "$ref": "#/components/schemas/ManagementPermission"
+            }
+          },
+          "available_permissions": {
+            "type": "array",
+            "description": "当前服务支持的全部权限",
+            "items": {
+              "$ref": "#/components/schemas/ManagementPermission"
+            }
+          }
+        }
+      },
+      "ManagementPermissionResponse": {
+        "type": "object",
+        "required": ["success", "data"],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ManagementPermissionState"
+          }
+        }
+      }
+    }
+  }
+}

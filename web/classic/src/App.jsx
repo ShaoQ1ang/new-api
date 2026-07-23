@@ -27,7 +27,13 @@ import {
 } from 'react-router-dom';
 import Loading from './components/common/ui/Loading';
 import User from './pages/User';
-import { AuthRedirect, PrivateRoute, AdminRoute } from './helpers';
+import {
+  AuthRedirect,
+  PrivateRoute,
+  AdminRoute,
+  ManagementPermissionRoute,
+  MANAGEMENT_PERMISSION,
+} from './helpers';
 import RegisterForm from './components/auth/RegisterForm';
 import LoginForm from './components/auth/LoginForm';
 import NotFound from './pages/NotFound';
@@ -144,9 +150,11 @@ function App() {
         <Route
           path='/console/models'
           element={
-            <AdminRoute>
+            <ManagementPermissionRoute
+              permissions={[MANAGEMENT_PERMISSION.CHAT_MODELS]}
+            >
               <ModelPage />
-            </AdminRoute>
+            </ManagementPermissionRoute>
           }
         />
         <Route
@@ -160,33 +168,44 @@ function App() {
         <Route
           path='/console/skill-hub'
           element={
-            <AdminRoute>
+            <ManagementPermissionRoute
+              permissions={[MANAGEMENT_PERMISSION.SKILL_HUB_CONTENT]}
+            >
               <SkillHub />
-            </AdminRoute>
+            </ManagementPermissionRoute>
           }
         />
         <Route
           path='/console/skill-hub/tags'
           element={
-            <AdminRoute>
+            <ManagementPermissionRoute
+              permissions={[MANAGEMENT_PERMISSION.SKILL_HUB_CONTENT]}
+            >
               <SkillHubTags />
-            </AdminRoute>
+            </ManagementPermissionRoute>
           }
         />
         <Route
           path='/console/skill-hub/reports'
           element={
-            <AdminRoute>
+            <ManagementPermissionRoute
+              permissions={[MANAGEMENT_PERMISSION.SKILL_HUB_REPORTS]}
+            >
               <SkillHubReports />
-            </AdminRoute>
+            </ManagementPermissionRoute>
           }
         />
         <Route
           path='/console/client-releases'
           element={
-            <AdminRoute>
+            <ManagementPermissionRoute
+              permissions={[
+                MANAGEMENT_PERMISSION.CLIENT_RELEASES,
+                MANAGEMENT_PERMISSION.CLIENT_RELEASES_PUBLISH,
+              ]}
+            >
               <ClientReleases />
-            </AdminRoute>
+            </ManagementPermissionRoute>
           }
         />
         <Route

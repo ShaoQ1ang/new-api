@@ -42,7 +42,13 @@ import {
   TextArea,
   Typography,
 } from '@douyinfe/semi-ui';
-import { API, showError, showSuccess } from '../../helpers';
+import {
+  API,
+  showError,
+  showSuccess,
+  MANAGEMENT_PERMISSION,
+  hasManagementPermission,
+} from '../../helpers';
 
 const platformOptions = ['windows', 'darwin', 'linux'];
 const archOptions = ['x64', 'arm64', 'ia32', 'universal'];
@@ -94,7 +100,6 @@ const formToPayload = (form) => ({
   releaseNotes: form.releaseNotes.trim(),
   minVersion: normalizeVersion(form.minVersion),
   forced: form.forced,
-  published: form.published,
 });
 
 const isPublishedRelease = (release) =>
@@ -298,6 +303,12 @@ const formatVersionParts = (parts) => {
 const digitsOnly = (value) => String(value || '').replace(/\D/g, '');
 
 const ClientReleases = () => {
+  const canManage = hasManagementPermission(
+    MANAGEMENT_PERMISSION.CLIENT_RELEASES,
+  );
+  const canPublish = hasManagementPermission(
+    MANAGEMENT_PERMISSION.CLIENT_RELEASES_PUBLISH,
+  );
   const [releases, setReleases] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [form, setForm] = useState(createDefaultForm);
@@ -315,6 +326,8 @@ const ClientReleases = () => {
     () => releases.find((release) => release.id === selectedId),
     [releases, selectedId],
   );
+  const selectedPublished = isPublishedRelease(selectedRelease);
+  const canEditSelected = canManage && (!selectedPublished || canPublish);
 
   const updateForm = (key, value) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -616,9 +629,11 @@ const ClientReleases = () => {
             </Typography.Text>
           </div>
           <Space>
-            <Button icon={<Plus size={16} />} onClick={handleNew}>
-              新建
-            </Button>
+            {canEditSelected ? (
+              <Button icon={<Plus size={16} />} onClick={handleNew}>
+                新建
+              </Button>
+            ) : null}
             <Button
               icon={<RefreshCw size={16} />}
               loading={loading}
@@ -735,195 +750,240 @@ const ClientReleases = () => {
           </Card>
 
           <Card>
-            <div className='flex flex-col gap-4'>
-              <Section
-                title='版本目标'
-                description='同一版本可按平台、架构和通道分别维护。'
-              >
-                <div className='grid grid-cols-1 gap-3 md:grid-cols-[minmax(220px,1.4fr)_1fr_1fr_1fr]'>
-                  <Field label='版本号'>
-                    <VersionInput
-                      value={form.version}
-                      onChange={(value) => updateForm('version', value)}
-                    />
-                  </Field>
-                  <Field label='平台'>
-                    <Select
-                      value={form.platform}
-                      onChange={(value) => updateForm('platform', value)}
-                    >
-                      {platformOptions.map((platform) => (
-                        <Select.Option key={platform} value={platform}>
-                          {platform}
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label='架构'>
-                    <Select
-                      value={form.arch}
-                      onChange={(value) => updateForm('arch', value)}
-                    >
-                      {archOptions.map((arch) => (
-                        <Select.Option key={arch} value={arch}>
-                          {arch}
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label='通道'>
-                    <Select
-                      value={form.channel}
-                      onChange={(value) => updateForm('channel', value)}
-                    >
-                      {channelOptions.map((channel) => (
-                        <Select.Option key={channel} value={channel}>
-                          {channel}
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  </Field>
-                </div>
-              </Section>
-
-              <Section
-                title='安装包'
-                description='上传到私有 OSS 后，客户端通过 New API 签名跳转下载。'
-              >
-                <div className='flex flex-wrap items-center gap-2'>
-                  <input
-                    ref={fileInputRef}
-                    type='file'
-                    accept='.exe,.msi,.dmg,.pkg,.zip,.AppImage,.deb,.rpm,.yml,.yaml'
-                    className='hidden'
-                    onChange={(event) => uploadPackage(event.target.files?.[0])}
-                  />
-                  <Button
-                    icon={<UploadCloud size={16} />}
-                    loading={uploading}
-                    onClick={() => fileInputRef.current?.click()}
+            {canManage ? (
+              <>
+                <div className='flex flex-col gap-4'>
+                  <Section
+                    title='版本目标'
+                    description='同一版本可按平台、架构和通道分别维护。'
                   >
-                    上传到 OSS
-                  </Button>
-                  {form.fileName ? <Tag>{formatBytes(form.size)}</Tag> : null}
-                </div>
-                <Field label='文件名'>
-                  <ReadonlyValue value={form.fileName} />
-                </Field>
-                <Field label='OSS Object'>
-                  <ReadonlyValue value={form.objectKey} />
-                </Field>
-                <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
-                  <Field label='SHA256'>
-                    <ReadonlyValue value={form.sha256} />
-                  </Field>
-                  <Field label='SHA512'>
-                    <ReadonlyValue value={form.sha512} />
-                  </Field>
-                </div>
-                {selectedRelease ? (
-                  <Space wrap>
-                    {selectedRelease.downloadUrl ? (
-                      <Button
-                        icon={<Download size={16} />}
-                        onClick={() =>
-                          window.open(selectedRelease.downloadUrl, '_blank')
-                        }
-                      >
-                        下载
-                      </Button>
-                    ) : null}
-                    <Button
-                      icon={<FileText size={16} />}
-                      onClick={() =>
-                        window.open(buildLatestYmlUrl(form), '_blank')
-                      }
-                    >
-                      latest.yml
-                    </Button>
-                  </Space>
-                ) : null}
-              </Section>
+                    <div className='grid grid-cols-1 gap-3 md:grid-cols-[minmax(220px,1.4fr)_1fr_1fr_1fr]'>
+                      <Field label='版本号'>
+                        <VersionInput
+                          value={form.version}
+                          onChange={(value) => updateForm('version', value)}
+                        />
+                      </Field>
+                      <Field label='平台'>
+                        <Select
+                          value={form.platform}
+                          onChange={(value) => updateForm('platform', value)}
+                        >
+                          {platformOptions.map((platform) => (
+                            <Select.Option key={platform} value={platform}>
+                              {platform}
+                            </Select.Option>
+                          ))}
+                        </Select>
+                      </Field>
+                      <Field label='架构'>
+                        <Select
+                          value={form.arch}
+                          onChange={(value) => updateForm('arch', value)}
+                        >
+                          {archOptions.map((arch) => (
+                            <Select.Option key={arch} value={arch}>
+                              {arch}
+                            </Select.Option>
+                          ))}
+                        </Select>
+                      </Field>
+                      <Field label='通道'>
+                        <Select
+                          value={form.channel}
+                          onChange={(value) => updateForm('channel', value)}
+                        >
+                          {channelOptions.map((channel) => (
+                            <Select.Option key={channel} value={channel}>
+                              {channel}
+                            </Select.Option>
+                          ))}
+                        </Select>
+                      </Field>
+                    </div>
+                  </Section>
 
-              <Section
-                title='发布策略'
-                description='控制可见状态和最低版本强制更新。'
-              >
-                <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
-                  <Field label='最低版本'>
-                    <VersionInput
-                      value={form.minVersion}
-                      onChange={(value) => updateForm('minVersion', value)}
-                    />
-                  </Field>
-                  <Field label='发布状态'>
-                    <div className='flex h-[34px] items-center gap-3'>
-                      <Switch
-                        checked={form.published}
-                        onChange={(checked) => updateForm('published', checked)}
+                  <Section
+                    title='安装包'
+                    description='上传到私有 OSS 后，客户端通过 New API 签名跳转下载。'
+                  >
+                    <div className='flex flex-wrap items-center gap-2'>
+                      <input
+                        ref={fileInputRef}
+                        type='file'
+                        accept='.exe,.msi,.dmg,.pkg,.zip,.AppImage,.deb,.rpm,.yml,.yaml'
+                        className='hidden'
+                        onChange={(event) =>
+                          uploadPackage(event.target.files?.[0])
+                        }
                       />
-                      <span className='text-sm text-semi-color-text-2'>
-                        {form.published ? '已发布' : '草稿'}
+                      <Button
+                        icon={<UploadCloud size={16} />}
+                        loading={uploading}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        上传到 OSS
+                      </Button>
+                      {form.fileName ? (
+                        <Tag>{formatBytes(form.size)}</Tag>
+                      ) : null}
+                    </div>
+                    <Field label='文件名'>
+                      <ReadonlyValue value={form.fileName} />
+                    </Field>
+                    <Field label='OSS Object'>
+                      <ReadonlyValue value={form.objectKey} />
+                    </Field>
+                    <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+                      <Field label='SHA256'>
+                        <ReadonlyValue value={form.sha256} />
+                      </Field>
+                      <Field label='SHA512'>
+                        <ReadonlyValue value={form.sha512} />
+                      </Field>
+                    </div>
+                    {selectedRelease ? (
+                      <Space wrap>
+                        {selectedRelease.downloadUrl ? (
+                          <Button
+                            icon={<Download size={16} />}
+                            onClick={() =>
+                              window.open(selectedRelease.downloadUrl, '_blank')
+                            }
+                          >
+                            下载
+                          </Button>
+                        ) : null}
+                        <Button
+                          icon={<FileText size={16} />}
+                          onClick={() =>
+                            window.open(buildLatestYmlUrl(form), '_blank')
+                          }
+                        >
+                          latest.yml
+                        </Button>
+                      </Space>
+                    ) : null}
+                  </Section>
+
+                  <Section
+                    title='发布策略'
+                    description='控制可见状态和最低版本强制更新。'
+                  >
+                    <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+                      <Field label='最低版本'>
+                        <VersionInput
+                          value={form.minVersion}
+                          onChange={(value) => updateForm('minVersion', value)}
+                        />
+                      </Field>
+                      <Field label='发布状态'>
+                        <div className='flex h-[34px] items-center gap-3'>
+                          <Switch checked={form.published} disabled />
+                          <span className='text-sm text-semi-color-text-2'>
+                            {form.published ? '已发布' : '草稿'}
+                          </span>
+                        </div>
+                      </Field>
+                    </div>
+                    <div className='flex items-center gap-3'>
+                      <Switch
+                        checked={form.forced}
+                        onChange={(checked) => updateForm('forced', checked)}
+                      />
+                      <span className='text-sm text-semi-color-text-1'>
+                        低于最低版本时强制更新
                       </span>
                     </div>
-                  </Field>
+                    <Field label='更新说明'>
+                      <TextArea
+                        autosize
+                        rows={4}
+                        value={form.releaseNotes}
+                        onChange={(value) => updateForm('releaseNotes', value)}
+                      />
+                    </Field>
+                  </Section>
                 </div>
-                <div className='flex items-center gap-3'>
-                  <Switch
-                    checked={form.forced}
-                    onChange={(checked) => updateForm('forced', checked)}
-                  />
-                  <span className='text-sm text-semi-color-text-1'>
-                    低于最低版本时强制更新
-                  </span>
-                </div>
-                <Field label='更新说明'>
-                  <TextArea
-                    autosize
-                    rows={4}
-                    value={form.releaseNotes}
-                    onChange={(value) => updateForm('releaseNotes', value)}
-                  />
-                </Field>
-              </Section>
-            </div>
 
-            <div className='mt-4 flex flex-wrap items-center justify-between gap-3'>
-              <Space wrap>
+                <div className='mt-4 flex flex-wrap items-center justify-between gap-3'>
+                  <Space wrap>
+                    {selectedRelease ? (
+                      <>
+                        {canPublish ? (
+                          <Button
+                            icon={<Check size={16} />}
+                            disabled={saving}
+                            onClick={() =>
+                              setPublished(!isPublishedRelease(selectedRelease))
+                            }
+                          >
+                            {isPublishedRelease(selectedRelease)
+                              ? '取消发布'
+                              : '发布'}
+                          </Button>
+                        ) : null}
+                        <Button
+                          type='danger'
+                          icon={<Trash2 size={16} />}
+                          disabled={saving}
+                          onClick={deleteRelease}
+                        >
+                          删除
+                        </Button>
+                      </>
+                    ) : null}
+                  </Space>
+                  <Button
+                    type='primary'
+                    icon={<Save size={16} />}
+                    loading={saving}
+                    disabled={uploading}
+                    onClick={saveRelease}
+                  >
+                    保存
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className='flex min-h-[320px] flex-col gap-4'>
                 {selectedRelease ? (
                   <>
-                    <Button
-                      icon={<Check size={16} />}
-                      disabled={saving}
-                      onClick={() =>
-                        setPublished(!isPublishedRelease(selectedRelease))
-                      }
-                    >
-                      {isPublishedRelease(selectedRelease)
-                        ? '取消发布'
-                        : '发布'}
-                    </Button>
-                    <Button
-                      type='danger'
-                      icon={<Trash2 size={16} />}
-                      disabled={saving}
-                      onClick={deleteRelease}
-                    >
-                      删除
-                    </Button>
+                    <div>
+                      <Typography.Title heading={4} className='!mb-1'>
+                        {selectedRelease.version}
+                      </Typography.Title>
+                      <Typography.Text type='tertiary'>
+                        {selectedRelease.platform}/{selectedRelease.arch}/
+                        {selectedRelease.channel}
+                      </Typography.Text>
+                    </div>
+                    <ReadonlyValue value={selectedRelease.fileName} />
+                    <Typography.Paragraph>
+                      {selectedRelease.releaseNotes || '暂无更新说明'}
+                    </Typography.Paragraph>
+                    {canPublish ? (
+                      <Button
+                        type='primary'
+                        icon={<Check size={16} />}
+                        disabled={saving}
+                        onClick={() =>
+                          setPublished(!isPublishedRelease(selectedRelease))
+                        }
+                      >
+                        {isPublishedRelease(selectedRelease)
+                          ? '取消发布'
+                          : '发布'}
+                      </Button>
+                    ) : null}
                   </>
-                ) : null}
-              </Space>
-              <Button
-                type='primary'
-                icon={<Save size={16} />}
-                loading={saving}
-                disabled={uploading}
-                onClick={saveRelease}
-              >
-                保存
-              </Button>
-            </div>
+                ) : (
+                  <Typography.Text type='tertiary'>
+                    请先从左侧选择一个客户端版本。
+                  </Typography.Text>
+                )}
+              </div>
+            )}
           </Card>
         </div>
       </div>
