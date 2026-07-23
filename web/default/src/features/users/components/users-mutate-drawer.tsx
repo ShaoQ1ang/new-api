@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useState } from 'react'
+import { isAxiosError } from 'axios'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
@@ -72,11 +73,6 @@ import {
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import {
-  SecureVerificationDialog,
-  useSecureVerification,
-  type VerificationMethod,
-} from '@/features/auth/secure-verification'
-import {
   createUser,
   updateUser,
   getUser,
@@ -125,18 +121,6 @@ export function UsersMutateDrawer({
     useState(false)
   const [managementPermissionsSaving, setManagementPermissionsSaving] =
     useState(false)
-
-  const {
-    open: verificationOpen,
-    setOpen: setVerificationOpen,
-    methods: verificationMethods,
-    state: verificationState,
-    executeVerification,
-    cancel: cancelVerification,
-    setCode,
-    switchMethod,
-    withVerification,
-  } = useSecureVerification()
 
   // Fetch groups
   const { data: groupsData } = useQuery({
@@ -286,29 +270,15 @@ export function UsersMutateDrawer({
 
   const saveManagementPermissions = async () => {
     try {
-      await withVerification(persistManagementPermissions, {
-        title: t('Security verification'),
-        description: t(
-          'Confirm your identity before changing management permissions.'
-        ),
-      })
+      await persistManagementPermissions()
     } catch (error) {
+      // HTTP errors are already presented once by the shared API interceptor.
+      if (isAxiosError(error)) return
       toast.error(
         error instanceof Error
           ? error.message
           : t('Failed to save management permissions')
       )
-    }
-  }
-
-  const handleVerification = async (
-    method: VerificationMethod,
-    code?: string
-  ) => {
-    try {
-      await executeVerification(method, code)
-    } catch {
-      // The verification hook displays the actionable error.
     }
   }
 
@@ -676,17 +646,6 @@ export function UsersMutateDrawer({
           onSuccess={refreshUserData}
         />
       )}
-
-      <SecureVerificationDialog
-        open={verificationOpen}
-        onOpenChange={setVerificationOpen}
-        methods={verificationMethods}
-        state={verificationState}
-        onVerify={handleVerification}
-        onCancel={cancelVerification}
-        onCodeChange={setCode}
-        onMethodChange={switchMethod}
-      />
     </>
   )
 }
