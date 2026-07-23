@@ -183,7 +183,6 @@ func SetApiRouter(router *gin.Engine) {
 				managementPermissionRoute.PUT(
 					"",
 					middleware.CriticalRateLimit(),
-					middleware.SecureVerificationRequired(),
 					controller.UpdateUserManagementPermissions,
 				)
 			}

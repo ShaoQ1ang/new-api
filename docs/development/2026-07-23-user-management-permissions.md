@@ -21,7 +21,7 @@ GET /api/user/{id}/management-permissions
 PUT /api/user/{id}/management-permissions
 ```
 
-两个接口都仅允许超级管理员访问。`PUT` 还要求在最近 5 分钟内完成两步验证或 Passkey 安全验证，并受关键接口频率限制。请求体必须显式提供完整权限集合：
+两个接口都仅允许超级管理员访问。`PUT` 与现有用户管理接口保持一致，不强制要求两步验证或 Passkey；写操作仍受关键接口频率限制。请求体必须显式提供完整权限集合：
 
 ```json
 {

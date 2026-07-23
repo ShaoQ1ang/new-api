@@ -33,8 +33,6 @@ import {
   displayAmountToQuota,
 } from '../../../../helpers/quota';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
-import { useSecureVerification } from '../../../../hooks/common/useSecureVerification';
-import SecureVerificationModal from '../../../common/modals/SecureVerificationModal';
 import {
   Button,
   Modal,
@@ -89,17 +87,6 @@ const EditUserModal = (props) => {
     useState(false);
   const [managementPermissionsSaving, setManagementPermissionsSaving] =
     useState(false);
-
-  const {
-    isModalVisible,
-    verificationMethods,
-    verificationState,
-    withVerification,
-    executeVerification,
-    cancelVerification,
-    setVerificationCode,
-    switchVerificationMethod,
-  } = useSecureVerification();
 
   const isEdit = Boolean(userId);
 
@@ -288,11 +275,10 @@ const EditUserModal = (props) => {
 
   const saveManagementPermissions = async () => {
     try {
-      await withVerification(persistManagementPermissions, {
-        title: t('安全验证'),
-        description: t('修改管理权限前，请先验证您的身份。'),
-      });
+      await persistManagementPermissions();
     } catch (error) {
+      // HTTP errors are already presented once by the shared API interceptor.
+      if (error?.isAxiosError) return;
       showError(error.message || t('保存管理权限失败'));
     }
   };
@@ -595,18 +581,6 @@ const EditUserModal = (props) => {
         userId={userId}
         isMobile={isMobile}
         formApiRef={formApiRef}
-      />
-
-      <SecureVerificationModal
-        visible={isModalVisible}
-        verificationMethods={verificationMethods}
-        verificationState={verificationState}
-        onVerify={executeVerification}
-        onCancel={cancelVerification}
-        onCodeChange={setVerificationCode}
-        onMethodSwitch={switchVerificationMethod}
-        title={verificationState.title}
-        description={verificationState.description}
       />
 
       {/* 调整额度模态框 */}
