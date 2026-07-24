@@ -20,6 +20,9 @@ import { api } from '@/lib/api'
 import type {
   SkillHubAdminReportListResponse,
   SkillHubAdminReportResponse,
+  SkillHubBatchUploadCommitResponse,
+  SkillHubBatchUploadInitResponse,
+  SkillHubBatchUploadSpec,
   SkillHubDirectUploadInitResponse,
   SkillHubForm,
   SkillHubListResponse,
@@ -234,6 +237,87 @@ export async function uploadSkillHubIcon(
   form: Pick<SkillHubForm, 'id'>
 ): Promise<SkillHubUploadResponse> {
   return uploadSkillHubObject(file, 'icon', { skillId: form.id })
+}
+
+export async function initSkillHubBatchUpload(input: {
+  mode: 'skip' | 'update' | 'fail'
+  options: Record<string, unknown>
+  items: Array<{
+    index: number
+    skill: Record<string, unknown>
+    zip: { fileName: string; size: number }
+    icon?: { fileName: string; size: number }
+  }>
+}): Promise<SkillHubBatchUploadInitResponse> {
+  const res = await api.post('/api/admin/skill-hub/batch-upload/init', input)
+  return res.data
+}
+
+export async function commitSkillHubBatchUpload(
+  input: Record<string, unknown>
+): Promise<SkillHubBatchUploadCommitResponse> {
+  const res = await api.post('/api/admin/skill-hub/batch-upload/commit', input)
+  return res.data
+}
+
+export async function discardSkillHubBatchUploads(uploadTickets: string[]) {
+  const tickets = [...new Set(uploadTickets.filter(Boolean))]
+  if (!tickets.length) return
+  await api.post('/api/admin/skill-hub/batch-upload/discard', {
+    uploadTickets: tickets,
+  })
+}
+
+export function putSkillHubBatchObject(
+  upload: SkillHubBatchUploadSpec,
+  file: File,
+  options?: {
+    signal?: AbortSignal
+    onProgress?: (percent: number) => void
+  }
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    let settled = false
+    const cleanup = () => {
+      options?.signal?.removeEventListener('abort', abort)
+    }
+    const finish = (callback: () => void) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      callback()
+    }
+    const abort = () => xhr.abort()
+    xhr.open(upload.uploadMethod || 'PUT', upload.uploadUrl)
+    Object.entries(upload.uploadHeaders || {}).forEach(([key, value]) => {
+      if (value) xhr.setRequestHeader(key, value)
+    })
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        options?.onProgress?.(Math.round((event.loaded / event.total) * 100))
+      }
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        finish(resolve)
+        return
+      }
+      finish(() => reject(new Error('Failed to upload batch item.')))
+    }
+    xhr.onerror = () =>
+      finish(() => reject(new Error('Failed to upload batch item.')))
+    xhr.onabort = () =>
+      finish(() =>
+        reject(new DOMException('Batch upload was cancelled.', 'AbortError'))
+      )
+    options?.signal?.addEventListener('abort', abort, { once: true })
+    if (options?.signal?.aborted) {
+      abort()
+      return
+    }
+    xhr.send(file)
+  })
 }
 
 export async function discardSkillHubUpload(uploadTicket: string) {
