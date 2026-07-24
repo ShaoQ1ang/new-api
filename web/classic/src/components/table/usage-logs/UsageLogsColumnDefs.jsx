@@ -33,6 +33,7 @@ import {
   getLogOther,
   renderModelTag,
   renderModelPriceSimple,
+  renderTieredModelPriceSimple,
   renderQuotaWithAmount,
   formatStructuredLogEvent,
 } from '../../../helpers';
@@ -488,6 +489,23 @@ function getUsageLogDetailSummary(record, text, billingDisplayMode, t) {
           tone: groupText || index > 0 ? 'secondary' : 'primary',
         })),
       ].filter(Boolean),
+    };
+  }
+
+  const tieredSummary = renderTieredModelPriceSimple(other);
+  if (tieredSummary) {
+    return {
+      segments: [
+        { text: tieredSummary, tone: 'primary' },
+        {
+          text: getUsageLogGroupSummary(
+            other?.group_ratio,
+            other?.user_group_ratio,
+            t,
+          ),
+          tone: 'secondary',
+        },
+      ].filter((segment) => segment.text),
     };
   }
 

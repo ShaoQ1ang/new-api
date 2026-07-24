@@ -233,16 +233,20 @@ func deleteUserManagementPermissionsTx(tx *gorm.DB, userId int) error {
 }
 
 func UpdateUserRoleAndClearManagementPermissions(userId int, role int) error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		return UpdateUserRoleAndClearManagementPermissionsInTx(tx, userId, role)
+	})
+}
+
+func UpdateUserRoleAndClearManagementPermissionsInTx(tx *gorm.DB, userId int, role int) error {
 	if role != common.RoleCommonUser && role != common.RoleAdminUser {
 		return errors.New("invalid target role")
 	}
-	return DB.Transaction(func(tx *gorm.DB) error {
-		if _, err := lockUserForUpdateTx(tx, userId, false); err != nil {
-			return err
-		}
-		if err := tx.Model(&User{}).Where("id = ?", userId).Update("role", role).Error; err != nil {
-			return err
-		}
-		return deleteUserManagementPermissionsTx(tx, userId)
-	})
+	if _, err := lockUserForUpdateTx(tx, userId, false); err != nil {
+		return err
+	}
+	if err := tx.Model(&User{}).Where("id = ?", userId).Update("role", role).Error; err != nil {
+		return err
+	}
+	return deleteUserManagementPermissionsTx(tx, userId)
 }

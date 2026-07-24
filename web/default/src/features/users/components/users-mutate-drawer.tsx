@@ -16,33 +16,23 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
-import { isAxiosError } from 'axios'
-import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { Pencil } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { useAuthStore } from '@/stores/auth-store'
-import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
-import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
+
 import {
-  MANAGEMENT_PERMISSION,
-  type ManagementPermission,
-} from '@/lib/management-permissions'
-import { ROLE } from '@/lib/roles'
+  SideDrawerSection,
+  sideDrawerContentClassName,
+  sideDrawerFooterClassName,
+  sideDrawerFormClassName,
+  sideDrawerHeaderClassName,
+} from '@/components/drawer-layout'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-  FieldLegend,
-  FieldSet,
-} from '@/components/ui/field'
 import {
   Form,
   FormControl,
@@ -73,12 +63,23 @@ import {
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import {
+  ADMIN_PERMISSION_ACTIONS,
+  ADMIN_PERMISSION_RESOURCES,
+  EMPTY_PERMISSION_CATALOG,
+  hasPermission,
+  normalizeAdminPermissions,
+} from '@/lib/admin-permissions'
+import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
+import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
+
+import {
   createUser,
   updateUser,
   getUser,
   getGroups,
-  getUserManagementPermissions,
-  updateUserManagementPermissions,
+  getPermissionCatalog,
 } from '../api'
 import { BINDING_FIELDS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
@@ -109,6 +110,7 @@ export function UsersMutateDrawer({
   const canAssignManagementPermissions =
     isUpdate && authUser?.role === ROLE.SUPER_ADMIN
   const { triggerRefresh } = useUsers()
+  const currentUser = useAuthStore((s) => s.auth.user)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false)
   const [managementPermissions, setManagementPermissions] = useState<
@@ -130,6 +132,13 @@ export function UsersMutateDrawer({
   })
 
   const groups = groupsData?.data || []
+
+  // Permission catalog is owned by the backend; fetched once and reused.
+  const { data: permissionCatalog = EMPTY_PERMISSION_CATALOG } = useQuery({
+    queryKey: ['admin-permission-catalog'],
+    queryFn: getPermissionCatalog,
+    staleTime: 5 * 60 * 1000,
+  })
 
   const form = useForm<UserFormValues>({
     resolver: zodResolver(userFormSchema),
@@ -195,11 +204,29 @@ export function UsersMutateDrawer({
   const tokensOnly = currencyMeta.kind === 'tokens'
 
   const currentQuotaRaw = form.watch('quota_dollars') || 0
+  const selectedRole = form.watch('role')
+  const canEditAdminPermissions = currentUser?.role === ROLE.SUPER_ADMIN
+  const targetIsAdmin = (selectedRole ?? currentRow?.role ?? 0) >= ROLE.ADMIN
 
   const onSubmit = async (data: UserFormValues) => {
+    if (!isUpdate) {
+      const passwordLength = data.password?.length || 0
+      if (passwordLength < 8 || passwordLength > 20) {
+        form.setError('password', {
+          type: 'manual',
+          message: t('Password must be between 8 and 20 characters'),
+        })
+        return
+      }
+    }
+
     setIsSubmitting(true)
     try {
-      const payload = transformFormDataToPayload(data, currentRow?.id)
+      const payload = transformFormDataToPayload(
+        data,
+        currentRow?.id,
+        permissionCatalog
+      )
       const result = isUpdate
         ? await updateUser(payload as typeof payload & { id: number })
         : await createUser(payload)
@@ -293,8 +320,10 @@ export function UsersMutateDrawer({
           }
         }}
       >
-        <SheetContent className='flex h-dvh w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-[600px]'>
-          <SheetHeader className='border-b px-4 py-3 text-start sm:px-6 sm:py-4'>
+        <SheetContent
+          className={sideDrawerContentClassName('sm:max-w-[600px]')}
+        >
+          <SheetHeader className={sideDrawerHeaderClassName()}>
             <SheetTitle>
               {isUpdate ? t('Update') : t('Create')} {t('User')}
             </SheetTitle>
@@ -308,10 +337,10 @@ export function UsersMutateDrawer({
             <form
               id='user-form'
               onSubmit={form.handleSubmit(onSubmit)}
-              className='flex-1 space-y-4 overflow-y-auto px-3 py-3 pb-4 sm:space-y-6 sm:px-4'
+              className={sideDrawerFormClassName()}
             >
               {/* Basic Information */}
-              <div className='space-y-4'>
+              <SideDrawerSection>
                 <h3 className='text-sm font-medium'>
                   {t('Basic Information')}
                 </h3>
@@ -407,7 +436,7 @@ export function UsersMutateDrawer({
                           placeholder={
                             isUpdate
                               ? t('Leave empty to keep unchanged')
-                              : t('Enter password (min 8 characters)')
+                              : t('Enter password (8-20 characters)')
                           }
                         />
                       </FormControl>
@@ -415,11 +444,11 @@ export function UsersMutateDrawer({
                     </FormItem>
                   )}
                 />
-              </div>
+              </SideDrawerSection>
 
               {/* Group & Quota Settings (Update only) */}
               {isUpdate && (
-                <div className='space-y-4'>
+                <SideDrawerSection>
                   <h3 className='text-sm font-medium'>{t('Group & Quota')}</h3>
 
                   <FormField
@@ -516,86 +545,103 @@ export function UsersMutateDrawer({
                       </FormItem>
                     )}
                   />
-                </div>
+                </SideDrawerSection>
               )}
 
-              {canAssignManagementPermissions && (
-                <div className='space-y-4'>
-                  <div>
+              {canEditAdminPermissions &&
+                targetIsAdmin &&
+                permissionCatalog.resources.length > 0 && (
+                  <SideDrawerSection>
                     <h3 className='text-sm font-medium'>
-                      {t('Management Permissions')}
+                      {t('Admin Permissions')}
                     </h3>
-                    <p className='text-muted-foreground mt-1 text-xs'>
+                    <p className='text-muted-foreground text-xs'>
                       {t(
-                        'Grant individual management capabilities without promoting this user to administrator.'
+                        'Default administrator permissions can be overridden for this user.'
                       )}
                     </p>
-                  </div>
-
-                  {managementPermissionRole !== null &&
-                  managementPermissionRole !== ROLE.USER ? (
-                    <p className='text-muted-foreground rounded-md border p-3 text-sm'>
-                      {t(
-                        'Administrators receive all management permissions automatically. Explicit permissions can only be assigned to common users.'
-                      )}
-                    </p>
-                  ) : (
-                    <FieldSet disabled={managementPermissionsLoading}>
-                      <FieldLegend variant='label'>
-                        {t('Available capabilities')}
-                      </FieldLegend>
-                      <FieldGroup data-slot='checkbox-group'>
-                        {MANAGEMENT_PERMISSION_OPTIONS.map((option) => (
-                          <Field
-                            key={option.permission}
-                            orientation='horizontal'
-                          >
-                            <Checkbox
-                              id={`management-permission-${option.permission}`}
-                              checked={managementPermissions.includes(
-                                option.permission
-                              )}
-                              onCheckedChange={(checked) =>
-                                toggleManagementPermission(
-                                  option.permission,
-                                  checked === true
-                                )
-                              }
-                            />
-                            <FieldContent>
-                              <FieldLabel
-                                htmlFor={`management-permission-${option.permission}`}
-                              >
-                                {t(option.label)}
-                              </FieldLabel>
-                              <FieldDescription>
-                                {t(option.description)}
-                              </FieldDescription>
-                            </FieldContent>
-                          </Field>
-                        ))}
-                      </FieldGroup>
-                      <Button
-                        type='button'
-                        variant='outline'
-                        disabled={
-                          managementPermissionsLoading ||
-                          managementPermissionsSaving
-                        }
-                        onClick={() => void saveManagementPermissions()}
-                      >
-                        {managementPermissionsSaving
-                          ? t('Saving...')
-                          : t('Save management permissions')}
-                      </Button>
-                    </FieldSet>
-                  )}
-                </div>
-              )}
+                    <FormField
+                      control={form.control}
+                      name='admin_permissions'
+                      render={({ field }) => {
+                        const selected = normalizeAdminPermissions(
+                          field.value,
+                          permissionCatalog
+                        )
+                        return (
+                          <FormItem>
+                            <div className='space-y-3'>
+                              {permissionCatalog.resources.map((resource) => (
+                                <div
+                                  key={resource.resource}
+                                  className='space-y-2 rounded-md border p-3'
+                                >
+                                  <div className='text-sm font-medium'>
+                                    {t(resource.label_key)}
+                                  </div>
+                                  <div className='space-y-2'>
+                                    {resource.actions.map((option) => (
+                                      <label
+                                        key={option.action}
+                                        className='flex items-start gap-3'
+                                      >
+                                        <Checkbox
+                                          checked={
+                                            selected[resource.resource]?.[
+                                              option.action
+                                            ] === true
+                                          }
+                                          onCheckedChange={(checked) => {
+                                            field.onChange({
+                                              ...selected,
+                                              [resource.resource]: {
+                                                ...selected[resource.resource],
+                                                [option.action]:
+                                                  checked === true,
+                                              },
+                                            })
+                                          }}
+                                        />
+                                        <span className='flex flex-col gap-1'>
+                                          <span className='text-sm font-medium'>
+                                            {t(option.label_key)}
+                                          </span>
+                                          <span className='text-muted-foreground text-xs'>
+                                            {t(option.description_key)}
+                                          </span>
+                                        </span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )
+                      }}
+                    />
+                    {currentUser && (
+                      <p className='text-muted-foreground text-xs'>
+                        {hasPermission(
+                          currentUser,
+                          ADMIN_PERMISSION_RESOURCES.CHANNEL,
+                          ADMIN_PERMISSION_ACTIONS.SENSITIVE_WRITE
+                        )
+                          ? t(
+                              'Your account can edit sensitive channel settings.'
+                            )
+                          : t(
+                              'Your account cannot edit sensitive channel settings.'
+                            )}
+                      </p>
+                    )}
+                  </SideDrawerSection>
+                )}
 
               {/* Binding Information (Read-only) */}
               {isUpdate && (
-                <div className='space-y-4'>
+                <SideDrawerSection>
                   <h3 className='text-sm font-medium'>
                     {t('Binding Information')}
                   </h3>
@@ -605,7 +651,7 @@ export function UsersMutateDrawer({
                     )}
                   </p>
 
-                  <div className='space-y-3'>
+                  <div className='flex flex-col gap-3'>
                     {BINDING_FIELDS.map(({ key, label }) => (
                       <div key={key}>
                         <Label className='text-muted-foreground text-xs'>
@@ -621,11 +667,11 @@ export function UsersMutateDrawer({
                       </div>
                     ))}
                   </div>
-                </div>
+                </SideDrawerSection>
               )}
             </form>
           </Form>
-          <SheetFooter className='grid grid-cols-2 gap-2 border-t px-4 py-3 sm:flex sm:px-6 sm:py-4'>
+          <SheetFooter className={sideDrawerFooterClassName()}>
             <SheetClose render={<Button variant='outline' />}>
               {t('Close')}
             </SheetClose>

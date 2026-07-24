@@ -104,18 +104,18 @@ type TaskPrivateData struct {
 	BillingSource  string              `json:"billing_source,omitempty"`  // "wallet" 或 "subscription"
 	SubscriptionId int                 `json:"subscription_id,omitempty"` // 订阅 ID，用于订阅退款
 	TokenId        int                 `json:"token_id,omitempty"`        // 令牌 ID，用于令牌额度退款
+	NodeName       string              `json:"node_name,omitempty"`       // 发起任务的节点名，轮询结算阶段据此归属日志而非最后查询节点
 	BillingContext *TaskBillingContext `json:"billing_context,omitempty"` // 计费参数快照（用于轮询阶段重新计算）
 }
 
 // TaskBillingContext 记录任务提交时的计费参数，以便轮询阶段可以重新计算额度。
 type TaskBillingContext struct {
-	ModelPrice            float64            `json:"model_price,omitempty"`             // 模型单价
-	GroupRatio            float64            `json:"group_ratio,omitempty"`             // 分组倍率
-	ModelRatio            float64            `json:"model_ratio,omitempty"`             // 模型倍率
-	ConditionalInputPrice float64            `json:"conditional_input_price,omitempty"` // 条件输入单价（如视频输入）
-	OtherRatios           map[string]float64 `json:"other_ratios,omitempty"`            // 附加倍率（时长、分辨率等）
-	OriginModelName       string             `json:"origin_model_name,omitempty"`       // 模型名称，必须为OriginModelName
-	PerCallBilling        bool               `json:"per_call_billing,omitempty"`        // 按次计费：跳过轮询阶段的差额结算
+	ModelPrice      float64            `json:"model_price,omitempty"`       // 模型单价
+	GroupRatio      float64            `json:"group_ratio,omitempty"`       // 分组倍率
+	ModelRatio      float64            `json:"model_ratio,omitempty"`       // 模型倍率
+	OtherRatios     map[string]float64 `json:"other_ratios,omitempty"`      // 附加倍率（时长、分辨率等）
+	OriginModelName string             `json:"origin_model_name,omitempty"` // 模型名称，必须为OriginModelName
+	PerCallBilling  bool               `json:"per_call_billing,omitempty"`  // 按次计费：跳过轮询阶段的差额结算
 }
 
 // GetUpstreamTaskID 获取上游真实 task ID（用于与 provider 通信）
@@ -315,6 +315,21 @@ func GetAllUnFinishSyncTasks(limit int) []*Task {
 	return tasks
 }
 
+// HasUnfinishedSyncTasks reports whether at least one async (Suno/video) task is
+// still in progress. It is a cheap existence check (LIMIT 1) used to decide
+// whether the async_task_poll system task needs to run; when no task is pending
+// the scheduler skips creating a row entirely.
+func HasUnfinishedSyncTasks() bool {
+	var id int64
+	err := DB.Model(&Task{}).
+		Where("progress != ?", "100%").
+		Where("status != ?", TaskStatusFailure).
+		Where("status != ?", TaskStatusSuccess).
+		Limit(1).
+		Pluck("id", &id).Error
+	return err == nil && id != 0
+}
+
 func GetByOnlyTaskId(taskId string) (*Task, bool, error) {
 	if taskId == "" {
 		return nil, false, nil
@@ -400,6 +415,10 @@ func (Task *Task) Update() error {
 	var err error
 	err = DB.Save(Task).Error
 	return err
+}
+
+func (t *Task) UpdateQuota() error {
+	return DB.Model(t).Update("quota", t.Quota).Error
 }
 
 // UpdateWithStatus performs a conditional UPDATE guarded by fromStatus (CAS).

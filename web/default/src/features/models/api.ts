@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
+
 import type {
   GetModelsParams,
   GetModelsResponse,
@@ -35,13 +36,6 @@ import type {
   SyncOverwritePayload,
   DeploymentSettingsResponse,
   ListDeploymentsResponse,
-  ListChatModelsParams,
-  ListChatModelsResponse,
-  ListChatModelCandidatesResponse,
-  ListChatModelThinkingLevelsResponse,
-  BatchCreateChatModelsResponse,
-  ChatModelOption,
-  UpsertChatModelPayload,
 } from './types'
 
 // ============================================================================
@@ -114,58 +108,6 @@ export async function deleteModel(
   id: number
 ): Promise<{ success: boolean; message?: string }> {
   const res = await api.delete(`/api/models/${id}`)
-  return res.data
-}
-
-// ============================================================================
-// Chat Model Management
-// ============================================================================
-
-export async function listChatModels(
-  params: ListChatModelsParams = {}
-): Promise<ListChatModelsResponse> {
-  const res = await api.get('/api/chat-models/', { params })
-  return res.data
-}
-
-export async function listChatModelCandidates(params?: {
-  keyword?: string
-}): Promise<ListChatModelCandidatesResponse> {
-  const res = await api.get('/api/chat-models/candidates', { params })
-  return res.data
-}
-
-export async function listChatModelThinkingLevels(): Promise<ListChatModelThinkingLevelsResponse> {
-  const res = await api.get('/api/chat-models/thinking-levels')
-  return res.data
-}
-
-export async function createChatModel(
-  data: UpsertChatModelPayload & { model: string }
-): Promise<{ success: boolean; message?: string; data?: ChatModelOption }> {
-  const res = await api.post('/api/chat-models/', data)
-  return res.data
-}
-
-export async function batchCreateChatModels(data: {
-  models: string[]
-}): Promise<BatchCreateChatModelsResponse> {
-  const res = await api.post('/api/chat-models/batch', data)
-  return res.data
-}
-
-export async function updateChatModel(
-  id: number,
-  data: UpsertChatModelPayload
-): Promise<{ success: boolean; message?: string; data?: ChatModelOption }> {
-  const res = await api.patch(`/api/chat-models/${id}`, data)
-  return res.data
-}
-
-export async function deleteChatModel(
-  id: number
-): Promise<{ success: boolean; message?: string }> {
-  const res = await api.delete(`/api/chat-models/${id}`)
   return res.data
 }
 

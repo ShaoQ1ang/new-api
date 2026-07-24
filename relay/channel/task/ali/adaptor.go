@@ -29,6 +29,9 @@ type AliMediaItem struct {
 	KeepOriginalSound *string `json:"keep_original_sound,omitempty"`
 }
 
+// AliVideoMedia is the public name used by the Wan2.7 media request contract.
+type AliVideoMedia = AliMediaItem
+
 type AliMultiPromptItem struct {
 	Index    int    `json:"index"`
 	Prompt   string `json:"prompt"`
@@ -259,7 +262,7 @@ func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relay
 		Model: upstreamModel,
 		Input: AliVideoInput{
 			Prompt: req.Prompt,
-			ImgURL: req.InputReference,
+			ImgURL: firstTaskImage(req),
 		},
 		Parameters: &AliVideoParameters{
 			PromptExtend: true,
@@ -310,8 +313,58 @@ func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relay
 	if aliReq.Model != upstreamModel {
 		return nil, errors.New("can't change model with metadata")
 	}
+	if err := normalizeWan27I2VInput(aliReq, req); err != nil {
+		return nil, err
+	}
 
 	return aliReq, nil
+}
+
+func firstTaskImage(req relaycommon.TaskSubmitReq) string {
+	if image := strings.TrimSpace(req.Image); image != "" {
+		return image
+	}
+	for _, image := range req.Images {
+		if image = strings.TrimSpace(image); image != "" {
+			return image
+		}
+	}
+	return strings.TrimSpace(req.InputReference)
+}
+
+func secondTaskImage(req relaycommon.TaskSubmitReq) string {
+	count := 0
+	for _, image := range req.Images {
+		if image = strings.TrimSpace(image); image != "" {
+			count++
+			if count == 2 {
+				return image
+			}
+		}
+	}
+	return ""
+}
+
+func normalizeWan27I2VInput(aliReq *AliVideoRequest, req relaycommon.TaskSubmitReq) error {
+	if !isWan27I2VModel(aliReq.Model) {
+		return nil
+	}
+	if len(aliReq.Input.Media) == 0 {
+		if first := firstTaskImage(req); first != "" {
+			aliReq.Input.Media = append(aliReq.Input.Media, AliVideoMedia{Type: "first_frame", URL: first})
+		}
+		if last := secondTaskImage(req); last != "" {
+			aliReq.Input.Media = append(aliReq.Input.Media, AliVideoMedia{Type: "last_frame", URL: last})
+		}
+	}
+	if len(aliReq.Input.Media) == 0 {
+		return fmt.Errorf("wan2.7-i2v requires image, images, input_reference, or input.media")
+	}
+	aliReq.Input.ImgURL = ""
+	aliReq.Input.FirstFrameURL = ""
+	aliReq.Input.LastFrameURL = ""
+	aliReq.Input.AudioURL = ""
+	return nil
 }
 
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
@@ -666,6 +719,10 @@ func resolveTaskDuration(req relaycommon.TaskSubmitReq, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+func isWan27I2VModel(modelName string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(modelName)), "wan2.7-i2v")
 }
 
 func defaultAliResolution(size string, fallback string) string {

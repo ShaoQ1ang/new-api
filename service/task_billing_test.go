@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -12,10 +12,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/glebarez/sqlite"
-	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -35,7 +34,7 @@ func TestMain(m *testing.M) {
 	model.DB = db
 	model.LOG_DB = db
 
-	common.UsingSQLite = true
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.BatchUpdateEnabled = false
 	common.LogConsumeEnabled = true
@@ -48,6 +47,8 @@ func TestMain(m *testing.M) {
 		&model.Channel{},
 		&model.TopUp{},
 		&model.UserSubscription{},
+		&model.SystemTask{},
+		&model.SystemTaskLock{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -69,6 +70,8 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM channels")
 		model.DB.Exec("DELETE FROM top_ups")
 		model.DB.Exec("DELETE FROM user_subscriptions")
+		model.DB.Exec("DELETE FROM system_task_locks")
+		model.DB.Exec("DELETE FROM system_tasks")
 	})
 }
 
@@ -139,6 +142,102 @@ func makeTask(userId, channelId, quota, tokenId int, billingSource string, subsc
 	}
 }
 
+func TestPriceDataOtherRatiosFilterAndSnapshot(t *testing.T) {
+	priceData := types.PriceData{}
+
+	priceData.AddOtherRatio("zero", 0)
+	priceData.AddOtherRatio("negative", -0.5)
+	priceData.AddOtherRatio("nan", math.NaN())
+	priceData.AddOtherRatio("inf", math.Inf(1))
+	priceData.AddOtherRatio("one", 1)
+	priceData.AddOtherRatio("positive", 2.5)
+
+	ratios := priceData.OtherRatios()
+	require.Len(t, ratios, 2)
+	assert.Equal(t, 1.0, ratios["one"])
+	assert.Equal(t, 2.5, ratios["positive"])
+	assert.True(t, priceData.HasOtherRatio("one"))
+	assert.False(t, priceData.HasOtherRatio("zero"))
+
+	ratios["positive"] = 99
+	ratios["new"] = 3
+	nextSnapshot := priceData.OtherRatios()
+	assert.Equal(t, 2.5, nextSnapshot["positive"])
+	assert.NotContains(t, nextSnapshot, "new")
+}
+
+func TestPriceDataReplaceAndApplyOtherRatios(t *testing.T) {
+	priceData := types.PriceData{}
+
+	replaced := priceData.ReplaceOtherRatios(map[string]float64{
+		"zero":     0,
+		"negative": -3,
+		"nan":      math.NaN(),
+		"inf":      math.Inf(1),
+		"one":      1,
+		"duration": 2,
+		"size":     1.5,
+	})
+
+	require.True(t, replaced)
+	assert.Equal(t, 3.0, priceData.OtherRatioMultiplier())
+	assert.Equal(t, 30.0, priceData.ApplyOtherRatiosToFloat(10))
+	assert.Equal(t, 10.0, priceData.RemoveOtherRatiosFromFloat(30))
+	assert.True(t, decimal.NewFromInt(30).Equal(priceData.ApplyOtherRatiosToDecimal(decimal.NewFromInt(10))))
+
+	replaced = priceData.ReplaceOtherRatios(map[string]float64{
+		"zero": 0,
+		"nan":  math.NaN(),
+	})
+
+	require.False(t, replaced)
+	assert.Nil(t, priceData.OtherRatios())
+	assert.Equal(t, 1.0, priceData.OtherRatioMultiplier())
+}
+
+func TestTaskBillingOtherFiltersHistoricalOtherRatios(t *testing.T) {
+	task := makeTask(1, 1, 100, 0, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.OtherRatios = map[string]float64{
+		"seconds":  2,
+		"identity": 1,
+		"zero":     0,
+		"negative": -1,
+		"nan":      math.NaN(),
+		"inf":      math.Inf(1),
+	}
+
+	other := taskBillingOther(task)
+
+	assert.Equal(t, 2.0, other["seconds"])
+	assert.Equal(t, 1.0, other["identity"])
+	assert.NotContains(t, other, "zero")
+	assert.NotContains(t, other, "negative")
+	assert.NotContains(t, other, "nan")
+	assert.NotContains(t, other, "inf")
+}
+
+func TestTaskBillingContextPriceDataFiltersMultiplier(t *testing.T) {
+	priceData := taskBillingContextPriceData(&model.TaskBillingContext{
+		OtherRatios: map[string]float64{
+			"seconds":  2,
+			"size":     3,
+			"identity": 1,
+			"zero":     0,
+			"negative": -1,
+			"nan":      math.NaN(),
+			"inf":      math.Inf(1),
+		},
+	})
+
+	require.NotNil(t, priceData)
+	assert.Equal(t, 6.0, priceData.OtherRatioMultiplier())
+	assert.Equal(t, map[string]float64{
+		"seconds":  2,
+		"size":     3,
+		"identity": 1,
+	}, priceData.OtherRatios())
+}
+
 // ---------------------------------------------------------------------------
 // Read-back helpers
 // ---------------------------------------------------------------------------
@@ -186,105 +285,6 @@ func countLogs(t *testing.T) int64 {
 	var count int64
 	model.LOG_DB.Model(&model.Log{}).Count(&count)
 	return count
-}
-
-func TestLogTaskConsumptionIncludesConditionalInputPrice(t *testing.T) {
-	truncate(t)
-
-	const userID, tokenID, channelID = 1, 1, 1
-	seedUser(t, userID, 100000)
-	seedToken(t, tokenID, userID, "sk-test-key", 100000)
-	seedChannel(t, channelID)
-
-	rec := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/video/generations", nil)
-	ctx.Set("token_name", "test-token")
-
-	info := &relaycommon.RelayInfo{
-		UserId:          userID,
-		TokenId:         tokenID,
-		UsingGroup:      "default",
-		OriginModelName: "doubao-seedance-1-0-pro-250528",
-		ChannelMeta: &relaycommon.ChannelMeta{
-			ChannelId: channelID,
-		},
-		TaskRelayInfo: &relaycommon.TaskRelayInfo{
-			Action: "generate",
-		},
-		PriceData: types.PriceData{
-			ModelPrice:            -1,
-			ModelRatio:            1.027397260274,
-			ConditionalInputPrice: 46,
-			Quota:                 5750000,
-			GroupRatioInfo: types.GroupRatioInfo{
-				GroupRatio: 1,
-			},
-		},
-	}
-
-	LogTaskConsumption(ctx, info)
-
-	log := getLastLog(t)
-	require.NotNil(t, log)
-	assert.Equal(t, model.LogTypeConsume, log.Type)
-
-	var other map[string]interface{}
-	require.NoError(t, json.Unmarshal([]byte(log.Other), &other))
-	assert.Equal(t, float64(46), other["conditional_input_price"])
-	assert.Equal(t, "/v1/video/generations", other["request_path"])
-}
-
-func TestLogTaskConsumptionIncludesVideoSecondsBillingDetails(t *testing.T) {
-	truncate(t)
-
-	const userID, tokenID, channelID = 2, 2, 2
-	seedUser(t, userID, 100000)
-	seedToken(t, tokenID, userID, "sk-test-key-2", 100000)
-	seedChannel(t, channelID)
-
-	rec := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(rec)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
-	ctx.Set("token_name", "test-token")
-
-	audioEnabled := false
-	info := &relaycommon.RelayInfo{
-		UserId:          userID,
-		TokenId:         tokenID,
-		UsingGroup:      "default",
-		OriginModelName: "kling/kling-v3-video-generation",
-		ChannelMeta: &relaycommon.ChannelMeta{
-			ChannelId: channelID,
-		},
-		TaskRelayInfo: &relaycommon.TaskRelayInfo{
-			Action: "textGenerate",
-		},
-		PriceData: types.PriceData{
-			ModelPrice:            -1,
-			VideoSecondsUnitPrice: 0.6,
-			VideoSecondsTier:      "720p",
-			VideoDurationSeconds:  5,
-			VideoAudioEnabled:     &audioEnabled,
-			Quota:                 1500000,
-			GroupRatioInfo: types.GroupRatioInfo{
-				GroupRatio: 1,
-			},
-		},
-	}
-
-	LogTaskConsumption(ctx, info)
-
-	log := getLastLog(t)
-	require.NotNil(t, log)
-
-	var other map[string]interface{}
-	require.NoError(t, json.Unmarshal([]byte(log.Other), &other))
-	assert.Equal(t, "video_seconds", other["billing_mode"])
-	assert.Equal(t, float64(0.6), other["video_seconds_unit_price"])
-	assert.Equal(t, "720p", other["video_seconds_tier"])
-	assert.Equal(t, float64(5), other["video_duration_seconds"])
-	assert.Equal(t, false, other["video_audio_enabled"])
 }
 
 // ===========================================================================
@@ -787,7 +787,7 @@ func TestSettle_PerCallBilling_SkipsTotalTokens(t *testing.T) {
 	assert.Equal(t, int64(0), countLogs(t))
 }
 
-func TestSettle_NonPerCall_AdaptorAdjustWorks(t *testing.T) {
+func TestSettle_NonPerCallBilling_AppliesAdaptorAdjustment(t *testing.T) {
 	truncate(t)
 	ctx := context.Background()
 
@@ -816,41 +816,4 @@ func TestSettle_NonPerCall_AdaptorAdjustWorks(t *testing.T) {
 	log := getLastLog(t)
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
-}
-
-func TestRecalculateTaskQuotaByTokensPrefersConditionalInputPrice(t *testing.T) {
-	truncate(t)
-	ctx := context.Background()
-
-	t.Cleanup(func() {
-		if err := ratio_setting.UpdateModelRatioByJSONString(`{}`); err != nil {
-			t.Fatalf("cleanup model ratio failed: %v", err)
-		}
-		if err := ratio_setting.UpdateGroupRatioByJSONString(`{"default":1}`); err != nil {
-			t.Fatalf("cleanup group ratio failed: %v", err)
-		}
-	})
-
-	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"test-model":23}`))
-	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1}`))
-
-	const userID, tokenID, channelID = 40, 40, 40
-	const initQuota, preConsumed = 10000, 1000
-	const tokenRemain = 9000
-
-	seedUser(t, userID, initQuota)
-	seedToken(t, tokenID, userID, "sk-conditional-input-price", tokenRemain)
-	seedChannel(t, channelID)
-
-	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
-	task.PrivateData.BillingContext.ModelRatio = 23
-	task.PrivateData.BillingContext.GroupRatio = 1
-	task.PrivateData.BillingContext.ConditionalInputPrice = 31
-
-	RecalculateTaskQuotaByTokens(ctx, task, 1_000_000)
-
-	expectedQuota := int(31 * common.QuotaPerUnit)
-	assert.Equal(t, expectedQuota, task.Quota)
-	assert.Equal(t, initQuota-(expectedQuota-preConsumed), getUserQuota(t, userID))
-	assert.Equal(t, tokenRemain-(expectedQuota-preConsumed), getTokenRemainQuota(t, tokenID))
 }

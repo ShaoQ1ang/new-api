@@ -65,6 +65,11 @@ import SingleModelSelectModal from './SingleModelSelectModal';
 import OllamaModelModal from './OllamaModelModal';
 import CodexOAuthModal from './CodexOAuthModal';
 import ParamOverrideEditorModal from './ParamOverrideEditorModal';
+import AdvancedCustomEditorModal from './AdvancedCustomEditorModal';
+import {
+  parseAdvancedCustomConfig,
+  validateAdvancedCustomConfig,
+} from './advancedCustom';
 import JSONEditor from '../../../common/ui/JSONEditor';
 import SecureVerificationModal from '../../../common/modals/SecureVerificationModal';
 import StatusCodeRiskGuardModal from './StatusCodeRiskGuardModal';
@@ -199,6 +204,7 @@ const EditChannelModal = (props) => {
     system_prompt: '',
     system_prompt_override: false,
     settings: '',
+    advanced_custom: '',
     // 仅 Vertex: 密钥格式（存入 settings.vertex_key_type）
     vertex_key_type: 'json',
     // 仅 AWS: 密钥格式和区域（存入 settings.aws_key_type 和 settings.aws_region）
@@ -244,6 +250,8 @@ const EditChannelModal = (props) => {
   const [modelMappingValueSelected, setModelMappingValueSelected] =
     useState('');
   const [ollamaModalVisible, setOllamaModalVisible] = useState(false);
+  const [advancedCustomEditorVisible, setAdvancedCustomEditorVisible] =
+    useState(false);
   const formApiRef = useRef(null);
   const [vertexKeys, setVertexKeys] = useState([]);
   const [vertexFileList, setVertexFileList] = useState([]);
@@ -929,6 +937,9 @@ const EditChannelModal = (props) => {
           )
             ? parsedSettings.upstream_model_update_ignored_models.join(',')
             : '';
+          data.advanced_custom = parsedSettings.advanced_custom
+            ? JSON.stringify(parsedSettings.advanced_custom, null, 2)
+            : '';
         } catch (error) {
           console.error('解析其他设置失败:', error);
           data.azure_responses_version = '';
@@ -948,6 +959,7 @@ const EditChannelModal = (props) => {
           data.upstream_model_update_last_check_time = 0;
           data.upstream_model_update_last_detected_models = [];
           data.upstream_model_update_ignored_models = '';
+          data.advanced_custom = '';
         }
       } else {
         // 兼容历史数据：老渠道没有 settings 时，默认按 json 展示
@@ -966,6 +978,7 @@ const EditChannelModal = (props) => {
         data.upstream_model_update_last_check_time = 0;
         data.upstream_model_update_last_detected_models = [];
         data.upstream_model_update_ignored_models = '';
+        data.advanced_custom = '';
       }
 
       if (
@@ -1551,6 +1564,25 @@ const EditChannelModal = (props) => {
     const formValues = formApiRef.current ? formApiRef.current.getValues() : {};
     let localInputs = { ...formValues };
     localInputs.param_override = inputs.param_override;
+    localInputs.advanced_custom = inputs.advanced_custom;
+
+    if (localInputs.type === 58) {
+      const advancedCustomConfig = parseAdvancedCustomConfig(
+        localInputs.advanced_custom,
+      );
+      const advancedCustomError =
+        validateAdvancedCustomConfig(advancedCustomConfig);
+      if (advancedCustomError) {
+        showError(
+          `${
+            advancedCustomError.routeIndex === undefined
+              ? ''
+              : `${t('Route')} ${advancedCustomError.routeIndex + 1}: `
+          }${t(advancedCustomError.message)}`,
+        );
+        return;
+      }
+    }
 
     if (localInputs.type === 57) {
       if (batch) {
@@ -1832,6 +1864,14 @@ const EditChannelModal = (props) => {
       settings.upstream_model_update_last_check_time = 0;
     }
 
+    if (localInputs.type === 58) {
+      settings.advanced_custom = parseAdvancedCustomConfig(
+        localInputs.advanced_custom,
+      );
+    } else if ('advanced_custom' in settings) {
+      delete settings.advanced_custom;
+    }
+
     localInputs.settings = JSON.stringify(settings);
 
     // 清理不需要发送到后端的字段
@@ -1859,6 +1899,7 @@ const EditChannelModal = (props) => {
     delete localInputs.upstream_model_update_last_check_time;
     delete localInputs.upstream_model_update_last_detected_models;
     delete localInputs.upstream_model_update_ignored_models;
+    delete localInputs.advanced_custom;
 
     let res;
     localInputs.auto_ban = localInputs.auto_ban ? 1 : 0;
@@ -2867,6 +2908,49 @@ const EditChannelModal = (props) => {
                         onChange={(value) => handleInputChange('type', value)}
                         disabled={isIonetLocked}
                       />
+
+                      {inputs.type === 58 && (
+                        <Card
+                          title={t('Advanced Custom Routes')}
+                          headerExtraContent={
+                            <Button
+                              type='primary'
+                              theme='light'
+                              icon={<IconSetting />}
+                              onClick={() =>
+                                setAdvancedCustomEditorVisible(true)
+                              }
+                            >
+                              {t('Configure routes')}
+                            </Button>
+                          }
+                          className='mb-4'
+                        >
+                          {(() => {
+                            const config = parseAdvancedCustomConfig(
+                              inputs.advanced_custom,
+                            );
+                            const error = validateAdvancedCustomConfig(config);
+                            if (!config) {
+                              return (
+                                <Text type='tertiary'>
+                                  {t('No API routes configured')}
+                                </Text>
+                              );
+                            }
+                            return (
+                              <Space wrap>
+                                {error && (
+                                  <Tag color='red'>{t(error.message)}</Tag>
+                                )}
+                                <Text type='tertiary'>
+                                  {config.advanced_routes.length} {t('Route')}
+                                </Text>
+                              </Space>
+                            );
+                          })()}
+                        </Card>
+                      )}
 
                       {inputs.type === 57 && (
                         <Banner
@@ -4132,6 +4216,18 @@ const EditChannelModal = (props) => {
           onVisibleChange={(visible) => setIsModalOpenurl(visible)}
         />
       </SideSheet>
+      <AdvancedCustomEditorModal
+        visible={advancedCustomEditorVisible}
+        value={inputs.advanced_custom}
+        onCancel={() => setAdvancedCustomEditorVisible(false)}
+        onSave={(value) => {
+          handleInputChange('advanced_custom', value);
+          if (formApiRef.current) {
+            formApiRef.current.setValue('advanced_custom', value);
+          }
+          setAdvancedCustomEditorVisible(false);
+        }}
+      />
       <StatusCodeRiskGuardModal
         visible={statusCodeRiskConfirmVisible}
         detailItems={statusCodeRiskDetailItems}

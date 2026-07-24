@@ -120,7 +120,7 @@ func Setup2FA(c *gin.Context) {
 	}
 
 	// 记录操作日志
-	model.RecordLog(userId, model.LogTypeSystem, "Started 2FA setup")
+	model.RecordLog(userId, model.LogTypeSystem, "开始设置两步验证")
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -192,7 +192,7 @@ func Enable2FA(c *gin.Context) {
 	}
 
 	// 记录操作日志
-	model.RecordLog(userId, model.LogTypeSystem, "2FA enabled successfully")
+	model.RecordLog(userId, model.LogTypeSystem, "成功启用两步验证")
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -264,7 +264,7 @@ func Disable2FA(c *gin.Context) {
 	}
 
 	// 记录操作日志
-	model.RecordLog(userId, model.LogTypeSystem, "2FA disabled")
+	model.RecordLog(userId, model.LogTypeSystem, "禁用两步验证")
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -383,7 +383,7 @@ func RegenerateBackupCodes(c *gin.Context) {
 	}
 
 	// 记录操作日志
-	model.RecordLog(userId, model.LogTypeSystem, "Regenerated 2FA backup codes")
+	model.RecordLog(userId, model.LogTypeSystem, "重新生成两步验证备用码")
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -520,7 +520,7 @@ func AdminDisable2FA(c *gin.Context) {
 	}
 
 	myRole := c.GetInt("role")
-	if myRole <= targetUser.Role && myRole != common.RoleRootUser {
+	if !canManageTargetRole(myRole, targetUser.Role) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "无权操作同级或更高级用户的2FA设置",
@@ -541,15 +541,7 @@ func AdminDisable2FA(c *gin.Context) {
 		return
 	}
 
-	// 记录操作日志：管理员身份通过 admin_info 传递，避免在非管理员可见的日志内容中泄露。
-	adminId := c.GetInt("id")
-	adminName := c.GetString("username")
-	adminInfo := map[string]interface{}{
-		"admin_id":       adminId,
-		"admin_username": adminName,
-	}
-	model.RecordLogWithAdminInfo(userId, model.LogTypeManage,
-		"管理员强制禁用了用户的两步验证", adminInfo)
+	recordManageAuditFor(c, userId, "user.2fa_disable", nil)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

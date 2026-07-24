@@ -30,20 +30,12 @@ import { createSectionRegistry } from '@/features/system-settings/utils/section-
 const MODELS_SECTIONS = [
   {
     id: 'metadata',
-    titleKey: 'Model Square Management',
-    descriptionKey: 'Manage model square metadata and display',
-    build: () => null, // Content is rendered directly in the page component
-  },
-  {
-    id: 'chat',
-    titleKey: 'Chat Model Management',
-    descriptionKey: 'Manage models shown in chat selectors',
+    titleKey: 'Metadata',
     build: () => null, // Content is rendered directly in the page component
   },
   {
     id: 'deployments',
     titleKey: 'Deployments',
-    descriptionKey: 'Manage model deployments',
     build: () => null, // Content is rendered directly in the page component
   },
 ] as const
