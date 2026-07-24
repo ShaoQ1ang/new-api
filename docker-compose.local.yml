@@ -98,6 +98,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      postgres-migrate:
+        condition: service_completed_successfully
     networks:
       new-api-local-network:
         aliases:
@@ -144,6 +146,27 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  postgres-migrate:
+    image: postgres:15.18@sha256:74e110c41804365e3915fcc09d5e7a1eff50161aaa94d5da0e58e0cd75ae509c
+    container_name: new-api-local-postgres-migrate
+    restart: "no"
+    environment:
+      POSTGRES_USER: ${NEWAPI_POSTGRES_USER:-root}
+      POSTGRES_PASSWORD: ${NEWAPI_POSTGRES_PASSWORD:-123456}
+      POSTGRES_DB: ${NEWAPI_POSTGRES_DB:-new-api}
+      PGPASSWORD: ${NEWAPI_POSTGRES_PASSWORD:-123456}
+    volumes:
+      - ./deploy/newapi-local/migrations/20260723_reconcile_main_indexes.postgres.sql:/migration.sql:ro
+    command:
+      - sh
+      - -ec
+      - psql -h postgres -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -f /migration.sql
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - new-api-local-network
 
 volumes:
   pg_data_local:

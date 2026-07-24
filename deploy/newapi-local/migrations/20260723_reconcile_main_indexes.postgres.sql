@@ -65,8 +65,11 @@ BEGIN
             DROP CONSTRAINT IF EXISTS uni_user_subscriptions_provider_invoice_unique_id;
         ALTER TABLE public.user_subscriptions
             DROP CONSTRAINT IF EXISTS user_subscriptions_provider_invoice_unique_id_key;
+        ALTER TABLE public.user_subscriptions
+            DROP CONSTRAINT IF EXISTS idx_user_subscriptions_provider_invoice_unique_id;
         DROP INDEX IF EXISTS public.uni_user_subscriptions_provider_invoice_unique_id;
         DROP INDEX IF EXISTS public.user_subscriptions_provider_invoice_unique_id_key;
+        DROP INDEX IF EXISTS public.idx_user_subscriptions_provider_invoice_unique_id;
     END IF;
 END
 $migration$;
