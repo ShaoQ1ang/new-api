@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { PermissionCatalog } from '@/lib/admin-permissions'
 import { api } from '@/lib/api'
+import type { ManagementPermission } from '@/lib/management-permissions'
 
 import type {
   User,
@@ -160,6 +161,23 @@ export async function resetUserTwoFA(id: number): Promise<ApiResponse> {
  */
 export async function getGroups(): Promise<ApiResponse<string[]>> {
   const res = await api.get('/api/group/')
+  return res.data
+}
+
+export async function getUserManagementPermissions(
+  id: number
+): Promise<ApiResponse<UserManagementPermissions>> {
+  const res = await api.get(`/api/user/${id}/management-permissions`)
+  return res.data
+}
+
+export async function updateUserManagementPermissions(
+  id: number,
+  permissions: ManagementPermission[]
+): Promise<ApiResponse<UserManagementPermissions>> {
+  const res = await api.put(`/api/user/${id}/management-permissions`, {
+    permissions,
+  })
   return res.data
 }
 

@@ -25,7 +25,6 @@ import {
   MODELS_SECTION_IDS,
   getAccessibleModelsSections,
 } from '@/features/models/section-registry'
-import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 const modelsSearchSchema = z.object({

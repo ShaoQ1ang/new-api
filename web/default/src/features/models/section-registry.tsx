@@ -16,13 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { AuthUser } from '@/stores/auth-store'
+/* eslint-disable react-refresh/only-export-components */
+import { createSectionRegistry } from '@/features/system-settings/utils/section-registry'
 import {
   MANAGEMENT_PERMISSION,
   hasManagementPermission,
 } from '@/lib/management-permissions'
 import { ROLE } from '@/lib/roles'
-import { createSectionRegistry } from '@/features/system-settings/utils/section-registry'
+import type { AuthUser } from '@/stores/auth-store'
 
 /**
  * Models page section definitions
@@ -31,6 +32,11 @@ const MODELS_SECTIONS = [
   {
     id: 'metadata',
     titleKey: 'Metadata',
+    build: () => null, // Content is rendered directly in the page component
+  },
+  {
+    id: 'chat',
+    titleKey: 'Chat Model Management',
     build: () => null, // Content is rendered directly in the page component
   },
   {

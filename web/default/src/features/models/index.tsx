@@ -25,8 +25,10 @@ import { useTranslation } from 'react-i18next'
 import { SectionPageLayout } from '@/components/layout'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { listDeployments } from './api'
+import { ChatModelsTable } from './components/chat-models-table'
 import { DeploymentAccessGuard } from './components/deployment-access-guard'
 import { DeploymentsTable } from './components/deployments-table'
 import { CreateDeploymentDrawer } from './components/dialogs/create-deployment-drawer'
@@ -48,6 +50,9 @@ const SECTION_META: Record<ModelsSectionId, { titleKey: string }> = {
   metadata: {
     titleKey: 'Metadata',
   },
+  chat: {
+    titleKey: 'Chat Model Management',
+  },
   deployments: {
     titleKey: 'Deployments',
   },
@@ -56,6 +61,7 @@ const SECTION_META: Record<ModelsSectionId, { titleKey: string }> = {
 function ModelsContent() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const user = useAuthStore((state) => state.auth.user)
   const { tabCategory, setTabCategory } = useModels()
   const params = route.useParams()
   const activeSection = (params.section ??
@@ -89,9 +95,8 @@ function ModelsContent() {
       <SectionPageLayout fixedContent>
         <SectionPageLayout.Title>{t(meta.titleKey)}</SectionPageLayout.Title>
         <SectionPageLayout.Actions>
-          {activeSection === 'metadata' ? (
-            <ModelsPrimaryButtons />
-          ) : (
+          {activeSection === 'metadata' && <ModelsPrimaryButtons />}
+          {activeSection === 'deployments' && (
             <Button onClick={() => setCreateDeploymentOpen(true)} size='sm'>
               <Plus className='h-4 w-4' />
               {t('Create deployment')}
@@ -102,7 +107,7 @@ function ModelsContent() {
           <div className='flex h-full min-h-0 flex-col gap-4'>
             <Tabs value={activeSection} onValueChange={handleSectionChange}>
               <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
-                {MODELS_SECTION_IDS.map((section) => (
+                {accessibleSections.map((section) => (
                   <TabsTrigger key={section} value={section}>
                     {t(SECTION_META[section].titleKey)}
                   </TabsTrigger>
@@ -110,23 +115,21 @@ function ModelsContent() {
               </TabsList>
             </Tabs>
             <div className='min-h-0 flex-1'>
-              {activeSection === 'metadata' ? (
-                <ModelsTable />
-              ) : (
-                <DeploymentsSection />
-              )}
+              {activeSection === 'metadata' && <ModelsTable />}
+              {activeSection === 'chat' && <ChatModelsTable />}
+              {activeSection === 'deployments' && <DeploymentsSection />}
             </div>
           </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>
 
-      {activeSection === 'metadata' ? <ModelsDialogs /> : null}
-      {activeSection === 'deployments' ? (
+      {activeSection === 'metadata' && <ModelsDialogs />}
+      {activeSection === 'deployments' && (
         <CreateDeploymentDrawer
           open={createDeploymentOpen}
           onOpenChange={setCreateDeploymentOpen}
         />
-      ) : null}
+      )}
     </>
   )
 }

@@ -26,6 +26,8 @@ import {
   LayoutDashboard,
   ListTodo,
   MessageSquare,
+  Package,
+  Puzzle,
   Radio,
   ServerCog,
   Settings,
@@ -36,7 +38,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { type SidebarData } from '@/components/layout/types'
+import type { SidebarData } from '@/components/layout/types'
 import { ROLE } from '@/lib/roles'
 
 /**

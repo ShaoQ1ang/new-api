@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
+import { isAxiosError } from 'axios'
 import { Pencil } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -33,6 +34,15 @@ import {
 } from '@/components/drawer-layout'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from '@/components/ui/field'
 import {
   Form,
   FormControl,
@@ -71,6 +81,10 @@ import {
 } from '@/lib/admin-permissions'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
+import {
+  MANAGEMENT_PERMISSION,
+  type ManagementPermission,
+} from '@/lib/management-permissions'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -80,6 +94,8 @@ import {
   getUser,
   getGroups,
   getPermissionCatalog,
+  getUserManagementPermissions,
+  updateUserManagementPermissions,
 } from '../api'
 import { BINDING_FIELDS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
@@ -89,7 +105,7 @@ import {
   transformFormDataToPayload,
   transformUserToFormDefaults,
 } from '../lib'
-import { type User } from '../types'
+import type { User } from '../types'
 import { UserQuotaDialog } from './user-quota-dialog'
 import { useUsers } from './users-provider'
 
@@ -110,7 +126,6 @@ export function UsersMutateDrawer({
   const canAssignManagementPermissions =
     isUpdate && authUser?.role === ROLE.SUPER_ADMIN
   const { triggerRefresh } = useUsers()
-  const currentUser = useAuthStore((s) => s.auth.user)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false)
   const [managementPermissions, setManagementPermissions] = useState<
@@ -149,16 +164,20 @@ export function UsersMutateDrawer({
   useEffect(() => {
     if (open && isUpdate && currentRow) {
       // For update, fetch fresh data
-      getUser(currentRow.id).then((result) => {
-        if (result.success && result.data) {
-          form.reset(transformUserToFormDefaults(result.data))
-        }
-      })
+      void getUser(currentRow.id)
+        .then((result) => {
+          if (result.success && result.data) {
+            form.reset(transformUserToFormDefaults(result.data))
+          }
+        })
+        .catch(() => {
+          toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+        })
     } else if (open && !isUpdate) {
       // For create, reset to defaults
       form.reset(USER_FORM_DEFAULT_VALUES)
     }
-  }, [open, isUpdate, currentRow, form])
+  }, [open, isUpdate, currentRow, form, t])
 
   useEffect(() => {
     let active = true
@@ -171,7 +190,7 @@ export function UsersMutateDrawer({
     }
 
     setManagementPermissionsLoading(true)
-    getUserManagementPermissions(currentRow.id)
+    void getUserManagementPermissions(currentRow.id)
       .then((result) => {
         if (!active) return
         if (!result.success || !result.data) {
@@ -205,7 +224,7 @@ export function UsersMutateDrawer({
 
   const currentQuotaRaw = form.watch('quota_dollars') || 0
   const selectedRole = form.watch('role')
-  const canEditAdminPermissions = currentUser?.role === ROLE.SUPER_ADMIN
+  const canEditAdminPermissions = authUser?.role === ROLE.SUPER_ADMIN
   const targetIsAdmin = (selectedRole ?? currentRow?.role ?? 0) >= ROLE.ADMIN
 
   const onSubmit = async (data: UserFormValues) => {
@@ -247,7 +266,7 @@ export function UsersMutateDrawer({
               : t(ERROR_MESSAGES.CREATE_FAILED))
         )
       }
-    } catch (_error) {
+    } catch {
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))
     } finally {
       setIsSubmitting(false)
@@ -269,7 +288,7 @@ export function UsersMutateDrawer({
   ) => {
     setManagementPermissions((current) =>
       checked
-        ? Array.from(new Set([...current, permission]))
+        ? [...new Set([...current, permission])]
         : current.filter((item) => item !== permission)
     )
   }
@@ -376,7 +395,8 @@ export function UsersMutateDrawer({
                             { value: '10', label: t('Admin') },
                           ]}
                           onValueChange={(value) =>
-                            value !== null && field.onChange(parseInt(value))
+                            value !== null &&
+                            field.onChange(Number.parseInt(value))
                           }
                           value={String(field.value)}
                         >
@@ -458,12 +478,10 @@ export function UsersMutateDrawer({
                       <FormItem>
                         <FormLabel>{t('Group')}</FormLabel>
                         <Select
-                          items={[
-                            ...groups.map((group) => ({
-                              value: group,
-                              label: group,
-                            })),
-                          ]}
+                          items={groups.map((group) => ({
+                            value: group,
+                            label: group,
+                          }))}
                           onValueChange={field.onChange}
                           value={field.value}
                         >
@@ -548,6 +566,80 @@ export function UsersMutateDrawer({
                 </SideDrawerSection>
               )}
 
+              {canAssignManagementPermissions && (
+                <SideDrawerSection>
+                  <div>
+                    <h3 className='text-sm font-medium'>
+                      {t('Management Permissions')}
+                    </h3>
+                    <p className='text-muted-foreground mt-1 text-xs'>
+                      {t(
+                        'Grant individual management capabilities without promoting this user to administrator.'
+                      )}
+                    </p>
+                  </div>
+
+                  {managementPermissionRole !== null &&
+                  managementPermissionRole !== ROLE.USER ? (
+                    <p className='text-muted-foreground rounded-md border p-3 text-sm'>
+                      {t(
+                        'Administrators receive all management permissions automatically. Explicit permissions can only be assigned to common users.'
+                      )}
+                    </p>
+                  ) : (
+                    <FieldSet disabled={managementPermissionsLoading}>
+                      <FieldLegend variant='label'>
+                        {t('Available capabilities')}
+                      </FieldLegend>
+                      <FieldGroup className='gap-3'>
+                        {MANAGEMENT_PERMISSION_OPTIONS.map((option) => (
+                          <Field
+                            key={option.permission}
+                            orientation='horizontal'
+                          >
+                            <Checkbox
+                              id={`management-permission-${option.permission}`}
+                              checked={managementPermissions.includes(
+                                option.permission
+                              )}
+                              onCheckedChange={(checked) =>
+                                toggleManagementPermission(
+                                  option.permission,
+                                  checked === true
+                                )
+                              }
+                            />
+                            <FieldContent>
+                              <FieldLabel
+                                htmlFor={`management-permission-${option.permission}`}
+                              >
+                                {t(option.label)}
+                              </FieldLabel>
+                              <FieldDescription>
+                                {t(option.description)}
+                              </FieldDescription>
+                            </FieldContent>
+                          </Field>
+                        ))}
+                      </FieldGroup>
+                      <Button
+                        type='button'
+                        variant='outline'
+                        disabled={
+                          managementPermissionsLoading ||
+                          managementPermissionsSaving
+                        }
+                        onClick={() => void saveManagementPermissions()}
+                      >
+                        {managementPermissionsSaving
+                          ? t('Saving...')
+                          : t('Save management permissions')}
+                      </Button>
+                    </FieldSet>
+                  )}
+                </SideDrawerSection>
+              )}
+
               {canEditAdminPermissions &&
                 targetIsAdmin &&
                 permissionCatalog.resources.length > 0 && (
@@ -621,10 +713,10 @@ export function UsersMutateDrawer({
                         )
                       }}
                     />
-                    {currentUser && (
+                    {authUser && (
                       <p className='text-muted-foreground text-xs'>
                         {hasPermission(
-                          currentUser,
+                          authUser,
                           ADMIN_PERMISSION_RESOURCES.CHANNEL,
                           ADMIN_PERMISSION_ACTIONS.SENSITIVE_WRITE
                         )
