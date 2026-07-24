@@ -11,6 +11,9 @@
 
 这样可以复用后端已有的权限校验、OSS 临时对象、文件头校验、checksum、对象转正、旧对象清理和标签同步逻辑。
 
+技能管理页也可以直接选择符合本目录格式的已解压文件夹。后台版本会使用
+`/api/admin/skill-hub/batch-upload/*` 批量接口初始化和提交，减少逐项请求产生的使用日志，并提供统一草稿/发布、推荐和强制排序等覆盖配置。批量初始化会在签发任何上传地址前完成整批冲突、配置和 Skill 元数据预检；Zip 内容仍在上传后、保存前由服务端可信校验。命令行脚本保留原有逐项接口流程，适合自动化和 dry-run。
+
 ### 数据规则
 
 - `id` 必须匹配 `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`：以字母或数字开头，后续允许字母、数字、点、下划线和短横线，最长 128 个字符
@@ -172,6 +175,8 @@ This directory contains the Skill Hub batch upload script. The script orchestrat
 4. `POST` or `PUT /api/admin/skill-hub/skills`
 
 This keeps authorization, temporary OSS object handling, file header validation, checksum calculation, object promotion, old object cleanup, and tag synchronization in the backend.
+
+The Skill management page can also select an extracted folder that follows this format. The web flow uses the `/api/admin/skill-hub/batch-upload/*` batch APIs to reduce per-item requests and usage logs, and adds global draft/publish, recommendation, and forced-sort overrides. Batch initialization completes conflict, option, and Skill metadata preflight for the whole batch before issuing any upload URL; trusted Zip-content validation still happens after upload and before saving. The CLI keeps its existing per-item flow for automation and dry-runs.
 
 ### Data Rules
 

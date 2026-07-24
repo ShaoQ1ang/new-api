@@ -488,6 +488,11 @@ func GetSelf(c *gin.Context) {
 	// 计算用户权限信息
 	permissions := calculateUserPermissions(userRole)
 	permissions["admin_permissions"] = authz.Capabilities(id, userRole)
+	managementPermissions, err := model.GetEffectiveUserManagementPermissions(id)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
 
 	// 获取用户设置并提取sidebar_modules
 	userSetting := user.GetSetting()
@@ -1172,14 +1177,16 @@ func ManageUser(c *gin.Context) {
 		return
 	}
 
-	authzTouched := false
-	if req.Action == "demote" {
+	authzTouched := req.Action == "demote"
+	if roleChanged {
 		if err := model.DB.Transaction(func(tx *gorm.DB) error {
-			if err := user.UpdateWithTx(tx, false); err != nil {
+			if err := model.UpdateUserRoleAndClearManagementPermissionsInTx(tx, user.Id, user.Role); err != nil {
 				return err
 			}
-			authzTouched = true
-			return authz.ClearUserAuthorizationInTx(tx, user.Id)
+			if authzTouched {
+				return authz.ClearUserAuthorizationInTx(tx, user.Id)
+			}
+			return nil
 		}); err != nil {
 			common.ApiError(c, err)
 			return
@@ -1704,16 +1711,15 @@ func createDefaultTokenForUser(userId int, username string) error {
 		return err
 	}
 	token := model.Token{
-		UserId:         userId,
-		Name:           username + " default",
-		Key:            key,
-		CreatedTime:    common.GetTimestamp(),
-		AccessedTime:   common.GetTimestamp(),
-		ExpiredTime:    -1,
-		RemainQuota:    0,
-		UnlimitedQuota: true,
+		UserId:             userId,
+		Name:               username + " default",
+		Key:                key,
+		CreatedTime:        common.GetTimestamp(),
+		AccessedTime:       common.GetTimestamp(),
+		ExpiredTime:        -1,
+		RemainQuota:        0,
+		UnlimitedQuota:     true,
 		ModelLimitsEnabled: false,
 	}
 	return token.Insert()
 }
-

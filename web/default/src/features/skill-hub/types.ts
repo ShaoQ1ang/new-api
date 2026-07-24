@@ -179,6 +179,41 @@ export type SkillHubUploadResponse = {
   }
 }
 
+export type SkillHubBatchUploadSpec = NonNullable<
+  SkillHubDirectUploadInitResponse['data']
+>
+
+export type SkillHubBatchUploadInitResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    items: Array<{
+      index: number
+      id: string
+      status: 'ready' | 'skipped' | 'failed'
+      action?: 'create' | 'update' | 'exists'
+      message?: string
+      zip?: SkillHubBatchUploadSpec
+      icon?: SkillHubBatchUploadSpec
+    }>
+  }
+}
+
+export type SkillHubBatchUploadCommitResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    items: Array<{
+      index: number
+      id: string
+      status: 'success' | 'skipped' | 'failed'
+      action?: 'create' | 'update' | 'exists'
+      message?: string
+      skill?: SkillHubSkill
+    }>
+  }
+}
+
 export type SkillHubForm = {
   id: string
   name: string

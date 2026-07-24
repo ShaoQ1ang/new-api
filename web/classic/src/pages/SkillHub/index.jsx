@@ -32,6 +32,7 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import { API, showError, showSuccess } from '../../helpers';
+import BatchUploadModal from './BatchUploadModal';
 
 const createDefaultForm = () => ({
   id: '',
@@ -1009,6 +1010,10 @@ const SkillHub = () => {
             </Typography.Text>
           </div>
           <Space>
+            <BatchUploadModal
+              tagOptions={tagOptions}
+              onComplete={() => loadSkills()}
+            />
             <Button onClick={handleNew}>新建</Button>
             <Button onClick={() => loadSkills()} loading={loading}>
               刷新
