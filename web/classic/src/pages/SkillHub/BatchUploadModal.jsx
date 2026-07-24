@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Button, Checkbox, Input, Modal, Space, Tag } from '@douyinfe/semi-ui';
+import { Button, Input, Modal, Space, Tag } from '@douyinfe/semi-ui';
 import {
   createSkillHubBatchOptions,
   createSkillHubBatchReport,
@@ -50,6 +50,7 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
   const [finished, setFinished] = useState(false);
   const folderInputRef = useRef(null);
   const abortRef = useRef(null);
+  const workingRef = useRef(false);
 
   const entries = directory?.entries || [];
   const localErrorCount = entries.reduce(
@@ -129,7 +130,8 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
   };
 
   const startUpload = async (targetIndexes) => {
-    if (!directory || working || localErrorCount > 0) return;
+    if (!directory || working || workingRef.current || localErrorCount > 0)
+      return;
     try {
       validateSkillHubBatchOptions(options);
     } catch (error) {
@@ -146,10 +148,11 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
     abortRef.current = controller;
     setStartedAt(new Date().toISOString());
     setFinished(false);
+    workingRef.current = true;
     setWorking(true);
     for (const entry of targets) {
       patchRow(entry.index, {
-        status: 'initializing',
+        status: 'validating',
         action: '',
         message: '',
         progress: 2,
@@ -161,10 +164,10 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
     try {
       const initRes = await API.post('/api/admin/skill-hub/batch-upload/init', {
         mode: options.mode,
+        options: commitOptions(options),
         items: targets.map((entry) => ({
           index: entry.index,
-          id: entry.id,
-          version: entry.version,
+          skill: entryToCommitSkill(entry),
           zip: {
             fileName: entry.zipFile?.name || '',
             size: entry.zipFile?.size || 0,
@@ -368,6 +371,7 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
         }
       }
       abortRef.current = null;
+      workingRef.current = false;
       setWorking(false);
       setFinished(true);
       if (successCount > 0) {
@@ -486,6 +490,12 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
           {directory && localErrorCount > 0 ? (
             <div className='rounded border border-semi-color-danger bg-semi-color-danger-light-default p-3 text-sm text-semi-color-danger'>
               文件夹校验失败，请先修复 manifest 和关联文件中的全部错误。
+            </div>
+          ) : null}
+
+          {directory && localErrorCount === 0 ? (
+            <div className='rounded border border-semi-color-success bg-semi-color-success-light-default p-3 text-sm text-semi-color-success'>
+              本地校验已通过。开始上传时，服务端会在签发上传地址前再次校验全部 Skill 元数据。
             </div>
           ) : null}
 
@@ -643,32 +653,6 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
                     </datalist>
                   </ConfigField>
                 ) : null}
-                <ConfigField label='统一来源'>
-                  <div className='space-y-2'>
-                    <Checkbox
-                      checked={options.overrideOrigin}
-                      disabled={working}
-                      onChange={(event) =>
-                        setOptions((current) => ({
-                          ...current,
-                          overrideOrigin: event.target.checked,
-                        }))
-                      }
-                    >
-                      替换 manifest 中的来源
-                    </Checkbox>
-                    {options.overrideOrigin ? (
-                      <Input
-                        maxLength={64}
-                        value={options.origin}
-                        disabled={working}
-                        onChange={(origin) =>
-                          setOptions((current) => ({ ...current, origin }))
-                        }
-                      />
-                    ) : null}
-                  </div>
-                </ConfigField>
                 {[
                   ['缺少图标时', 'missingIcon'],
                   ['缺少案例时', 'missingTestcases'],
@@ -692,18 +676,20 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
                   </ConfigField>
                 ))}
                 <ConfigField label='错误处理'>
-                  <Checkbox
-                    checked={options.stopOnError}
+                  <NativeSelect
+                    value={options.stopOnError ? 'stop' : 'continue'}
                     disabled={working}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setOptions((current) => ({
                         ...current,
-                        stopOnError: event.target.checked,
+                        stopOnError: value === 'stop',
                       }))
                     }
-                  >
-                    首个上传错误后停止
-                  </Checkbox>
+                    options={[
+                      ['continue', '继续处理其他 Skill'],
+                      ['stop', '首个上传错误后停止'],
+                    ]}
+                  />
                 </ConfigField>
               </div>
 
@@ -933,8 +919,8 @@ function commitOptions(options) {
     verifiedMode: options.verifiedMode,
     tagMode: options.tagMode,
     commonTags: options.commonTags,
-    overrideOrigin: options.overrideOrigin,
-    origin: options.origin,
+    overrideOrigin: false,
+    origin: '',
     missingIcon: options.missingIcon,
     missingTestcases: options.missingTestcases,
     missingEvaluation: options.missingEvaluation,
@@ -1036,7 +1022,7 @@ function NumberInput({
 function StatusTag({ status }) {
   const labels = {
     pending: '待处理',
-    initializing: '初始化',
+    validating: '校验中',
     uploading: '上传中',
     committing: '保存中',
     success: '成功',

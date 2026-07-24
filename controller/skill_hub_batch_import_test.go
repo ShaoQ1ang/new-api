@@ -1,29 +1,62 @@
 package controller
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/model"
+	"github.com/gin-gonic/gin"
 )
 
 func TestValidateSkillHubBatchInitItemsRejectsDuplicates(t *testing.T) {
 	items := []skillHubBatchUploadInitItemRequest{
 		{
-			Index:   0,
-			ID:      "demo.skill",
-			Version: "1.0.0",
-			Zip:     skillHubBatchUploadFileRequest{FileName: "demo.zip", Size: 10},
+			Index: 0,
+			Skill: skillHubSkillRequest{
+				ID:      "demo.skill",
+				Version: "1.0.0",
+			},
+			Zip: skillHubBatchUploadFileRequest{FileName: "demo.zip", Size: 10},
 		},
 		{
-			Index:   1,
-			ID:      "demo.skill",
-			Version: "2.0.0",
-			Zip:     skillHubBatchUploadFileRequest{FileName: "demo-2.zip", Size: 10},
+			Index: 1,
+			Skill: skillHubSkillRequest{
+				ID:      "demo.skill",
+				Version: "2.0.0",
+			},
+			Zip: skillHubBatchUploadFileRequest{FileName: "demo-2.zip", Size: 10},
 		},
 	}
 	if err := validateSkillHubBatchInitItems(items); err == nil || !strings.Contains(err.Error(), "duplicate skill id") {
 		t.Fatalf("validateSkillHubBatchInitItems() error = %v, want duplicate skill id", err)
+	}
+}
+
+func TestPreflightSkillHubBatchInitItemRejectsInvalidSkillBeforeUpload(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "https://example.com/api/admin/skill-hub/batch-upload/init", nil)
+	item := skillHubBatchUploadInitItemRequest{
+		Index: 0,
+		Skill: skillHubSkillRequest{
+			ID:      "demo.skill",
+			Version: "1.0.0",
+		},
+		Zip: skillHubBatchUploadFileRequest{FileName: "demo.zip", Size: 10},
+	}
+	options := skillHubBatchImportOptionsRequest{
+		SortMode:          skillHubBatchSortModeFixed,
+		VerifiedMode:      skillHubBatchVerifiedModeManifest,
+		TagMode:           skillHubBatchTagModeManifest,
+		MissingIcon:       skillHubBatchMissingPolicyRetain,
+		MissingTestcases:  skillHubBatchMissingPolicyRetain,
+		MissingEvaluation: skillHubBatchMissingPolicyRetain,
+	}
+	err := preflightSkillHubBatchInitItem(c, item, options, nil)
+	if err == nil || err.Error() != "skill name is required" {
+		t.Fatalf("preflightSkillHubBatchInitItem() error = %v, want skill name required", err)
 	}
 }
 

@@ -1354,7 +1354,7 @@
       "post": {
         "summary": "批量初始化 Skill Hub 文件直传",
         "deprecated": false,
-        "description": "需要 skill_hub.content.manage 权限；一次接收 1 至 200 个技能的 Zip 与可选图标元数据，按冲突策略批量返回临时 OSS PUT signed URL。文件本体由浏览器直接上传到 OSS，不经过 New API。",
+        "description": "需要 skill_hub.content.manage 权限；一次接收 1 至 200 个技能的完整元数据、统一配置以及 Zip 与可选图标文件信息。服务端先完成全部条目的冲突检查和技能模型预检，再为可处理项批量返回临时 OSS PUT signed URL。文件本体由浏览器直接上传到 OSS，不经过 New API。请求体最大 32MB。",
         "tags": [
           "技能广场管理"
         ],
@@ -2209,8 +2209,7 @@
         "type": "object",
         "required": [
           "index",
-          "id",
-          "version",
+          "skill",
           "zip"
         ],
         "properties": {
@@ -2220,13 +2219,9 @@
             "maximum": 199,
             "description": "manifest 中从 0 开始的稳定索引，提交阶段须复用"
           },
-          "id": {
-            "type": "string",
-            "description": "技能 ID；同一批次内不可重复"
-          },
-          "version": {
-            "type": "string",
-            "description": "技能版本"
+          "skill": {
+            "$ref": "#/components/schemas/SkillHubSkillRequest",
+            "description": "待保存的完整技能元数据；服务端会在签发上传地址前应用统一配置并预检"
           },
           "zip": {
             "$ref": "#/components/schemas/SkillHubBatchUploadFileRequest"
@@ -2240,6 +2235,7 @@
         "type": "object",
         "required": [
           "mode",
+          "options",
           "items"
         ],
         "properties": {
@@ -2251,6 +2247,10 @@
               "fail"
             ],
             "description": "已有 Skill 的处理策略"
+          },
+          "options": {
+            "$ref": "#/components/schemas/SkillHubBatchUploadOptions",
+            "description": "预检和最终提交必须使用相同的统一覆盖配置"
           },
           "items": {
             "type": "array",

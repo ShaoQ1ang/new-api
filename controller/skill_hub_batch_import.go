@@ -42,16 +42,16 @@ type skillHubBatchUploadFileRequest struct {
 }
 
 type skillHubBatchUploadInitItemRequest struct {
-	Index   int                             `json:"index"`
-	ID      string                          `json:"id"`
-	Version string                          `json:"version"`
-	Zip     skillHubBatchUploadFileRequest  `json:"zip"`
-	Icon    *skillHubBatchUploadFileRequest `json:"icon,omitempty"`
+	Index int                             `json:"index"`
+	Skill skillHubSkillRequest            `json:"skill"`
+	Zip   skillHubBatchUploadFileRequest  `json:"zip"`
+	Icon  *skillHubBatchUploadFileRequest `json:"icon,omitempty"`
 }
 
 type skillHubBatchUploadInitRequest struct {
-	Mode  string                               `json:"mode"`
-	Items []skillHubBatchUploadInitItemRequest `json:"items"`
+	Mode    string                               `json:"mode"`
+	Options skillHubBatchImportOptionsRequest    `json:"options"`
+	Items   []skillHubBatchUploadInitItemRequest `json:"items"`
 }
 
 type skillHubBatchUploadInitItemResponse struct {
@@ -114,7 +114,7 @@ type skillHubBatchCompletedUploads struct {
 }
 
 func AdminInitSkillHubBatchUpload(c *gin.Context) {
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<20)
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, skillHubBatchImportMaxBodyBytes)
 	var request skillHubBatchUploadInitRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		common.ApiError(c, err)
@@ -129,10 +129,14 @@ func AdminInitSkillHubBatchUpload(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if err := validateSkillHubBatchOptions(&request.Options); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 
 	ids := make([]string, 0, len(request.Items))
 	for _, item := range request.Items {
-		ids = append(ids, strings.TrimSpace(item.ID))
+		ids = append(ids, strings.TrimSpace(item.Skill.ID))
 	}
 	existingSkills, err := model.GetSkillHubSkillsBySkillIDs(ids)
 	if err != nil {
@@ -145,16 +149,20 @@ func AdminInitSkillHubBatchUpload(c *gin.Context) {
 	}
 
 	results := make([]skillHubBatchUploadInitItemResponse, len(request.Items))
+	eligible := make([]bool, len(request.Items))
 	for index, item := range request.Items {
-		item.ID = strings.TrimSpace(item.ID)
-		item.Version = strings.TrimSpace(item.Version)
+		item.Skill.ID = strings.TrimSpace(item.Skill.ID)
+		item.Skill.Version = strings.TrimSpace(item.Skill.Version)
+		request.Items[index].Skill.ID = item.Skill.ID
+		request.Items[index].Skill.Version = item.Skill.Version
 		result := skillHubBatchUploadInitItemResponse{
 			Index:  item.Index,
-			ID:     item.ID,
+			ID:     item.Skill.ID,
 			Status: skillHubBatchItemStatusReady,
 			Action: "create",
 		}
-		if existingByID[item.ID] != nil {
+		existing := existingByID[item.Skill.ID]
+		if existing != nil {
 			switch mode {
 			case "skip":
 				result.Status = skillHubBatchItemStatusSkipped
@@ -172,11 +180,26 @@ func AdminInitSkillHubBatchUpload(c *gin.Context) {
 				result.Action = "update"
 			}
 		}
+		if preflightErr := preflightSkillHubBatchInitItem(c, item, request.Options, existing); preflightErr != nil {
+			result.Status = skillHubBatchItemStatusFailed
+			result.Message = preflightErr.Error()
+			results[index] = result
+			continue
+		}
+		eligible[index] = true
+		results[index] = result
+	}
 
+	// Complete every metadata/config/conflict preflight before issuing any OSS upload URL.
+	for index, item := range request.Items {
+		if !eligible[index] {
+			continue
+		}
+		result := results[index]
 		zipUpload, initErr := service.InitSkillHubDirectUpload(service.SkillHubDirectUploadInput{
 			Kind:     service.SkillHubUploadKindZip,
-			SkillID:  item.ID,
-			Version:  item.Version,
+			SkillID:  item.Skill.ID,
+			Version:  item.Skill.Version,
 			FileName: item.Zip.FileName,
 			Size:     item.Zip.Size,
 		})
@@ -191,7 +214,7 @@ func AdminInitSkillHubBatchUpload(c *gin.Context) {
 		if item.Icon != nil {
 			iconUpload, iconErr := service.InitSkillHubDirectUpload(service.SkillHubDirectUploadInput{
 				Kind:     service.SkillHubUploadKindIcon,
-				SkillID:  item.ID,
+				SkillID:  item.Skill.ID,
 				FileName: item.Icon.FileName,
 				Size:     item.Icon.Size,
 			})
@@ -385,11 +408,11 @@ func validateSkillHubBatchInitItems(items []skillHubBatchUploadInitItemRequest) 
 	seenIDs := make(map[string]struct{}, len(items))
 	seenIndexes := make(map[int]struct{}, len(items))
 	for _, item := range items {
-		id := strings.TrimSpace(item.ID)
+		id := strings.TrimSpace(item.Skill.ID)
 		if err := model.ValidateSkillHubSkillID(id); err != nil {
 			return err
 		}
-		if strings.TrimSpace(item.Version) == "" {
+		if strings.TrimSpace(item.Skill.Version) == "" {
 			return errors.New("skill version is required")
 		}
 		if _, ok := seenIDs[id]; ok {
@@ -609,6 +632,24 @@ func preflightSkillHubBatchItem(
 		return err
 	}
 	return model.ValidateSkillHubSkill(skill)
+}
+
+func preflightSkillHubBatchInitItem(
+	c *gin.Context,
+	item skillHubBatchUploadInitItemRequest,
+	options skillHubBatchImportOptionsRequest,
+	existing *model.SkillHubSkill,
+) error {
+	iconTicket := ""
+	if item.Icon != nil {
+		// The preflight only needs to distinguish a new icon from a missing icon.
+		iconTicket = "pending-icon-upload"
+	}
+	return preflightSkillHubBatchItem(c, skillHubBatchImportCommitItemRequest{
+		Index:            item.Index,
+		Skill:            item.Skill,
+		IconUploadTicket: iconTicket,
+	}, options, existing)
 }
 
 func completeSkillHubBatchUploads(ctx context.Context, items []skillHubBatchImportCommitItemRequest, eligible []bool) []skillHubBatchCompletedUploads {

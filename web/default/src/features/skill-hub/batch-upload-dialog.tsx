@@ -29,7 +29,6 @@ import { toast } from 'sonner'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -60,7 +59,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
 import {
   Table,
   TableBody,
@@ -91,7 +89,7 @@ import type { SkillHubBatchUploadSpec, SkillHubTag } from './types'
 
 type BatchRowStatus =
   | 'pending'
-  | 'initializing'
+  | 'validating'
   | 'uploading'
   | 'committing'
   | 'success'
@@ -142,6 +140,7 @@ export function SkillHubBatchUploadDialog({
   const [finished, setFinished] = useState(false)
   const folderInputRef = useRef<HTMLInputElement | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const workingRef = useRef(false)
 
   const entries = directory?.entries || []
   const localErrorCount = entries.reduce(
@@ -231,7 +230,8 @@ export function SkillHubBatchUploadDialog({
   }
 
   async function startUpload(targetIndexes?: number[]) {
-    if (!directory || working || localErrorCount > 0) return
+    if (!directory || working || workingRef.current || localErrorCount > 0)
+      return
     try {
       validateSkillHubBatchOptions(options)
     } catch (error) {
@@ -257,10 +257,11 @@ export function SkillHubBatchUploadDialog({
     const nextStartedAt = new Date().toISOString()
     setStartedAt(nextStartedAt)
     setFinished(false)
+    workingRef.current = true
     setWorking(true)
     for (const entry of targets) {
       patchRow(entry.index, {
-        status: 'initializing',
+        status: 'validating',
         action: '',
         message: '',
         progress: 2,
@@ -272,10 +273,10 @@ export function SkillHubBatchUploadDialog({
     try {
       const initPayload = await initSkillHubBatchUpload({
         mode: options.mode,
+        options: commitOptions(options),
         items: targets.map((entry) => ({
           index: entry.index,
-          id: entry.id,
-          version: entry.version,
+          skill: entryToCommitSkill(entry),
           zip: {
             fileName: entry.zipFile?.name || '',
             size: entry.zipFile?.size || 0,
@@ -484,6 +485,7 @@ export function SkillHubBatchUploadDialog({
         }
       }
       abortRef.current = null
+      workingRef.current = false
       setWorking(false)
       setFinished(true)
       if (successfulCount > 0) {
@@ -603,6 +605,18 @@ export function SkillHubBatchUploadDialog({
                 <AlertDescription>
                   {t(
                     'Resolve all manifest and file errors before starting the upload.'
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {directory && localErrorCount === 0 && (
+              <Alert>
+                <HugeiconsIcon icon={CheckmarkCircle02Icon} />
+                <AlertTitle>{t('Local validation passed')}</AlertTitle>
+                <AlertDescription>
+                  {t(
+                    'The server validates all skill metadata again before issuing upload URLs.'
                   )}
                 </AlertDescription>
               </Alert>
@@ -733,19 +747,21 @@ export function SkillHubBatchUploadDialog({
                         {t('Only OSS PUT uploads run concurrently.')}
                       </FieldDescription>
                     </Field>
-                    <Field orientation='horizontal'>
-                      <Checkbox
-                        checked={options.stopOnError}
-                        onCheckedChange={(checked) =>
+                    <Field>
+                      <FieldLabel>{t('Error handling')}</FieldLabel>
+                      <OptionSelect
+                        value={options.stopOnError ? 'stop' : 'continue'}
+                        onChange={(value) =>
                           setOptions((current) => ({
                             ...current,
-                            stopOnError: Boolean(checked),
+                            stopOnError: value === 'stop',
                           }))
                         }
+                        options={[
+                          ['continue', t('Continue processing other Skills')],
+                          ['stop', t('Stop after the first failure')],
+                        ]}
                       />
-                      <FieldLabel>
-                        {t('Stop after the first failure')}
-                      </FieldLabel>
                     </Field>
                   </FieldGroup>
                 </FieldSet>
@@ -808,33 +824,6 @@ export function SkillHubBatchUploadDialog({
                             <option key={tag.id} value={tag.name} />
                           ))}
                         </datalist>
-                      </Field>
-                    )}
-                    <Field orientation='horizontal'>
-                      <Switch
-                        checked={options.overrideOrigin}
-                        onCheckedChange={(checked) =>
-                          setOptions((current) => ({
-                            ...current,
-                            overrideOrigin: checked,
-                          }))
-                        }
-                      />
-                      <FieldLabel>{t('Override source name')}</FieldLabel>
-                    </Field>
-                    {options.overrideOrigin && (
-                      <Field>
-                        <FieldLabel>{t('Source name')}</FieldLabel>
-                        <Input
-                          maxLength={64}
-                          value={options.origin}
-                          onChange={(event) =>
-                            setOptions((current) => ({
-                              ...current,
-                              origin: event.target.value,
-                            }))
-                          }
-                        />
                       </Field>
                     )}
                     <MissingPolicyField
@@ -1114,8 +1103,8 @@ function commitOptions(options: SkillHubBatchOptions) {
     verifiedMode: options.verifiedMode,
     tagMode: options.tagMode,
     commonTags: options.commonTags,
-    overrideOrigin: options.overrideOrigin,
-    origin: options.origin,
+    overrideOrigin: false,
+    origin: '',
     missingIcon: options.missingIcon,
     missingTestcases: options.missingTestcases,
     missingEvaluation: options.missingEvaluation,
@@ -1275,7 +1264,7 @@ function StatusBadge({
 }) {
   const labelByStatus: Record<BatchRowStatus, string> = {
     pending: t('Pending'),
-    initializing: t('Initializing'),
+    validating: t('Validating'),
     uploading: t('Uploading'),
     committing: t('Saving'),
     success: t('Success'),

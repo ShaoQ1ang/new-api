@@ -241,10 +241,10 @@ export async function uploadSkillHubIcon(
 
 export async function initSkillHubBatchUpload(input: {
   mode: 'skip' | 'update' | 'fail'
+  options: Record<string, unknown>
   items: Array<{
     index: number
-    id: string
-    version: string
+    skill: Record<string, unknown>
     zip: { fileName: string; size: number }
     icon?: { fileName: string; size: number }
   }>
