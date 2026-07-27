@@ -1,10 +1,17 @@
-FROM oven/bun:1@sha256:0733e50325078969732ebe3b15ce4c4be5082f18c4ac1a0f0ca4839c2e4e42a7 AS builder
+FROM oven/bun:1@sha256:0733e50325078969732ebe3b15ce4c4be5082f18c4ac1a0f0ca4839c2e4e42a7 AS web-deps
 
 WORKDIR /build/web
+ARG BUN_REGISTRY=https://registry.npmjs.org
 COPY web/package.json web/bun.lock ./
 COPY web/default/package.json ./default/package.json
 COPY web/classic/package.json ./classic/package.json
-RUN bun install --frozen-lockfile --registry=https://registry.npmjs.org
+RUN if [ "${BUN_REGISTRY}" != "https://registry.npmjs.org" ]; then \
+        sed -i "s|https://registry.npmjs.org|${BUN_REGISTRY%/}|g" bun.lock; \
+    fi && \
+    bun install --frozen-lockfile --registry=${BUN_REGISTRY}
+
+FROM web-deps AS builder
+
 COPY ./web/default ./default
 COPY ./web/shared ./shared
 COPY ./VERSION /build/VERSION
@@ -14,8 +21,12 @@ FROM oven/bun:1@sha256:0733e50325078969732ebe3b15ce4c4be5082f18c4ac1a0f0ca4839c2
 
 WORKDIR /build/web/classic
 ARG VITE_HOME_ENTRY=en
+ARG BUN_REGISTRY=https://registry.npmjs.org
 COPY web/classic/package.json web/classic/bun.lock ./
-RUN bun install --frozen-lockfile --registry=https://registry.npmjs.org
+RUN if [ "${BUN_REGISTRY}" != "https://registry.npmjs.org" ]; then \
+        sed -i "s|https://registry.npmjs.org|${BUN_REGISTRY%/}|g" bun.lock; \
+    fi && \
+    bun install --frozen-lockfile --registry=${BUN_REGISTRY}
 COPY ./web/classic .
 COPY ./web/shared /build/web/shared
 COPY ./VERSION .

@@ -56,6 +56,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
+        BUN_REGISTRY: ${BUN_REGISTRY:-https://registry.npmmirror.com}
         GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
         GOSUMDB: ${GOSUMDB:-sum.golang.google.cn}
     image: new-api:local
