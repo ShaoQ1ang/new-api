@@ -13,7 +13,7 @@ const (
 	BillingModeTieredExpr   = "tiered_expr"
 	BillingModeVideoSeconds = "video_seconds"
 	BillingModeField        = "billing_mode"
-	BillingExprField        = "billing_expr"
+	BillingExprField      = "billing_expr"
 )
 
 // BillingSetting is managed by config.GlobalConfig.Register.

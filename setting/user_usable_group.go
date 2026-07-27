@@ -10,7 +10,6 @@ var userUsableGroups = map[string]string{
 	"default": "Default",
 	"vip":     "VIP",
 }
-
 var userUsableGroupsMutex sync.RWMutex
 
 func GetUserUsableGroupsCopy() map[string]string {

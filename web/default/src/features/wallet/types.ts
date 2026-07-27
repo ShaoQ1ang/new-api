@@ -38,12 +38,6 @@ export type AmountResponse = ApiResponse<string>
 export type PaymentResponse = ApiResponse<Record<string, unknown>> & {
   url?: string
 }
-export type AlipayPaymentResponse = ApiResponse<{
-  pay_type: 'redirect' | 'form'
-  pay_url?: string
-  pay_form?: string
-  trade_no: string
-}>
 export type StripePaymentResponse = ApiResponse<{ pay_link: string }>
 export type AffiliateCodeResponse = ApiResponse<string>
 export type AffiliateTransferResponse = ApiResponse
@@ -57,6 +51,11 @@ export type WaffoPancakePaymentResponse = ApiResponse<
       session_id?: string
       expires_at?: number | string
       order_id?: string
+      // Self-service session token + expiry — surfaced by the backend so
+      // future flows (refund / cancel from new-api's own UI) can use them
+      // without re-issuing checkout. Not consumed by the current handler.
+      token?: string
+      token_expires_at?: number | string
     }
   | string
 >
@@ -95,11 +94,11 @@ export interface PaymentMethod {
   name: string
   /** Payment method type identifier */
   type: string
-  /** Optional color for UI display */
+  /** Legacy optional color for UI display */
   color?: string
   /** Minimum topup amount for this payment method */
   min_topup?: number
-  /** Optional icon URL provided by backend (preferred over built-in icons) */
+  /** Optional react-icons component name or safe icon URL */
   icon?: string
 }
 
@@ -125,16 +124,12 @@ export interface TopupInfo {
   enable_online_topup: boolean
   /** Whether Stripe topup is enabled */
   enable_stripe_topup: boolean
-  /** Whether Alipay topup is enabled */
-  enable_alipay_topup?: boolean
   /** Available payment methods */
   pay_methods: PaymentMethod[]
   /** Minimum topup amount for online topup */
   min_topup: number
   /** Minimum topup amount for Stripe */
   stripe_min_topup: number
-  /** Minimum topup amount for Alipay */
-  alipay_min_topup?: number
   /** Preset amount options */
   amount_options: number[]
   /** Discount rates by amount */

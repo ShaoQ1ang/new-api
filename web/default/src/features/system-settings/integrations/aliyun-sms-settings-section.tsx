@@ -1,3 +1,6 @@
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm } from 'react-hook-form'
+import { useTranslation } from 'react-i18next'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -17,9 +20,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import * as z from 'zod'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { useTranslation } from 'react-i18next'
+
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -31,6 +32,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+
 import { SettingsSection } from '../components/settings-section'
 import { useResetForm } from '../hooks/use-reset-form'
 import { useUpdateOption } from '../hooks/use-update-option'
@@ -125,10 +127,10 @@ export function AliyunSmsSettingsSection({
   }
 
   return (
-    <SettingsSection
-      title={t('Aliyun SMS')}
-      description={t('Configure Aliyun SMS service for phone sign-in')}
-    >
+    <SettingsSection title={t('Aliyun SMS')}>
+      <p className='text-muted-foreground text-sm'>
+        {t('Configure Aliyun SMS service for phone sign-in')}
+      </p>
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(onSubmit)}

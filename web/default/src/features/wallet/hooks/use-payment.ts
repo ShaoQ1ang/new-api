@@ -16,12 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useCallback } from 'react'
 import i18next from 'i18next'
+import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
+
 import {
   calculateAmount,
-  requestAlipayPayment,
   calculateStripeAmount,
   calculateWaffoPancakeAmount,
   requestPayment,
@@ -29,7 +29,6 @@ import {
   isApiSuccess,
 } from '../api'
 import {
-  isAlipayPayment,
   isStripePayment,
   isWaffoPancakePayment,
   submitPaymentForm,
@@ -83,16 +82,10 @@ export function usePayment() {
       try {
         setProcessing(true)
 
-        const isAlipay = isAlipayPayment(paymentType)
         const isStripe = isStripePayment(paymentType)
         const amount = Math.floor(topupAmount)
 
-        const response = isAlipay
-          ? await requestAlipayPayment({
-              amount,
-              payment_method: 'alipay',
-            })
-          : isStripe
+        const response = isStripe
           ? await requestStripePayment({
               amount,
               payment_method: 'stripe',
@@ -105,12 +98,6 @@ export function usePayment() {
         if (!isApiSuccess(response)) {
           toast.error(response.message || i18next.t('Payment request failed'))
           return false
-        }
-
-        if (isAlipay && response.data?.pay_url) {
-          window.location.href = response.data.pay_url
-          toast.success(i18next.t('Redirecting to payment page...'))
-          return true
         }
 
         // Handle Stripe payment

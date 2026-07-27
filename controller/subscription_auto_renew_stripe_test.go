@@ -30,6 +30,7 @@ func stripeTestSignature(payload string, secret string) string {
 }
 
 func TestStripeWebhookRetriesRecurringHandlerFailure(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
 	setupSubscriptionControllerTestDB(t)
 	originalWebhookSecret := setting.StripeWebhookSecret
 	t.Cleanup(func() {
@@ -614,7 +615,7 @@ func setupSubscriptionControllerTestDB(t *testing.T) *gorm.DB {
 	model.DB = db
 	model.LOG_DB = db
 
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.SubscriptionPlan{}, &model.BillingSubscription{}, &model.RecurringChargeAttempt{}, &model.UserSubscription{}, &model.TopUp{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.SubscriptionPlan{}, &model.BillingSubscription{}, &model.RecurringChargeAttempt{}, &model.UserSubscription{}, &model.TopUp{}, &model.SubscriptionOrder{}, &model.AlipayPendingTask{}, &model.Log{}))
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()

@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
+
 import type {
   RedemptionRequest,
   PaymentRequest,
@@ -27,7 +28,6 @@ import type {
   RedemptionResponse,
   AmountResponse,
   PaymentResponse,
-  AlipayPaymentResponse,
   StripePaymentResponse,
   AffiliateCodeResponse,
   AffiliateTransferResponse,
@@ -116,18 +116,6 @@ export async function requestStripePayment(
   request: PaymentRequest
 ): Promise<StripePaymentResponse> {
   const res = await api.post('/api/user/stripe/pay', request, {
-    skipBusinessError: true,
-  } as Record<string, unknown>)
-  return res.data
-}
-
-/**
- * Request Alipay payment
- */
-export async function requestAlipayPayment(
-  request: PaymentRequest
-): Promise<AlipayPaymentResponse> {
-  const res = await api.post('/api/user/alipay/pay', request, {
     skipBusinessError: true,
   } as Record<string, unknown>)
   return res.data

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -9,7 +10,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-contrib/sessions"
@@ -22,9 +22,9 @@ type wechatLoginResponse struct {
 	Data    string `json:"data"`
 }
 
-func getWeChatIdByCode(c *gin.Context, code string) (string, error) {
+func getWeChatIdByCode(code string) (string, error) {
 	if code == "" {
-		return "", i18n.ErrInvalidParams
+		return "", errors.New("无效的参数")
 	}
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/wechat/user?code=%s", common.WeChatServerAddress, url.QueryEscape(code)), nil)
 	if err != nil {
@@ -40,7 +40,7 @@ func getWeChatIdByCode(c *gin.Context, code string) (string, error) {
 	}
 	defer httpResponse.Body.Close()
 	var res wechatLoginResponse
-	err = common.DecodeJson(httpResponse.Body, &res)
+	err = json.NewDecoder(httpResponse.Body).Decode(&res)
 	if err != nil {
 		return "", err
 	}
@@ -48,27 +48,22 @@ func getWeChatIdByCode(c *gin.Context, code string) (string, error) {
 		return "", errors.New(res.Message)
 	}
 	if res.Data == "" {
-		return "", i18n.ErrUserVerificationCodeError
+		return "", errors.New("验证码错误或已过期")
 	}
 	return res.Data, nil
 }
 
 func WeChatAuth(c *gin.Context) {
 	if !common.WeChatAuthEnabled {
-		common.ApiErrorI18n(c, i18n.MsgOAuthNotEnabled, providerParams("WeChat"))
+		c.JSON(http.StatusOK, gin.H{
+			"message": "管理员未开启通过微信登录以及注册",
+			"success": false,
+		})
 		return
 	}
 	code := c.Query("code")
-	wechatId, err := getWeChatIdByCode(c, code)
+	wechatId, err := getWeChatIdByCode(code)
 	if err != nil {
-		if errors.Is(err, i18n.ErrInvalidParams) {
-			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-			return
-		}
-		if errors.Is(err, i18n.ErrUserVerificationCodeError) {
-			common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
-			return
-		}
 		c.JSON(http.StatusOK, gin.H{
 			"message": err.Error(),
 			"success": false,
@@ -88,7 +83,10 @@ func WeChatAuth(c *gin.Context) {
 			return
 		}
 		if user.Id == 0 {
-			common.ApiErrorI18n(c, i18n.MsgOAuthUserDeleted)
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "用户已注销",
+			})
 			return
 		}
 	} else {
@@ -106,13 +104,19 @@ func WeChatAuth(c *gin.Context) {
 				return
 			}
 		} else {
-			common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "管理员关闭了新用户注册",
+			})
 			return
 		}
 	}
 
 	if user.Status != common.UserStatusEnabled {
-		common.ApiErrorI18n(c, i18n.MsgOAuthUserBanned)
+		c.JSON(http.StatusOK, gin.H{
+			"message": "用户已被封禁",
+			"success": false,
+		})
 		return
 	}
 	setupLogin(&user, c)
@@ -124,25 +128,23 @@ type wechatBindRequest struct {
 
 func WeChatBind(c *gin.Context) {
 	if !common.WeChatAuthEnabled {
-		common.ApiErrorI18n(c, i18n.MsgOAuthNotEnabled, providerParams("WeChat"))
+		c.JSON(http.StatusOK, gin.H{
+			"message": "管理员未开启通过微信登录以及注册",
+			"success": false,
+		})
 		return
 	}
 	var req wechatBindRequest
 	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "无效的请求",
+		})
 		return
 	}
 	code := req.Code
-	wechatId, err := getWeChatIdByCode(c, code)
+	wechatId, err := getWeChatIdByCode(code)
 	if err != nil {
-		if errors.Is(err, i18n.ErrInvalidParams) {
-			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-			return
-		}
-		if errors.Is(err, i18n.ErrUserVerificationCodeError) {
-			common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
-			return
-		}
 		c.JSON(http.StatusOK, gin.H{
 			"message": err.Error(),
 			"success": false,
@@ -150,7 +152,10 @@ func WeChatBind(c *gin.Context) {
 		return
 	}
 	if model.IsWeChatIdAlreadyTaken(wechatId) {
-		common.ApiErrorI18n(c, i18n.MsgOAuthAlreadyBound, providerParams("WeChat"))
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "该微信账号已被绑定",
+		})
 		return
 	}
 	session := sessions.Default(c)

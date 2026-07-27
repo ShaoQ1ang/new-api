@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	"gorm.io/gorm"
 )
 
 type Option struct {
@@ -63,6 +64,8 @@ func InitOptionMap() {
 	common.OptionMap["SMTPAccount"] = ""
 	common.OptionMap["SMTPToken"] = ""
 	common.OptionMap["SMTPSSLEnabled"] = strconv.FormatBool(common.SMTPSSLEnabled)
+	common.OptionMap["SMTPStartTLSEnabled"] = strconv.FormatBool(common.SMTPStartTLSEnabled)
+	common.OptionMap["SMTPInsecureSkipVerify"] = strconv.FormatBool(common.SMTPInsecureSkipVerify)
 	common.OptionMap["SMTPForceAuthLogin"] = strconv.FormatBool(common.SMTPForceAuthLogin)
 	common.OptionMap["SkillHubReportEmail"] = common.SkillHubReportEmail
 	common.OptionMap["AliyunSmsAccessKeyId"] = ""
@@ -107,6 +110,7 @@ func InitOptionMap() {
 	common.OptionMap["AlipayCyclePayPersonalProductCode"] = setting.AlipayCyclePayPersonalProductCode
 	common.OptionMap["AlipayCyclePayProductCode"] = setting.AlipayCyclePayProductCode
 	common.OptionMap["AlipayCyclePaySignScene"] = setting.AlipayCyclePaySignScene
+	common.OptionMap["PlaygroundModelRules"] = "[]"
 	common.OptionMap["CreemApiKey"] = setting.CreemApiKey
 	common.OptionMap["CreemProducts"] = setting.CreemProducts
 	common.OptionMap["CreemTestMode"] = strconv.FormatBool(setting.CreemTestMode)
@@ -127,21 +131,15 @@ func InitOptionMap() {
 	common.OptionMap["WaffoUnitPrice"] = strconv.FormatFloat(setting.WaffoUnitPrice, 'f', -1, 64)
 	common.OptionMap["WaffoMinTopUp"] = strconv.Itoa(setting.WaffoMinTopUp)
 	common.OptionMap["WaffoPayMethods"] = setting.WaffoPayMethods2JsonString()
-	common.OptionMap["WaffoPancakeEnabled"] = strconv.FormatBool(setting.WaffoPancakeEnabled)
-	common.OptionMap["WaffoPancakeSandbox"] = strconv.FormatBool(setting.WaffoPancakeSandbox)
 	common.OptionMap["WaffoPancakeMerchantID"] = setting.WaffoPancakeMerchantID
 	common.OptionMap["WaffoPancakePrivateKey"] = setting.WaffoPancakePrivateKey
-	common.OptionMap["WaffoPancakeWebhookPublicKey"] = setting.WaffoPancakeWebhookPublicKey
-	common.OptionMap["WaffoPancakeWebhookTestKey"] = setting.WaffoPancakeWebhookTestKey
-	common.OptionMap["WaffoPancakeStoreID"] = setting.WaffoPancakeStoreID
-	common.OptionMap["WaffoPancakeProductID"] = setting.WaffoPancakeProductID
 	common.OptionMap["WaffoPancakeReturnURL"] = setting.WaffoPancakeReturnURL
-	common.OptionMap["WaffoPancakeCurrency"] = setting.WaffoPancakeCurrency
 	common.OptionMap["WaffoPancakeUnitPrice"] = strconv.FormatFloat(setting.WaffoPancakeUnitPrice, 'f', -1, 64)
 	common.OptionMap["WaffoPancakeMinTopUp"] = strconv.Itoa(setting.WaffoPancakeMinTopUp)
+	common.OptionMap["WaffoPancakeStoreID"] = setting.WaffoPancakeStoreID
+	common.OptionMap["WaffoPancakeProductID"] = setting.WaffoPancakeProductID
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
-	common.OptionMap["PlaygroundModelRules"] = "[]"
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
 	common.OptionMap["DefaultUseAutoGroup"] = strconv.FormatBool(setting.DefaultUseAutoGroup)
 	common.OptionMap["PayMethods"] = operation_setting.PayMethods2JsonString()
@@ -165,8 +163,6 @@ func InitOptionMap() {
 	common.OptionMap["ModelRequestRateLimitGroup"] = setting.ModelRequestRateLimitGroup2JSONString()
 	common.OptionMap["ModelRatio"] = ratio_setting.ModelRatio2JSONString()
 	common.OptionMap["ModelPrice"] = ratio_setting.ModelPrice2JSONString()
-	common.OptionMap["TaskConditionPrice"] = ratio_setting.TaskConditionPrice2JSONString()
-	common.OptionMap["VideoSecondsPrice"] = ratio_setting.VideoSecondsPrice2JSONString()
 	common.OptionMap["CacheRatio"] = ratio_setting.CacheRatio2JSONString()
 	common.OptionMap["CreateCacheRatio"] = ratio_setting.CreateCacheRatio2JSONString()
 	common.OptionMap["GroupRatio"] = ratio_setting.GroupRatio2JSONString()
@@ -228,7 +224,6 @@ func loadOptionsFromDatabase() {
 				valueToApply = decryptedValue
 			}
 		}
-
 		err := updateOptionMap(option.Key, valueToApply)
 		if err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
@@ -248,7 +243,6 @@ func UpdateOption(key string, value string) error {
 	if key == "AlipayEncryptKey" {
 		return DB.Delete(&Option{}, "key = ?", key).Error
 	}
-
 	valueToPersist := value
 	if common.IsAlipaySensitiveOptionKey(key) {
 		encryptedValue, err := common.EncryptAlipayOptionValue(key, value)
@@ -257,7 +251,6 @@ func UpdateOption(key string, value string) error {
 		}
 		valueToPersist = encryptedValue
 	}
-
 	// Save to database first
 	option := Option{
 		Key: key,
@@ -275,6 +268,39 @@ func UpdateOption(key string, value string) error {
 	}
 	// Update OptionMap
 	return updateOptionMap(key, value)
+}
+
+// UpdateOptionsBulk persists multiple key/value pairs in a single database
+// transaction, then dispatches them through updateOptionMap in one pass. If
+// any DB write fails the whole transaction rolls back and no in-memory state
+// is touched — safe for callers that must commit a set of related options
+// atomically (e.g. payment gateway binding).
+func UpdateOptionsBulk(values map[string]string) error {
+	if len(values) == 0 {
+		return nil
+	}
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		for k, v := range values {
+			option := Option{Key: k}
+			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
+				return err
+			}
+			option.Value = v
+			if err := tx.Save(&option).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	for k, v := range values {
+		if err := updateOptionMap(k, v); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func updateOptionMap(key string, value string) (err error) {
@@ -301,7 +327,7 @@ func updateOptionMap(key string, value string) (err error) {
 			common.ImageDownloadPermission = intValue
 		}
 	}
-	if strings.HasSuffix(key, "Enabled") || key == "DefaultCollapseSidebar" || key == "DefaultUseAutoGroup" || key == "SMTPForceAuthLogin" {
+	if strings.HasSuffix(key, "Enabled") || key == "DefaultCollapseSidebar" || key == "DefaultUseAutoGroup" || key == "SMTPForceAuthLogin" || key == "SMTPInsecureSkipVerify" {
 		boolValue := value == "true"
 		switch key {
 		case "PasswordRegisterEnabled":
@@ -378,6 +404,10 @@ func updateOptionMap(key string, value string) (err error) {
 			setting.StopOnSensitiveEnabled = boolValue
 		case "SMTPSSLEnabled":
 			common.SMTPSSLEnabled = boolValue
+		case "SMTPStartTLSEnabled":
+			common.SMTPStartTLSEnabled = boolValue
+		case "SMTPInsecureSkipVerify":
+			common.SMTPInsecureSkipVerify = boolValue
 		case "SMTPForceAuthLogin":
 			common.SMTPForceAuthLogin = boolValue
 		case "WorkerAllowHttpImageRequestEnabled":
@@ -516,26 +546,16 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.WaffoUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "WaffoMinTopUp":
 		setting.WaffoMinTopUp, _ = strconv.Atoi(value)
-	case "WaffoPancakeEnabled":
-		setting.WaffoPancakeEnabled = value == "true"
-	case "WaffoPancakeSandbox":
-		setting.WaffoPancakeSandbox = value == "true"
 	case "WaffoPancakeMerchantID":
 		setting.WaffoPancakeMerchantID = value
 	case "WaffoPancakePrivateKey":
 		setting.WaffoPancakePrivateKey = value
-	case "WaffoPancakeWebhookPublicKey":
-		setting.WaffoPancakeWebhookPublicKey = value
-	case "WaffoPancakeWebhookTestKey":
-		setting.WaffoPancakeWebhookTestKey = value
+	case "WaffoPancakeReturnURL":
+		setting.WaffoPancakeReturnURL = value
 	case "WaffoPancakeStoreID":
 		setting.WaffoPancakeStoreID = value
 	case "WaffoPancakeProductID":
 		setting.WaffoPancakeProductID = value
-	case "WaffoPancakeReturnURL":
-		setting.WaffoPancakeReturnURL = value
-	case "WaffoPancakeCurrency":
-		setting.WaffoPancakeCurrency = value
 	case "WaffoPancakeUnitPrice":
 		setting.WaffoPancakeUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "WaffoPancakeMinTopUp":
@@ -608,10 +628,6 @@ func updateOptionMap(key string, value string) (err error) {
 		err = ratio_setting.UpdateCompletionRatioByJSONString(value)
 	case "ModelPrice":
 		err = ratio_setting.UpdateModelPriceByJSONString(value)
-	case "TaskConditionPrice":
-		err = ratio_setting.UpdateTaskConditionPriceByJSONString(value)
-	case "VideoSecondsPrice":
-		err = ratio_setting.UpdateVideoSecondsPriceByJSONString(value)
 	case "CacheRatio":
 		err = ratio_setting.UpdateCacheRatioByJSONString(value)
 	case "CreateCacheRatio":

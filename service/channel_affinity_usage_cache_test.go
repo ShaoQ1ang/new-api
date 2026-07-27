@@ -16,7 +16,6 @@ var channelAffinityUsageCacheTestSeq atomic.Uint64
 
 func uniqueChannelAffinityUsageCacheTestIDs(t *testing.T) (ruleName, keyFP string) {
 	t.Helper()
-	// Prefer t.Name + counter over time.Now().UnixNano(): Windows clock resolution can collide across tests.
 	n := channelAffinityUsageCacheTestSeq.Add(1)
 	return fmt.Sprintf("rule_%s_%d", t.Name(), n), fmt.Sprintf("fp_%s_%d", t.Name(), n)
 }

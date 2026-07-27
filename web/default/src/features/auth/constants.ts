@@ -24,10 +24,7 @@ import { z } from 'zod'
 
 export const loginFormSchema = z.object({
   username: z.string().min(1, 'Please enter your username or email'),
-  password: z
-    .string()
-    .min(1, 'Please enter your password')
-    .min(8, 'Password must be at least 8 characters long'),
+  password: z.string().min(1, 'Please enter your password'),
 })
 
 export const registerFormSchema = z
@@ -37,7 +34,7 @@ export const registerFormSchema = z
     password: z
       .string()
       .min(1, 'Please enter your password')
-      .min(8, 'Password must be at least 8 characters long')
+      .min(8, 'Password must be between 8 and 20 characters')
       .max(20, 'Password must be at most 20 characters long'),
     confirmPassword: z.string().min(1, 'Please confirm your password'),
   })
@@ -66,14 +63,12 @@ export const OTP_LENGTH = 6
 export const BACKUP_CODE_LENGTH = 9 // XXXX-XXXX format
 export const BACKUP_CODE_REGEX = /^[A-Z0-9]{4}-[A-Z0-9]{4}$/i
 export const OTP_REGEX = /^\d{6}$/
-export const MAINLAND_PHONE_REGEX = /^1\d{10}$/
 
 // ============================================================================
 // Countdown Constants
 // ============================================================================
 
 export const EMAIL_VERIFICATION_COUNTDOWN = 30 // seconds
-export const SMS_VERIFICATION_COUNTDOWN = 60 // seconds
 export const PASSWORD_RESET_COUNTDOWN = 30 // seconds
 
 // ============================================================================
