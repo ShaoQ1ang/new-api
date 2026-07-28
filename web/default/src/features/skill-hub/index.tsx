@@ -70,6 +70,11 @@ import {
   uploadSkillHubZip,
 } from './api'
 import { SkillHubBatchUploadDialog } from './batch-upload-dialog'
+import {
+  issueMessage,
+  readSkillHubTestcasesFile,
+  resolveSkillHubTestcases,
+} from '../../../../shared/skill-hub-batch-import.mjs'
 import type {
   SkillHubEvaluationForm,
   SkillHubForm,
@@ -87,6 +92,10 @@ export function SkillHub() {
   const [checkedIds, setCheckedIds] = useState<string[]>([])
   const [batchWorking, setBatchWorking] = useState(false)
   const [form, setForm] = useState<SkillHubForm>(() => skillToForm())
+  const [testcasesOverride, setTestcasesOverride] = useState<{
+    active: boolean
+    value: SkillHubTestcases | null
+  }>({ active: false, value: null })
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -94,9 +103,12 @@ export function SkillHub() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [keyword, setKeyword] = useState('')
   const [recommendedOnly, setRecommendedOnly] = useState(false)
+  const [testcasesFileName, setTestcasesFileName] = useState('')
+  const [testcasesDirty, setTestcasesDirty] = useState(false)
   const zipInputRef = useRef<HTMLInputElement | null>(null)
   const iconInputRef = useRef<HTMLInputElement | null>(null)
   const testcasesInputRef = useRef<HTMLInputElement | null>(null)
+  const testcasesUploadIdRef = useRef(0)
   const detailRequestIdRef = useRef(0)
   const pendingZipUploadRef = useRef<{
     ticket: string
@@ -110,6 +122,10 @@ export function SkillHub() {
   const selected = useMemo(
     () => skills.find((skill) => skill.id === selectedId),
     [selectedId, skills]
+  )
+  const effectiveTestcases = resolveSkillHubTestcases(
+    form.testcases,
+    testcasesOverride
   )
   const tagNames = useMemo(
     () => tagOptions.map((tag) => tag.name),
@@ -192,6 +208,9 @@ export function SkillHub() {
     detailRequestIdRef.current = requestId
     setSelectedId(skill.id)
     setForm(skillToForm(skill))
+    setTestcasesOverride({ active: false, value: null })
+    setTestcasesFileName('')
+    setTestcasesDirty(false)
     setDetailLoading(true)
     try {
       const payload = await getAdminSkillHubSkill(skill.id)
@@ -218,6 +237,9 @@ export function SkillHub() {
     setDetailLoading(false)
     setSelectedId('')
     setForm(skillToForm())
+    setTestcasesOverride({ active: false, value: null })
+    setTestcasesFileName('')
+    setTestcasesDirty(false)
   }
 
   function applyTagFilter(tagId: number) {
@@ -270,9 +292,13 @@ export function SkillHub() {
     }
     setSaving(true)
     try {
+      const formWithTestcases = {
+        ...form,
+        testcases: effectiveTestcases,
+      }
       const payload = selected
-        ? await updateSkillHubSkill(selected.id, form)
-        : await createSkillHubSkill(form)
+        ? await updateSkillHubSkill(selected.id, formWithTestcases)
+        : await createSkillHubSkill(formWithTestcases)
       if (!payload.success || !payload.data) {
         throw new Error(payload.message || t('Failed to save skill'))
       }
@@ -280,6 +306,9 @@ export function SkillHub() {
       settlePendingUploads(payload.data)
       setSelectedId(payload.data.id)
       setForm(skillToForm(payload.data))
+      setTestcasesOverride({ active: false, value: null })
+      setTestcasesFileName('')
+      setTestcasesDirty(false)
       await loadSkills()
     } catch (error) {
       toast.error(
@@ -360,21 +389,34 @@ export function SkillHub() {
 
   async function uploadTestcases(file?: File) {
     if (!file) return
+    const uploadId = testcasesUploadIdRef.current + 1
+    testcasesUploadIdRef.current = uploadId
+    const formRequestId = detailRequestIdRef.current
     try {
-      if (file.size > 2 * 1024 * 1024) {
-        throw new Error(t('Test cases JSON must be 2 MB or smaller'))
+      const testcases = parseSkillHubTestcases(
+        await readSkillHubTestcasesFile(file)
+      )
+      if (
+        testcasesUploadIdRef.current !== uploadId ||
+        detailRequestIdRef.current !== formRequestId
+      ) {
+        return
       }
-      const parsed = JSON.parse(await file.text()) as unknown
-      const testcases = parseSkillHubTestcases(parsed)
-      update('testcases', testcases)
+      setTestcasesOverride({ active: true, value: testcases })
+      setTestcasesFileName(file.name)
+      setTestcasesDirty(true)
       toast.success(
         t('{{count}} test cases loaded', { count: testcases.testcases.length })
       )
     } catch (error) {
+      if (
+        testcasesUploadIdRef.current !== uploadId ||
+        detailRequestIdRef.current !== formRequestId
+      ) {
+        return
+      }
       toast.error(
-        error instanceof Error
-          ? error.message
-          : t('Failed to read test cases JSON')
+        issueMessage(error instanceof Error ? error : String(error), t)
       )
     } finally {
       if (testcasesInputRef.current) testcasesInputRef.current.value = ''
@@ -1071,40 +1113,63 @@ export function SkillHub() {
                       type='file'
                       accept='.json,application/json'
                       className='hidden'
-                      onChange={(event) =>
-                        void uploadTestcases(event.target.files?.[0])
-                      }
+                      onChange={(event) => {
+                        const file = event.currentTarget.files?.[0]
+                        event.currentTarget.value = ''
+                        void uploadTestcases(file)
+                      }}
                     />
                     <Button
                       type='button'
                       variant='outline'
-                      onClick={() => testcasesInputRef.current?.click()}
+                      onClick={() => {
+                        if (!testcasesInputRef.current) return
+                        testcasesInputRef.current.value = ''
+                        testcasesInputRef.current.click()
+                      }}
                     >
                       <FileJson className='h-4 w-4' />
                       {t('Upload JSON')}
                     </Button>
-                    {form.testcases && (
+                    {effectiveTestcases && (
                       <Button
                         type='button'
                         variant='ghost'
-                        onClick={() => update('testcases', null)}
+                        onClick={() => {
+                          setTestcasesOverride({ active: true, value: null })
+                          setTestcasesFileName('')
+                          setTestcasesDirty(true)
+                        }}
                       >
                         {t('Clear cases')}
                       </Button>
                     )}
+                    {testcasesFileName && (
+                      <span
+                        className='max-w-56 truncate text-xs'
+                        title={testcasesFileName}
+                      >
+                        {testcasesFileName}
+                      </span>
+                    )}
+                    {testcasesDirty && (
+                      <Badge variant='secondary'>
+                        {t('You have unsaved changes')}
+                      </Badge>
+                    )}
                     <span className='text-muted-foreground text-xs'>
-                      {form.testcases
+                      {effectiveTestcases
                         ? t('{{count}} cases loaded', {
-                            count: form.testcases.testcases.length,
+                            count: effectiveTestcases.testcases.length,
                           })
                         : t('No cases uploaded')}
                     </span>
                   </div>
-                  {form.testcases && (
+                  {effectiveTestcases && (
                     <div className='bg-muted rounded-md border p-3 text-xs'>
-                      <div>slug: {form.testcases.slug || t('(empty)')}</div>
+                      <div>slug: {effectiveTestcases.slug || t('(empty)')}</div>
                       <div className='mt-1 line-clamp-2'>
-                        {form.testcases.testcases[0]?.question ||
+                        {effectiveTestcases.testcases[0]?.question ||
                           t('No cases in this file')}
                       </div>
                     </div>

@@ -32,6 +32,10 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import { API, showError, showSuccess } from '../../helpers';
+import {
+  readSkillHubTestcasesFile,
+  resolveSkillHubTestcases,
+} from '../../../../shared/skill-hub-batch-import.mjs';
 import BatchUploadModal from './BatchUploadModal';
 
 const createDefaultForm = () => ({
@@ -539,15 +543,22 @@ const SkillHub = () => {
   const [checkedIds, setCheckedIds] = useState([]);
   const [batchWorking, setBatchWorking] = useState(false);
   const [form, setForm] = useState(createDefaultForm);
+  const [testcasesOverride, setTestcasesOverride] = useState({
+    active: false,
+    value: null,
+  });
   const [keyword, setKeyword] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [iconUploading, setIconUploading] = useState(false);
+  const [testcasesFileName, setTestcasesFileName] = useState('');
+  const [testcasesDirty, setTestcasesDirty] = useState(false);
   const zipInputRef = useRef(null);
   const iconInputRef = useRef(null);
   const testcasesInputRef = useRef(null);
+  const testcasesUploadIdRef = useRef(0);
   const detailRequestIdRef = useRef(0);
   const pendingZipUploadRef = useRef(null);
   const pendingIconUploadRef = useRef(null);
@@ -555,6 +566,10 @@ const SkillHub = () => {
   const selectedSkill = useMemo(
     () => skills.find((skill) => skill.id === selectedId),
     [skills, selectedId],
+  );
+  const effectiveTestcases = resolveSkillHubTestcases(
+    form.testcases,
+    testcasesOverride,
   );
 
   const updateForm = (key, value) => {
@@ -693,6 +708,9 @@ const SkillHub = () => {
     setDetailLoading(false);
     setSelectedId('');
     setForm(createDefaultForm());
+    setTestcasesOverride({ active: false, value: null });
+    setTestcasesFileName('');
+    setTestcasesDirty(false);
   };
 
   const selectSkill = async (skill) => {
@@ -701,6 +719,9 @@ const SkillHub = () => {
     detailRequestIdRef.current = requestId;
     setSelectedId(skill.id);
     setForm(skillToForm(skill));
+    setTestcasesOverride({ active: false, value: null });
+    setTestcasesFileName('');
+    setTestcasesDirty(false);
     setDetailLoading(true);
     try {
       const res = await API.get(
@@ -771,7 +792,10 @@ const SkillHub = () => {
     }
     setSaving(true);
     try {
-      const payload = formToPayload(form);
+      const payload = formToPayload({
+        ...form,
+        testcases: effectiveTestcases,
+      });
       const request = selectedSkill
         ? API.put(
             `/api/admin/skill-hub/skills/${encodeURIComponent(selectedSkill.id)}`,
@@ -785,6 +809,9 @@ const SkillHub = () => {
         return;
       }
       showSuccess('保存成功');
+      setTestcasesOverride({ active: false, value: null });
+      setTestcasesFileName('');
+      setTestcasesDirty(false);
       if (data) {
         settlePendingUploads(data);
         setForm(skillToForm(data));
@@ -818,15 +845,34 @@ const SkillHub = () => {
 
   const uploadTestcases = async (file) => {
     if (!file) return;
+    const uploadId = testcasesUploadIdRef.current + 1;
+    testcasesUploadIdRef.current = uploadId;
+    const formRequestId = detailRequestIdRef.current;
     if (file.size > 2 * 1024 * 1024) {
       showError('案例 JSON 最大 2MB');
       return;
     }
     try {
-      const parsed = parseSkillHubTestcases(JSON.parse(await file.text()));
-      updateForm('testcases', parsed);
+      const parsed = parseSkillHubTestcases(
+        await readSkillHubTestcasesFile(file),
+      );
+      if (
+        testcasesUploadIdRef.current !== uploadId ||
+        detailRequestIdRef.current !== formRequestId
+      ) {
+        return;
+      }
+      setTestcasesOverride({ active: true, value: parsed });
+      setTestcasesFileName(file.name);
+      setTestcasesDirty(true);
       showSuccess(`已载入 ${parsed.testcases.length} 个案例`);
     } catch (error) {
+      if (
+        testcasesUploadIdRef.current !== uploadId ||
+        detailRequestIdRef.current !== formRequestId
+      ) {
+        return;
+      }
       showError(error.message || '案例 JSON 解析失败');
     } finally {
       if (testcasesInputRef.current) {
@@ -1436,32 +1482,50 @@ const SkillHub = () => {
                       type='file'
                       accept='.json,application/json'
                       className='hidden'
-                      onChange={(event) =>
-                        uploadTestcases(event.target.files?.[0])
-                      }
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = '';
+                        uploadTestcases(file);
+                      }}
                     />
                     <Button
                       icon={<FileJson size={16} />}
-                      onClick={() => testcasesInputRef.current?.click()}
+                      onClick={() => {
+                        if (!testcasesInputRef.current) return;
+                        testcasesInputRef.current.value = '';
+                        testcasesInputRef.current.click();
+                      }}
                     >
                       上传 JSON
                     </Button>
-                    {form.testcases && (
-                      <Button onClick={() => updateForm('testcases', null)}>
+                    {effectiveTestcases && (
+                      <Button
+                        onClick={() => {
+                          setTestcasesOverride({ active: true, value: null });
+                          setTestcasesFileName('');
+                          setTestcasesDirty(true);
+                        }}
+                      >
                         清空案例
                       </Button>
                     )}
+                    {testcasesFileName && (
+                      <Typography.Text ellipsis={{ showTooltip: true }}>
+                        {testcasesFileName}
+                      </Typography.Text>
+                    )}
+                    {testcasesDirty && <Tag color='orange'>待保存</Tag>}
                     <Typography.Text type='tertiary'>
-                      {form.testcases
-                        ? `已载入 ${form.testcases.testcases.length} 个案例`
+                      {effectiveTestcases
+                        ? `已载入 ${effectiveTestcases.testcases.length} 个案例`
                         : '未上传案例'}
                     </Typography.Text>
                   </Space>
-                  {form.testcases && (
+                  {effectiveTestcases && (
                     <div className='mt-3 rounded border border-semi-color-border bg-semi-color-fill-0 p-3 text-xs'>
-                      <div>slug: {form.testcases.slug || '（空）'}</div>
+                      <div>slug: {effectiveTestcases.slug || '（空）'}</div>
                       <div className='mt-1 line-clamp-2'>
-                        {form.testcases.testcases[0]?.question ||
+                        {effectiveTestcases.testcases[0]?.question ||
                           '文件中没有案例'}
                       </div>
                     </div>

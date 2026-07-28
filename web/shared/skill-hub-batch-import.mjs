@@ -34,7 +34,13 @@ const textDecoder = new TextDecoder('utf-8', { fatal: true })
 
 export class SkillHubBatchValidationError extends Error {
   constructor(code, params = {}) {
-    super(code)
+    super(
+      Object.entries(params).reduce(
+        (message, [name, value]) =>
+          message.replaceAll(`{{${name}}}`, String(value)),
+        code,
+      ),
+    )
     this.name = 'SkillHubBatchValidationError'
     this.code = code
     this.params = params
@@ -316,6 +322,10 @@ export function issueMessage(issueValue, translate) {
   return translate(issueValue.code || String(issueValue), issueValue.params || {})
 }
 
+export function resolveSkillHubTestcases(savedTestcases, override) {
+  return override.active ? override.value : savedTestcases
+}
+
 function parseManifestText(content, manifestPath) {
   const text = content.replace(/^\uFEFF/, '').trim()
   if (!text) return []
@@ -421,7 +431,7 @@ async function normalizeDirectoryEntry(raw, index, filesByPath) {
         testcasesPath = resolveDirectoryReference(rawTestcases)
         testcasesFile = filesByPath.get(testcasesPath) || null
         if (testcasesFile) {
-          testcases = await readAndNormalizeTestcases(testcasesFile)
+          testcases = await readSkillHubTestcasesFile(testcasesFile)
         }
       } catch (error) {
         errors.push(asIssue(error))
@@ -608,7 +618,7 @@ function resolveDirectoryReference(value) {
   return parts.join('/')
 }
 
-async function readAndNormalizeTestcases(file) {
+export async function readSkillHubTestcasesFile(file) {
   if (!file.name.toLowerCase().endsWith('.json')) {
     throw issue('testcases file extension must be .json.')
   }
@@ -630,10 +640,10 @@ async function readAndNormalizeTestcases(file) {
       message: error instanceof Error ? error.message : String(error),
     })
   }
-  return normalizeTestcases(parsed)
+  return normalizeSkillHubTestcases(parsed)
 }
 
-function normalizeTestcases(value) {
+export function normalizeSkillHubTestcases(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw issue('testcases JSON must be an object.')
   }
