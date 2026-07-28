@@ -89,6 +89,19 @@ export function createSkillHubBatchOptions(): SkillHubBatchOptions
 export function parseSkillHubBatchDirectory(
   fileList: FileList | File[],
 ): Promise<SkillHubBatchDirectory>
+export function readSkillHubTestcasesFile(
+  file: File,
+): Promise<SkillHubBatchTestcases>
+export function normalizeSkillHubTestcases(
+  value: unknown,
+): SkillHubBatchTestcases
+export function resolveSkillHubTestcases(
+  savedTestcases: SkillHubBatchTestcases | null,
+  override: {
+    active: boolean
+    value: SkillHubBatchTestcases | null
+  },
+): SkillHubBatchTestcases | null
 export function validateSkillHubBatchOptions(
   options: SkillHubBatchOptions,
 ): void

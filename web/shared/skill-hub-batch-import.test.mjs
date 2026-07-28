@@ -23,6 +23,8 @@ import {
   buildSkillHubBatchPayload,
   createSkillHubBatchOptions,
   parseSkillHubBatchDirectory,
+  readSkillHubTestcasesFile,
+  resolveSkillHubTestcases,
   resolveSkillHubBatchSort,
   summarizeSkillHubBatchResults,
 } from './skill-hub-batch-import.mjs'
@@ -37,6 +39,82 @@ function selectedFile(path, content, type = '') {
 }
 
 const zipBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04])
+
+test('single test case upload reads the currently selected file', async () => {
+  const tomato = new File(
+    [
+      JSON.stringify({
+        slug: 'g113593',
+        testcases: [
+          {
+            id: 1,
+            question: '我想写一本悬疑推理的番茄小说，帮我开始吧',
+            answer: '旧案例',
+            sortOrder: 0,
+          },
+        ],
+      }),
+    ],
+    'tomato.json',
+    { type: 'application/json' },
+  )
+  const medicalAI = new File(
+    [
+      JSON.stringify({
+        slug: 'g173482',
+        testcases: [
+          {
+            id: 1,
+            question:
+              '我需要创建一篇关于“人工智能在医疗领域的应用”的文章，请帮我完成完整流程',
+            answer: '新案例',
+            sortOrder: 0,
+          },
+        ],
+      }),
+    ],
+    '1.json',
+    { type: 'application/json' },
+  )
+
+  const first = await readSkillHubTestcasesFile(tomato)
+  const second = await readSkillHubTestcasesFile(medicalAI)
+
+  assert.equal(first.slug, 'g113593')
+  assert.equal(second.slug, 'g173482')
+  assert.match(second.testcases[0].question, /人工智能在医疗领域/)
+  assert.doesNotMatch(second.testcases[0].question, /番茄小说/)
+})
+
+test('pending test case upload overrides stale saved cases', () => {
+  const saved = {
+    slug: 'g113593',
+    testcases: [
+      { id: 1, question: '番茄小说 1', answer: '旧案例 1', sortOrder: 0 },
+      { id: 2, question: '番茄小说 2', answer: '旧案例 2', sortOrder: 1 },
+      { id: 3, question: '番茄小说 3', answer: '旧案例 3', sortOrder: 2 },
+    ],
+  }
+  const uploaded = {
+    slug: 'g173482',
+    testcases: [
+      {
+        id: 1,
+        question: '人工智能在医疗领域的应用',
+        answer: '新案例',
+        sortOrder: 0,
+      },
+    ],
+  }
+
+  const effective = resolveSkillHubTestcases(saved, {
+    active: true,
+    value: uploaded,
+  })
+
+  assert.equal(effective.slug, 'g173482')
+  assert.equal(effective.testcases.length, 1)
+})
 
 test('directory manifest resolves local zip, icon, and testcase files', async () => {
   const directory = await parseSkillHubBatchDirectory([
