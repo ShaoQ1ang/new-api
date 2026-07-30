@@ -17,14 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactNode,
-} from 'react'
-import {
   Check,
   Download,
   FileArchive,
@@ -37,8 +29,18 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+
+import { SectionPageLayout } from '@/components/layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -52,7 +54,12 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { SectionPageLayout } from '@/components/layout'
+
+import {
+  issueMessage,
+  readSkillHubTestcasesFile,
+  resolveSkillHubTestcases,
+} from '../../../../shared/skill-hub-batch-import.mjs'
 import {
   createSkillHubSkill,
   batchDeleteSkillHubSkills,
@@ -70,11 +77,7 @@ import {
   uploadSkillHubZip,
 } from './api'
 import { SkillHubBatchUploadDialog } from './batch-upload-dialog'
-import {
-  issueMessage,
-  readSkillHubTestcasesFile,
-  resolveSkillHubTestcases,
-} from '../../../../shared/skill-hub-batch-import.mjs'
+import { SkillClientPreviewDialog } from './skill-client-preview-dialog'
 import type {
   SkillHubEvaluationForm,
   SkillHubForm,
@@ -265,7 +268,7 @@ export function SkillHub() {
       toast.error(t('Please enter Skill ID, name, and version'))
       return
     }
-    if (Array.from(form.name.trim()).length > 100) {
+    if ([...form.name.trim()].length > 100) {
       toast.error('Skill 名称最多 100 个字符')
       return
     }
@@ -449,15 +452,17 @@ export function SkillHub() {
       !window.confirm(
         t('Delete {{count}} selected skills?', { count: checkedIds.length })
       )
-    )
+    ) {
       return
+    }
     setBatchWorking(true)
     try {
       const payload = await batchDeleteSkillHubSkills(checkedIds)
-      if (!payload.success)
+      if (!payload.success) {
         throw new Error(
           payload.message || t('Failed to delete selected skills')
         )
+      }
       if (checkedIds.includes(selectedId)) createDraft()
       setCheckedIds([])
       toast.success(
@@ -532,6 +537,17 @@ export function SkillHub() {
 
   function updateEvaluation(next: SkillHubEvaluationForm | null) {
     update('evaluation', next)
+  }
+
+  function updateEvaluationSummary(
+    field: 'overallScore' | 'overallRating' | 'overallReview',
+    value: string
+  ) {
+    if (!form.evaluation) return
+    updateEvaluation({
+      ...form.evaluation,
+      [field]: value,
+    })
   }
 
   function updateEvaluationDimension(
@@ -812,15 +828,22 @@ export function SkillHub() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>
-                {selected ? t('Edit skill') : t('Create skill')}
-              </CardTitle>
-              <CardDescription>
-                {t(
-                  'Configure the catalog card, zip package, and publish state.'
-                )}
-              </CardDescription>
+            <CardHeader className='flex-row items-start justify-between gap-4'>
+              <div className='grid gap-1.5'>
+                <CardTitle>
+                  {selected ? t('Edit skill') : t('Create skill')}
+                </CardTitle>
+                <CardDescription>
+                  {t(
+                    'Configure the catalog card, zip package, and publish state.'
+                  )}
+                </CardDescription>
+              </div>
+              <SkillClientPreviewDialog
+                form={form}
+                testcases={effectiveTestcases}
+                updatedAt={selected?.updatedAt}
+              />
             </CardHeader>
             <CardContent>
               {detailLoading && (
@@ -851,14 +874,12 @@ export function SkillHub() {
                         onChange={(event) =>
                           update(
                             'name',
-                            Array.from(event.target.value)
-                              .slice(0, 100)
-                              .join('')
+                            [...event.target.value].slice(0, 100).join('')
                           )
                         }
                       />
                       <p className='text-muted-foreground mt-1 text-right text-xs'>
-                        {Array.from(form.name).length} / 100
+                        {[...form.name].length} / 100
                       </p>
                     </Field>
                   </div>
@@ -1016,10 +1037,10 @@ export function SkillHub() {
                             value={form.evaluation.overallScore}
                             placeholder={evaluationAverage(form.evaluation)}
                             onChange={(event) =>
-                              updateEvaluation({
-                                ...form.evaluation!,
-                                overallScore: event.target.value,
-                              })
+                              updateEvaluationSummary(
+                                'overallScore',
+                                event.target.value
+                              )
                             }
                           />
                           <p className='text-muted-foreground mt-1 text-xs'>
@@ -1033,10 +1054,10 @@ export function SkillHub() {
                             maxLength={80}
                             placeholder={t('Automatically derived when empty')}
                             onChange={(event) =>
-                              updateEvaluation({
-                                ...form.evaluation!,
-                                overallRating: event.target.value,
-                              })
+                              updateEvaluationSummary(
+                                'overallRating',
+                                event.target.value
+                              )
                             }
                           />
                         </Field>
@@ -1046,10 +1067,10 @@ export function SkillHub() {
                           value={form.evaluation.overallReview}
                           maxLength={8000}
                           onChange={(event) =>
-                            updateEvaluation({
-                              ...form.evaluation!,
-                              overallReview: event.target.value,
-                            })
+                            updateEvaluationSummary(
+                              'overallReview',
+                              event.target.value
+                            )
                           }
                         />
                       </Field>
@@ -1065,7 +1086,8 @@ export function SkillHub() {
                               max='5'
                               step='0.1'
                               value={
-                                form.evaluation!.dimensions[dimension.key].score
+                                form.evaluation?.dimensions[dimension.key]
+                                  .score ?? ''
                               }
                               onChange={(event) =>
                                 updateEvaluationDimension(
@@ -1082,8 +1104,8 @@ export function SkillHub() {
                           <Field label={t('Dimension review')}>
                             <Textarea
                               value={
-                                form.evaluation!.dimensions[dimension.key]
-                                  .review
+                                form.evaluation?.dimensions[dimension.key]
+                                  .review ?? ''
                               }
                               maxLength={4000}
                               onChange={(event) =>

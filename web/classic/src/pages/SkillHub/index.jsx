@@ -37,6 +37,7 @@ import {
   resolveSkillHubTestcases,
 } from '../../../../shared/skill-hub-batch-import.mjs';
 import BatchUploadModal from './BatchUploadModal';
+import SkillClientPreviewModal from './SkillClientPreviewModal';
 
 const createDefaultForm = () => ({
   id: '',
@@ -1615,6 +1616,13 @@ const SkillHub = () => {
             <div className='mt-4 flex flex-wrap items-center justify-between gap-3'>
               <div />
               <Space wrap>
+                <SkillClientPreviewModal
+                  form={form}
+                  testcases={effectiveTestcases}
+                  updatedAt={
+                    selectedSkill?.updatedAt || selectedSkill?.updated_at
+                  }
+                />
                 {selectedSkill && (
                   <>
                     <Button
