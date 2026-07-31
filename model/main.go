@@ -299,6 +299,7 @@ func migrateDB() error {
 		&SystemTaskLock{},
 		&CasbinRule{},
 		&AuthzRole{},
+		&UserManagementPermission{},
 		// Product whitelist models (from feat/merge-before-main)
 		&SkillHubSkill{},
 		&SkillHubTag{},
@@ -361,6 +362,9 @@ func migrateDBFast() error {
 		{&SystemInstance{}, "SystemInstance"},
 		{&SystemTask{}, "SystemTask"},
 		{&SystemTaskLock{}, "SystemTaskLock"},
+		{&CasbinRule{}, "CasbinRule"},
+		{&AuthzRole{}, "AuthzRole"},
+		{&UserManagementPermission{}, "UserManagementPermission"},
 		{&SkillHubSkill{}, "SkillHubSkill"},
 		{&SkillHubTag{}, "SkillHubTag"},
 		{&SkillHubSkillTag{}, "SkillHubSkillTag"},
