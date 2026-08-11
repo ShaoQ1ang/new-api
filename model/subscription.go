@@ -185,6 +185,7 @@ type SubscriptionPlan struct {
 	CreemProductId         string `json:"creem_product_id" gorm:"type:varchar(128);default:''"`
 	BillingMode            string `json:"billing_mode" gorm:"type:varchar(16);not null;default:'one_time'"`
 	AllowBalancePay        *bool  `json:"allow_balance_pay" gorm:"default:true"`
+	AllowWalletOverflow    *bool  `json:"allow_wallet_overflow"`
 	WaffoPancakeProductId  string `json:"waffo_pancake_product_id" gorm:"type:varchar(128);default:''"`
 
 	// Max purchases per user (0 = unlimited)
@@ -205,6 +206,9 @@ type SubscriptionPlan struct {
 }
 
 func (p *SubscriptionPlan) BeforeCreate(tx *gorm.DB) error {
+	if p.AllowWalletOverflow == nil {
+		p.AllowWalletOverflow = common.GetPointer(true)
+	}
 	now := common.GetTimestamp()
 	p.CreatedAt = now
 	p.UpdatedAt = now
@@ -800,11 +804,16 @@ type UserSubscription struct {
 	UpgradeGroup  string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
 	PrevUserGroup string `json:"prev_user_group" gorm:"type:varchar(64);default:''"`
 
+	AllowWalletOverflow *bool `json:"allow_wallet_overflow"`
+
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
 }
 
 func (s *UserSubscription) BeforeCreate(tx *gorm.DB) error {
+	if s.AllowWalletOverflow == nil {
+		s.AllowWalletOverflow = common.GetPointer(true)
+	}
 	if s.ProviderInvoiceId != "" && s.ProviderInvoiceUniqueId == nil {
 		providerInvoiceID := s.ProviderInvoiceId
 		s.ProviderInvoiceUniqueId = &providerInvoiceID
@@ -817,6 +826,13 @@ func (s *UserSubscription) BeforeCreate(tx *gorm.DB) error {
 
 func (s *UserSubscription) BeforeUpdate(tx *gorm.DB) error {
 	s.UpdatedAt = common.GetTimestamp()
+	return nil
+}
+
+func (s *UserSubscription) AfterFind(tx *gorm.DB) error {
+	if s.AllowWalletOverflow == nil {
+		s.AllowWalletOverflow = common.GetPointer(true)
+	}
 	return nil
 }
 
@@ -1064,6 +1080,10 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		lastReset = now.Unix()
 	}
 	upgradeGroup := strings.TrimSpace(plan.UpgradeGroup)
+	allowWalletOverflow := true
+	if plan.AllowWalletOverflow != nil {
+		allowWalletOverflow = *plan.AllowWalletOverflow
+	}
 	prevGroup := ""
 	if upgradeGroup != "" {
 		currentGroup, err := getUserGroupByIdTx(tx, userId)
@@ -1079,20 +1099,21 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		}
 	}
 	sub := &UserSubscription{
-		UserId:        userId,
-		PlanId:        plan.Id,
-		AmountTotal:   plan.TotalAmount,
-		AmountUsed:    0,
-		StartTime:     now.Unix(),
-		EndTime:       endUnix,
-		Status:        "active",
-		Source:        source,
-		LastResetTime: lastReset,
-		NextResetTime: nextReset,
-		UpgradeGroup:  upgradeGroup,
-		PrevUserGroup: prevGroup,
-		CreatedAt:     common.GetTimestamp(),
-		UpdatedAt:     common.GetTimestamp(),
+		UserId:              userId,
+		PlanId:              plan.Id,
+		AmountTotal:         plan.TotalAmount,
+		AmountUsed:          0,
+		StartTime:           now.Unix(),
+		EndTime:             endUnix,
+		Status:              "active",
+		Source:              source,
+		LastResetTime:       lastReset,
+		NextResetTime:       nextReset,
+		UpgradeGroup:        upgradeGroup,
+		PrevUserGroup:       prevGroup,
+		AllowWalletOverflow: common.GetPointer(allowWalletOverflow),
+		CreatedAt:           common.GetTimestamp(),
+		UpdatedAt:           common.GetTimestamp(),
 	}
 	if err := tx.Create(sub).Error; err != nil {
 		return nil, err
@@ -1440,6 +1461,10 @@ func createRecurringCycleSubscriptionFromInvoiceTx(tx *gorm.DB, contract *Billin
 	}
 
 	upgradeGroup := strings.TrimSpace(plan.UpgradeGroup)
+	allowWalletOverflow := true
+	if plan.AllowWalletOverflow != nil {
+		allowWalletOverflow = *plan.AllowWalletOverflow
+	}
 	prevGroup := ""
 	if upgradeGroup != "" {
 		currentGroup, err := getUserGroupByIdTx(tx, contract.UserId)
@@ -1470,6 +1495,7 @@ func createRecurringCycleSubscriptionFromInvoiceTx(tx *gorm.DB, contract *Billin
 		NextResetTime:         nextReset,
 		UpgradeGroup:          upgradeGroup,
 		PrevUserGroup:         prevGroup,
+		AllowWalletOverflow:   common.GetPointer(allowWalletOverflow),
 		CreatedAt:             common.GetTimestamp(),
 		UpdatedAt:             common.GetTimestamp(),
 	}
