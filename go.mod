@@ -59,6 +59,7 @@ require (
 	gorm.io/driver/mysql v1.4.3
 	gorm.io/driver/postgres v1.5.2
 	gorm.io/gorm v1.30.0
+	gorm.io/plugin/soft_delete v1.2.1
 )
 
 require github.com/waffo-com/waffo-pancake-sdk-go v0.3.1

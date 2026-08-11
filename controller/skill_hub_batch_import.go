@@ -737,7 +737,8 @@ func saveSkillHubBatchItem(request skillHubSkillRequest, existing *model.SkillHu
 	if existing == nil {
 		if err := skill.Insert(); err != nil {
 			cleanupPromotedSkillHubFinalObjects(promotion)
-			return nil, action, err
+			common.SysError("failed to create skill hub skill during batch import: " + err.Error())
+			return nil, action, errors.New("failed to save skill")
 		}
 		cleanupPromotedSkillHubTempObjects(promotion)
 		response := skill.ToResponse(true)
@@ -746,7 +747,8 @@ func saveSkillHubBatchItem(request skillHubSkillRequest, existing *model.SkillHu
 	oldSourceRef, oldIcon, err := skill.UpdateReturningPreviousObjects()
 	if err != nil {
 		cleanupPromotedSkillHubFinalObjects(promotion)
-		return nil, action, err
+		common.SysError("failed to update skill hub skill during batch import: " + err.Error())
+		return nil, action, errors.New("failed to save skill")
 	}
 	cleanupPromotedSkillHubTempObjects(promotion)
 	cleanupSkillHubObjectsIfChanged(oldSourceRef, oldIcon, skill.SourceRef, skill.Icon)
