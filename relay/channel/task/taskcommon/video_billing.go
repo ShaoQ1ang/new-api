@@ -9,8 +9,16 @@ import (
 	"github.com/QuantumNous/new-api/types"
 )
 
-func ConvertVideoBillingParams(_ *relaycommon.RelayInfo, req relaycommon.TaskSubmitReq) (*types.VideoBillingParams, error) {
-	modelName := strings.ToLower(strings.TrimSpace(req.Model))
+func ConvertVideoBillingParams(info *relaycommon.RelayInfo, req relaycommon.TaskSubmitReq) (*types.VideoBillingParams, error) {
+	modelName := req.Model
+	if info != nil && info.ChannelMeta != nil && strings.TrimSpace(info.UpstreamModelName) != "" {
+		modelName = info.UpstreamModelName
+	}
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
+	if converter := getRegisteredVideoBillingConverter(modelName); converter != nil {
+		req.Model = modelName
+		return converter(req)
+	}
 	switch {
 	case strings.HasPrefix(modelName, "happyhorse-1.0"), strings.HasPrefix(modelName, "happyhorse-1.1"):
 		return convertAliHappyHorseVideoBillingParams(req)

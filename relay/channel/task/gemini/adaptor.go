@@ -41,7 +41,22 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 
 // ValidateRequestAndSetAction parses body, validates fields and sets default action.
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
-	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionTextGenerate)
+	if taskErr := relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionTextGenerate); taskErr != nil {
+		return taskErr
+	}
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	if len(req.Images) > 2 {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("Veo supports at most first and last frame images"), "invalid_request", http.StatusBadRequest)
+	}
+	if len(req.Images) == 2 {
+		info.Action = constant.TaskActionFirstTailGenerate
+	} else if len(req.Images) == 1 {
+		info.Action = constant.TaskActionGenerate
+	}
+	return nil
 }
 
 // BuildRequestURL constructs the Gemini API predictLongRunning endpoint for Veo.
@@ -83,6 +98,12 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		if parsed := ParseImageInput(req.Images[0]); parsed != nil {
 			instance.Image = parsed
 			info.Action = constant.TaskActionGenerate
+		}
+	}
+	if len(req.Images) > 1 {
+		if parsed := ParseImageInput(req.Images[1]); parsed != nil {
+			instance.LastFrame = parsed
+			info.Action = constant.TaskActionFirstTailGenerate
 		}
 	}
 

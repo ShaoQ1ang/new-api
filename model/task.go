@@ -110,12 +110,17 @@ type TaskPrivateData struct {
 
 // TaskBillingContext 记录任务提交时的计费参数，以便轮询阶段可以重新计算额度。
 type TaskBillingContext struct {
-	ModelPrice      float64            `json:"model_price,omitempty"`       // 模型单价
-	GroupRatio      float64            `json:"group_ratio,omitempty"`       // 分组倍率
-	ModelRatio      float64            `json:"model_ratio,omitempty"`       // 模型倍率
-	OtherRatios     map[string]float64 `json:"other_ratios,omitempty"`      // 附加倍率（时长、分辨率等）
-	OriginModelName string             `json:"origin_model_name,omitempty"` // 模型名称，必须为OriginModelName
-	PerCallBilling  bool               `json:"per_call_billing,omitempty"`  // 按次计费：跳过轮询阶段的差额结算
+	ModelPrice            float64            `json:"model_price,omitempty"`             // 模型单价
+	GroupRatio            float64            `json:"group_ratio,omitempty"`             // 分组倍率
+	ModelRatio            float64            `json:"model_ratio,omitempty"`             // 模型倍率
+	ConditionalInputPrice float64            `json:"conditional_input_price,omitempty"` // 条件输入单价（如视频输入）
+	VideoSecondsUnitPrice float64            `json:"video_seconds_unit_price,omitempty"`
+	VideoSecondsTier      string             `json:"video_seconds_tier,omitempty"`
+	VideoDurationSeconds  int                `json:"video_duration_seconds,omitempty"`
+	VideoAudioEnabled     *bool              `json:"video_audio_enabled,omitempty"`
+	OtherRatios           map[string]float64 `json:"other_ratios,omitempty"`      // 附加倍率（时长、分辨率等）
+	OriginModelName       string             `json:"origin_model_name,omitempty"` // 模型名称，必须为OriginModelName
+	PerCallBilling        bool               `json:"per_call_billing,omitempty"`  // 按次计费：跳过轮询阶段的差额结算
 }
 
 // GetUpstreamTaskID 获取上游真实 task ID（用于与 provider 通信）

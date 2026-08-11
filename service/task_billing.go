@@ -126,6 +126,22 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 		if bc.ModelRatio > 0 {
 			other["model_ratio"] = bc.ModelRatio
 		}
+		if bc.ConditionalInputPrice > 0 {
+			other["conditional_input_price"] = bc.ConditionalInputPrice
+		}
+		if bc.VideoSecondsUnitPrice > 0 {
+			other["billing_mode"] = "video_seconds"
+			other["video_seconds_unit_price"] = bc.VideoSecondsUnitPrice
+		}
+		if bc.VideoSecondsTier != "" {
+			other["video_seconds_tier"] = bc.VideoSecondsTier
+		}
+		if bc.VideoDurationSeconds > 0 {
+			other["video_duration_seconds"] = bc.VideoDurationSeconds
+		}
+		if bc.VideoAudioEnabled != nil {
+			other["video_audio_enabled"] = *bc.VideoAudioEnabled
+		}
 		other["group_ratio"] = bc.GroupRatio
 		if priceData := taskBillingContextPriceData(bc); priceData != nil {
 			for k, v := range priceData.OtherRatios() {

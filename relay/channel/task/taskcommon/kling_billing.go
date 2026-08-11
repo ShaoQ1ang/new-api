@@ -21,10 +21,19 @@ func convertAliKlingVideoBillingParams(req relaycommon.TaskSubmitReq) (*types.Vi
 }
 
 func resolveKlingBillingTier(req relaycommon.TaskSubmitReq) string {
-	if strings.EqualFold(strings.TrimSpace(req.Mode), "std") {
-		return "720p"
+	if mode, ok := resolveMetadataString(req.Metadata, "mode"); ok {
+		if strings.EqualFold(mode, "std") {
+			return "720p"
+		}
+		return "1080p"
 	}
-	if mode, ok := resolveMetadataString(req.Metadata, "mode"); ok && strings.EqualFold(mode, "std") {
+	if mode := strings.TrimSpace(req.Mode); mode != "" {
+		if strings.EqualFold(mode, "std") {
+			return "720p"
+		}
+		return "1080p"
+	}
+	if strings.EqualFold(strings.TrimSpace(req.Size), "720p") {
 		return "720p"
 	}
 	return "1080p"

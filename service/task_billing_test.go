@@ -287,6 +287,24 @@ func countLogs(t *testing.T) int64 {
 	return count
 }
 
+func TestTaskBillingOtherIncludesVideoSecondsContext(t *testing.T) {
+	audioEnabled := false
+	task := &model.Task{PrivateData: model.TaskPrivateData{BillingContext: &model.TaskBillingContext{
+		ModelPrice: 1, GroupRatio: 2, ConditionalInputPrice: 31,
+		VideoSecondsUnitPrice: 0.6, VideoSecondsTier: "720p",
+		VideoDurationSeconds: 5, VideoAudioEnabled: &audioEnabled,
+	}}}
+
+	other := taskBillingOther(task)
+
+	assert.Equal(t, 31.0, other["conditional_input_price"])
+	assert.Equal(t, "video_seconds", other["billing_mode"])
+	assert.Equal(t, 0.6, other["video_seconds_unit_price"])
+	assert.Equal(t, "720p", other["video_seconds_tier"])
+	assert.Equal(t, 5, other["video_duration_seconds"])
+	assert.Equal(t, false, other["video_audio_enabled"])
+}
+
 // ===========================================================================
 // RefundTaskQuota tests
 // ===========================================================================

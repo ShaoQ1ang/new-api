@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAliHappyHorseConverterResolves720PTier(t *testing.T) {
@@ -127,4 +129,29 @@ func TestAliKlingConverterResolvesSilentFromAudioFalse(t *testing.T) {
 	if params.AudioEnabled {
 		t.Fatalf("expected audio disabled")
 	}
+}
+
+func TestAliKlingConverterUsesMappedUpstreamModel(t *testing.T) {
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "kling-v3-video-generation",
+		ChannelMeta: &relaycommon.ChannelMeta{
+			UpstreamModelName: "kling/kling-v3-video-generation",
+			IsModelMapped:     true,
+		},
+	}
+	req := relaycommon.TaskSubmitReq{
+		Model:   "kling-v3-video-generation",
+		Seconds: "5",
+		Size:    "720p",
+		Metadata: map[string]any{
+			"audio": false,
+		},
+	}
+
+	params, err := ConvertVideoBillingParams(info, req)
+
+	require.NoError(t, err)
+	assert.Equal(t, "720p", params.Tier)
+	assert.Equal(t, 5, params.DurationSeconds)
+	assert.False(t, params.AudioEnabled)
 }
