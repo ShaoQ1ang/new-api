@@ -2,11 +2,14 @@ package model
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -810,6 +813,86 @@ func TestDeleteSkillHubSkillRemovesTagRelations(t *testing.T) {
 	}
 }
 
+func TestSkillHubSkillIDIsUniqueWhileActiveAndReusableAfterDelete(t *testing.T) {
+	setupSkillHubTestDB(t)
+
+	first := &SkillHubSkill{
+		SkillID:    "reusable-skill",
+		Name:       "First Skill",
+		Version:    "1.0.0",
+		SourceType: "zip",
+		SourceURL:  "https://example.com/first.zip",
+	}
+	require.NoError(t, first.Insert())
+
+	duplicate := &SkillHubSkill{
+		SkillID:    first.SkillID,
+		Name:       "Duplicate Skill",
+		Version:    "1.0.0",
+		SourceType: "zip",
+		SourceURL:  "https://example.com/duplicate.zip",
+	}
+	require.Error(t, duplicate.Insert())
+
+	require.NoError(t, DeleteSkillHubSkill(first))
+	var deleted SkillHubSkill
+	require.NoError(t, DB.Unscoped().Where("id = ?", first.Id).First(&deleted).Error)
+	assert.NotZero(t, deleted.DeleteKey)
+
+	replacement := &SkillHubSkill{
+		SkillID:    first.SkillID,
+		Name:       "Replacement Skill",
+		Version:    "2.0.0",
+		SourceType: "zip",
+		SourceURL:  "https://example.com/replacement.zip",
+	}
+	require.NoError(t, replacement.Insert())
+
+	active, err := GetSkillHubSkillBySkillID(first.SkillID)
+	require.NoError(t, err)
+	assert.Equal(t, replacement.Id, active.Id)
+	assert.Zero(t, active.DeleteKey)
+}
+
+func TestConcurrentSkillHubSkillInsertsAllowExactlyOneActiveRow(t *testing.T) {
+	setupConcurrentSkillHubTestDB(t)
+
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for _, name := range []string{"Concurrent Skill A", "Concurrent Skill B"} {
+		name := name
+		go func() {
+			<-start
+			results <- (&SkillHubSkill{
+				SkillID:    "concurrent-skill",
+				Name:       name,
+				Version:    "1.0.0",
+				SourceType: "zip",
+				SourceURL:  "https://example.com/concurrent.zip",
+			}).Insert()
+		}()
+	}
+	close(start)
+
+	successes := 0
+	insertErrors := 0
+	for range 2 {
+		err := <-results
+		switch {
+		case err == nil:
+			successes++
+		default:
+			insertErrors++
+		}
+	}
+	assert.Equal(t, 1, successes)
+	assert.Equal(t, 1, insertErrors)
+
+	var activeCount int64
+	require.NoError(t, DB.Model(&SkillHubSkill{}).Where("skill_id = ?", "concurrent-skill").Count(&activeCount).Error)
+	assert.EqualValues(t, 1, activeCount)
+}
+
 func TestSkillHubFavoritesAreIdempotentAndScopedByUser(t *testing.T) {
 	setupSkillHubTestDB(t)
 
@@ -935,6 +1018,24 @@ func setupSkillHubTestDB(t *testing.T) {
 	DB = db
 	t.Cleanup(func() {
 		DB = originalDB
+	})
+}
+
+func setupConcurrentSkillHubTestDB(t *testing.T) {
+	t.Helper()
+	originalDB := DB
+	dsn := "file:" + filepath.ToSlash(filepath.Join(t.TempDir(), "concurrent-skill-hub.db")) +
+		"?cache=shared&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(4)
+	require.NoError(t, db.AutoMigrate(&SkillHubSkill{}, &SkillHubTag{}, &SkillHubSkillTag{}))
+	DB = db
+	t.Cleanup(func() {
+		DB = originalDB
+		require.NoError(t, sqlDB.Close())
 	})
 }
 

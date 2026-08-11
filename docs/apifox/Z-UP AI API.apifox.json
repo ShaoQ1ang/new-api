@@ -32467,6 +32467,618 @@
                 "inheritPostProcessors": {},
                 "inheritPreProcessors": {}
               }
+            },
+            {
+              "name": "获取收藏技能列表",
+              "api": {
+                "id": "580700201",
+                "method": "get",
+                "path": "/api/skill-hub/favorites",
+                "parameters": {
+                  "path": [],
+                  "query": [
+                    {
+                      "id": "skillHubFavoriteTagIds",
+                      "name": "tag_ids",
+                      "required": false,
+                      "enable": true,
+                      "description": "标签 ID，多个 ID 使用英文逗号分隔；最多 50 个 ID",
+                      "example": "",
+                      "type": "string",
+                      "schema": {
+                        "type": "string"
+                      },
+                      "omitGeneratedExample": false
+                    },
+                    {
+                      "id": "skillHubFavoriteKeyword",
+                      "name": "keyword",
+                      "required": false,
+                      "enable": true,
+                      "description": "搜索关键字，匹配技能 ID、名称、描述、标签、来源或源地址；最多 128 个字符",
+                      "example": "",
+                      "type": "string",
+                      "schema": {
+                        "type": "string"
+                      },
+                      "omitGeneratedExample": false
+                    },
+                    {
+                      "id": "skillHubFavoritePage",
+                      "name": "p",
+                      "required": false,
+                      "enable": true,
+                      "description": "页码",
+                      "example": "",
+                      "type": "integer",
+                      "schema": {
+                        "type": "integer"
+                      },
+                      "omitGeneratedExample": false
+                    },
+                    {
+                      "id": "skillHubFavoritePageSize",
+                      "name": "page_size",
+                      "required": false,
+                      "enable": true,
+                      "description": "每页数量，最大 100",
+                      "example": "",
+                      "type": "integer",
+                      "schema": {
+                        "type": "integer"
+                      },
+                      "omitGeneratedExample": false
+                    }
+                  ],
+                  "cookie": [],
+                  "header": []
+                },
+                "auth": {
+                  "type": "securityscheme"
+                },
+                "securityScheme": {
+                  "schemeGroups": [
+                    {
+                      "id": "skillHubFavoriteUser_580700201",
+                      "schemeIds": [
+                        1531752
+                      ]
+                    },
+                    {
+                      "id": "skillHubFavoriteApi_580700201",
+                      "schemeIds": [
+                        1531753
+                      ]
+                    }
+                  ],
+                  "required": true,
+                  "use": {
+                    "id": "skillHubFavoriteUser_580700201",
+                    "configs": {
+                      "1531752": {}
+                    }
+                  },
+                  "scopes": {
+                    "skillHubFavoriteApi_580700201": {}
+                  }
+                },
+                "commonParameters": {},
+                "responses": [
+                  {
+                    "id": "580700211",
+                    "code": "200",
+                    "headers": [],
+                    "jsonSchema": {
+                      "$ref": "#/definitions/288594279"
+                    },
+                    "itemSchema": {},
+                    "description": "成功",
+                    "contentType": "json",
+                    "mediaType": "application/json",
+                    "oasExtensions": ""
+                  }
+                ],
+                "responseExamples": [],
+                "requestBody": {
+                  "type": "none",
+                  "parameters": [],
+                  "oasExtensions": "",
+                  "required": false,
+                  "additionalContentTypes": []
+                },
+                "description": "🔒 需要用户登录；仅返回当前用户收藏且仍存在、已发布的技能",
+                "tags": [
+                  "技能广场"
+                ],
+                "status": "released",
+                "serverId": "",
+                "operationId": "",
+                "sourceUrl": "",
+                "ordering": 36,
+                "cases": [
+                  {
+                    "id": 580700221,
+                    "type": "DEBUG_CASE",
+                    "path": null,
+                    "name": "成功",
+                    "responseId": "580700211",
+                    "parameters": {
+                      "path": [],
+                      "query": [
+                        {
+                          "id": "skillHubFavoriteTagIdsCase",
+                          "relatedId": "skillHubFavoriteTagIds",
+                          "relatedName": "tag_ids",
+                          "name": "tag_ids",
+                          "type": "string",
+                          "value": "",
+                          "enable": true,
+                          "description": "标签 ID，多个 ID 使用英文逗号分隔；最多 50 个 ID",
+                          "isDelete": false
+                        },
+                        {
+                          "id": "skillHubFavoriteKeywordCase",
+                          "relatedId": "skillHubFavoriteKeyword",
+                          "relatedName": "keyword",
+                          "name": "keyword",
+                          "type": "string",
+                          "value": "",
+                          "enable": true,
+                          "description": "搜索关键字，匹配技能 ID、名称、描述、标签、来源或源地址；最多 128 个字符",
+                          "isDelete": false
+                        },
+                        {
+                          "id": "skillHubFavoritePageCase",
+                          "relatedId": "skillHubFavoritePage",
+                          "relatedName": "p",
+                          "name": "p",
+                          "type": "integer",
+                          "value": "",
+                          "enable": true,
+                          "description": "页码",
+                          "isDelete": false
+                        },
+                        {
+                          "id": "skillHubFavoritePageSizeCase",
+                          "relatedId": "skillHubFavoritePageSize",
+                          "relatedName": "page_size",
+                          "name": "page_size",
+                          "type": "integer",
+                          "value": "",
+                          "enable": true,
+                          "description": "每页数量，最大 100",
+                          "isDelete": false
+                        }
+                      ],
+                      "cookie": [],
+                      "header": []
+                    },
+                    "commonParameters": {},
+                    "requestBody": {
+                      "parameters": [],
+                      "type": "none",
+                      "generateMode": "normal"
+                    },
+                    "auth": {
+                      "type": "securityscheme"
+                    },
+                    "securityScheme": {
+                      "schemeGroups": [
+                        {
+                          "id": "skillHubFavoriteUser_580700201",
+                          "schemeIds": [
+                            1531752
+                          ]
+                        },
+                        {
+                          "id": "skillHubFavoriteApi_580700201",
+                          "schemeIds": [
+                            1531753
+                          ]
+                        }
+                      ],
+                      "required": true,
+                      "use": {
+                        "id": "skillHubFavoriteUser_580700201",
+                        "configs": {
+                          "1531752": {}
+                        }
+                      },
+                      "scopes": {
+                        "skillHubFavoriteApi_580700201": {}
+                      }
+                    },
+                    "advancedSettings": {
+                      "disabledSystemHeaders": {}
+                    },
+                    "requestResult": null,
+                    "visibility": "INHERITED",
+                    "moduleId": 8068398,
+                    "categoryId": 0,
+                    "tagIds": [],
+                    "apiTestDataList": [],
+                    "preProcessors": [],
+                    "postProcessors": [],
+                    "inheritPostProcessors": {},
+                    "inheritPreProcessors": {}
+                  }
+                ],
+                "mocks": [],
+                "customApiFields": "{}",
+                "advancedSettings": {
+                  "disabledSystemHeaders": {}
+                },
+                "mockScript": {},
+                "codeSamples": [],
+                "commonResponseStatus": {},
+                "responseChildren": [],
+                "visibility": "INHERITED",
+                "moduleId": 8068398,
+                "oasExtensions": "",
+                "type": "http",
+                "preProcessors": [],
+                "postProcessors": [],
+                "inheritPostProcessors": {},
+                "inheritPreProcessors": {}
+              }
+            },
+            {
+              "name": "收藏技能",
+              "api": {
+                "id": "580700202",
+                "method": "put",
+                "path": "/api/skill-hub/favorites/{id}",
+                "parameters": {
+                  "path": [
+                    {
+                      "id": "skillHubFavoriteSkillID",
+                      "name": "id",
+                      "required": true,
+                      "enable": true,
+                      "description": "技能 ID",
+                      "example": "",
+                      "type": "string",
+                      "schema": {
+                        "type": "string"
+                      },
+                      "omitGeneratedExample": false
+                    }
+                  ],
+                  "query": [],
+                  "cookie": [],
+                  "header": []
+                },
+                "auth": {
+                  "type": "securityscheme"
+                },
+                "securityScheme": {
+                  "schemeGroups": [
+                    {
+                      "id": "skillHubFavoriteUser_580700202",
+                      "schemeIds": [
+                        1531752
+                      ]
+                    },
+                    {
+                      "id": "skillHubFavoriteApi_580700202",
+                      "schemeIds": [
+                        1531753
+                      ]
+                    }
+                  ],
+                  "required": true,
+                  "use": {
+                    "id": "skillHubFavoriteUser_580700202",
+                    "configs": {
+                      "1531752": {}
+                    }
+                  },
+                  "scopes": {
+                    "skillHubFavoriteApi_580700202": {}
+                  }
+                },
+                "commonParameters": {},
+                "responses": [
+                  {
+                    "id": "580700212",
+                    "code": "200",
+                    "headers": [],
+                    "jsonSchema": {
+                      "$ref": "#/definitions/289952112"
+                    },
+                    "itemSchema": {},
+                    "description": "成功",
+                    "contentType": "json",
+                    "mediaType": "application/json",
+                    "oasExtensions": ""
+                  }
+                ],
+                "responseExamples": [],
+                "requestBody": {
+                  "type": "none",
+                  "parameters": [],
+                  "oasExtensions": "",
+                  "required": false,
+                  "additionalContentTypes": []
+                },
+                "description": "🔒 需要用户登录；幂等地收藏一个当前已发布的技能",
+                "tags": [
+                  "技能广场"
+                ],
+                "status": "released",
+                "serverId": "",
+                "operationId": "",
+                "sourceUrl": "",
+                "ordering": 42,
+                "cases": [
+                  {
+                    "id": 580700222,
+                    "type": "DEBUG_CASE",
+                    "path": null,
+                    "name": "成功",
+                    "responseId": "580700212",
+                    "parameters": {
+                      "path": [
+                        {
+                          "id": "skillHubFavoriteSkillIDCase",
+                          "relatedId": "skillHubFavoriteSkillID",
+                          "relatedName": "id",
+                          "name": "id",
+                          "value": "",
+                          "enable": true
+                        }
+                      ],
+                      "query": [],
+                      "cookie": [],
+                      "header": []
+                    },
+                    "commonParameters": {},
+                    "requestBody": {
+                      "parameters": [],
+                      "type": "none",
+                      "generateMode": "normal"
+                    },
+                    "auth": {
+                      "type": "securityscheme"
+                    },
+                    "securityScheme": {
+                      "schemeGroups": [
+                        {
+                          "id": "skillHubFavoriteUser_580700202",
+                          "schemeIds": [
+                            1531752
+                          ]
+                        },
+                        {
+                          "id": "skillHubFavoriteApi_580700202",
+                          "schemeIds": [
+                            1531753
+                          ]
+                        }
+                      ],
+                      "required": true,
+                      "use": {
+                        "id": "skillHubFavoriteUser_580700202",
+                        "configs": {
+                          "1531752": {}
+                        }
+                      },
+                      "scopes": {
+                        "skillHubFavoriteApi_580700202": {}
+                      }
+                    },
+                    "advancedSettings": {
+                      "disabledSystemHeaders": {}
+                    },
+                    "requestResult": null,
+                    "visibility": "INHERITED",
+                    "moduleId": 8068398,
+                    "categoryId": 0,
+                    "tagIds": [],
+                    "apiTestDataList": [],
+                    "preProcessors": [],
+                    "postProcessors": [],
+                    "inheritPostProcessors": {},
+                    "inheritPreProcessors": {}
+                  }
+                ],
+                "mocks": [],
+                "customApiFields": "{}",
+                "advancedSettings": {
+                  "disabledSystemHeaders": {}
+                },
+                "mockScript": {},
+                "codeSamples": [],
+                "commonResponseStatus": {},
+                "responseChildren": [],
+                "visibility": "INHERITED",
+                "moduleId": 8068398,
+                "oasExtensions": "",
+                "type": "http",
+                "preProcessors": [],
+                "postProcessors": [],
+                "inheritPostProcessors": {},
+                "inheritPreProcessors": {}
+              }
+            },
+            {
+              "name": "取消收藏技能",
+              "api": {
+                "id": "580700203",
+                "method": "delete",
+                "path": "/api/skill-hub/favorites/{id}",
+                "parameters": {
+                  "path": [
+                    {
+                      "id": "skillHubUnfavoriteSkillID",
+                      "name": "id",
+                      "required": true,
+                      "enable": true,
+                      "description": "技能 ID",
+                      "example": "",
+                      "type": "string",
+                      "schema": {
+                        "type": "string"
+                      },
+                      "omitGeneratedExample": false
+                    }
+                  ],
+                  "query": [],
+                  "cookie": [],
+                  "header": []
+                },
+                "auth": {
+                  "type": "securityscheme"
+                },
+                "securityScheme": {
+                  "schemeGroups": [
+                    {
+                      "id": "skillHubFavoriteUser_580700203",
+                      "schemeIds": [
+                        1531752
+                      ]
+                    },
+                    {
+                      "id": "skillHubFavoriteApi_580700203",
+                      "schemeIds": [
+                        1531753
+                      ]
+                    }
+                  ],
+                  "required": true,
+                  "use": {
+                    "id": "skillHubFavoriteUser_580700203",
+                    "configs": {
+                      "1531752": {}
+                    }
+                  },
+                  "scopes": {
+                    "skillHubFavoriteApi_580700203": {}
+                  }
+                },
+                "commonParameters": {},
+                "responses": [
+                  {
+                    "id": "580700213",
+                    "code": "200",
+                    "headers": [],
+                    "jsonSchema": {
+                      "$ref": "#/definitions/289952112"
+                    },
+                    "itemSchema": {},
+                    "description": "成功",
+                    "contentType": "json",
+                    "mediaType": "application/json",
+                    "oasExtensions": ""
+                  }
+                ],
+                "responseExamples": [],
+                "requestBody": {
+                  "type": "none",
+                  "parameters": [],
+                  "oasExtensions": "",
+                  "required": false,
+                  "additionalContentTypes": []
+                },
+                "description": "🔒 需要用户登录；幂等地取消收藏，技能已删除时也返回成功",
+                "tags": [
+                  "技能广场"
+                ],
+                "status": "released",
+                "serverId": "",
+                "operationId": "",
+                "sourceUrl": "",
+                "ordering": 48,
+                "cases": [
+                  {
+                    "id": 580700223,
+                    "type": "DEBUG_CASE",
+                    "path": null,
+                    "name": "成功",
+                    "responseId": "580700213",
+                    "parameters": {
+                      "path": [
+                        {
+                          "id": "skillHubUnfavoriteSkillIDCase",
+                          "relatedId": "skillHubUnfavoriteSkillID",
+                          "relatedName": "id",
+                          "name": "id",
+                          "value": "",
+                          "enable": true
+                        }
+                      ],
+                      "query": [],
+                      "cookie": [],
+                      "header": []
+                    },
+                    "commonParameters": {},
+                    "requestBody": {
+                      "parameters": [],
+                      "type": "none",
+                      "generateMode": "normal"
+                    },
+                    "auth": {
+                      "type": "securityscheme"
+                    },
+                    "securityScheme": {
+                      "schemeGroups": [
+                        {
+                          "id": "skillHubFavoriteUser_580700203",
+                          "schemeIds": [
+                            1531752
+                          ]
+                        },
+                        {
+                          "id": "skillHubFavoriteApi_580700203",
+                          "schemeIds": [
+                            1531753
+                          ]
+                        }
+                      ],
+                      "required": true,
+                      "use": {
+                        "id": "skillHubFavoriteUser_580700203",
+                        "configs": {
+                          "1531752": {}
+                        }
+                      },
+                      "scopes": {
+                        "skillHubFavoriteApi_580700203": {}
+                      }
+                    },
+                    "advancedSettings": {
+                      "disabledSystemHeaders": {}
+                    },
+                    "requestResult": null,
+                    "visibility": "INHERITED",
+                    "moduleId": 8068398,
+                    "categoryId": 0,
+                    "tagIds": [],
+                    "apiTestDataList": [],
+                    "preProcessors": [],
+                    "postProcessors": [],
+                    "inheritPostProcessors": {},
+                    "inheritPreProcessors": {}
+                  }
+                ],
+                "mocks": [],
+                "customApiFields": "{}",
+                "advancedSettings": {
+                  "disabledSystemHeaders": {}
+                },
+                "mockScript": {},
+                "codeSamples": [],
+                "commonResponseStatus": {},
+                "responseChildren": [],
+                "visibility": "INHERITED",
+                "moduleId": 8068398,
+                "oasExtensions": "",
+                "type": "http",
+                "preProcessors": [],
+                "postProcessors": [],
+                "inheritPostProcessors": {},
+                "inheritPreProcessors": {}
+              }
             }
           ]
         },
@@ -50311,6 +50923,62 @@
                 },
                 "data": {
                   "$ref": "#/definitions/288594276"
+                }
+              },
+              "x-apifox-orders": [
+                "success",
+                "message",
+                "data"
+              ]
+            }
+          },
+          "visibility": "INHERITED",
+          "moduleId": 8068398
+        },
+        {
+          "name": "SkillHubFavoriteState",
+          "displayName": "",
+          "id": "#/definitions/289952111",
+          "description": "收藏操作结果",
+          "schema": {
+            "jsonSchema": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "技能 ID"
+                },
+                "favorited": {
+                  "type": "boolean",
+                  "description": "操作后的收藏状态"
+                }
+              },
+              "x-apifox-orders": [
+                "id",
+                "favorited"
+              ]
+            }
+          },
+          "visibility": "INHERITED",
+          "moduleId": 8068398
+        },
+        {
+          "name": "SkillHubFavoriteApiResponse",
+          "displayName": "",
+          "id": "#/definitions/289952112",
+          "description": "",
+          "schema": {
+            "jsonSchema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "data": {
+                  "$ref": "#/definitions/289952111"
                 }
               },
               "x-apifox-orders": [

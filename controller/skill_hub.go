@@ -504,7 +504,8 @@ func AdminCreateSkillHubSkill(c *gin.Context) {
 	}
 	if err := skill.Insert(); err != nil {
 		cleanupPromotedSkillHubFinalObjects(promotion)
-		common.ApiError(c, err)
+		common.SysError("failed to create skill hub skill: " + err.Error())
+		common.ApiErrorMsg(c, "failed to save skill")
 		return
 	}
 	cleanupPromotedSkillHubTempObjects(promotion)
@@ -552,7 +553,8 @@ func AdminUpdateSkillHubSkill(c *gin.Context) {
 	oldSourceRef, oldIcon, err := skill.UpdateReturningPreviousObjects()
 	if err != nil {
 		cleanupPromotedSkillHubFinalObjects(promotion)
-		common.ApiError(c, err)
+		common.SysError("failed to update skill hub skill: " + err.Error())
+		common.ApiErrorMsg(c, "failed to save skill")
 		return
 	}
 	cleanupPromotedSkillHubTempObjects(promotion)
