@@ -308,15 +308,34 @@ func applyVideoSecondsBilling(c *gin.Context, info *relaycommon.RelayInfo) error
 	if err != nil {
 		return err
 	}
-	unitPrice, ok := ratio_setting.GetVideoSecondsPrice(info.OriginModelName, videoParams.Tier, videoParams.AudioEnabled)
+	priceModel := info.OriginModelName
+	unitPrice, ok := ratio_setting.GetVideoSecondsPrice(priceModel, videoParams.Tier, videoParams.AudioEnabled)
+	if !ok && info.ChannelMeta != nil && strings.TrimSpace(info.UpstreamModelName) != "" && info.UpstreamModelName != info.OriginModelName {
+		priceModel = info.UpstreamModelName
+		unitPrice, ok = ratio_setting.GetVideoSecondsPrice(priceModel, videoParams.Tier, videoParams.AudioEnabled)
+	}
 	if !ok {
-		return fmt.Errorf("video seconds price not configured for %s tier %s", info.OriginModelName, videoParams.Tier)
+		return fmt.Errorf("video seconds price not configured for %s tier %s", priceModel, videoParams.Tier)
+	}
+	fixedPrice := 0.0
+	for key, units := range videoParams.ExtraUnits {
+		if units <= 0 {
+			continue
+		}
+		extraUnitPrice, ok := ratio_setting.GetVideoSecondsExtraPrice(priceModel, videoParams.Tier, key)
+		if !ok {
+			return fmt.Errorf("video extra price not configured for %s tier %s key %s", priceModel, videoParams.Tier, key)
+		}
+		fixedPrice += extraUnitPrice * float64(units)
 	}
 	info.PriceData.VideoSecondsUnitPrice = unitPrice
 	info.PriceData.VideoSecondsTier = videoParams.Tier
 	info.PriceData.VideoDurationSeconds = videoParams.DurationSeconds
 	info.PriceData.VideoAudioEnabled = &videoParams.AudioEnabled
-	info.PriceData.Quota = int(unitPrice * float64(videoParams.DurationSeconds) * common.QuotaPerUnit * info.PriceData.GroupRatioInfo.GroupRatio)
+	info.PriceData.VideoFixedPrice = fixedPrice
+	quota, clamp := common.QuotaFromFloatChecked((unitPrice*float64(videoParams.DurationSeconds) + fixedPrice) * common.QuotaPerUnit * info.PriceData.GroupRatioInfo.GroupRatio)
+	info.PriceData.Quota = quota
+	noteTaskQuotaClamp(info, clamp)
 	return nil
 }
 

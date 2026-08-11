@@ -59,6 +59,63 @@ func TestRelayTaskVideoSecondsComputesQuotaBySecond(t *testing.T) {
 	require.Equal(t, "720p", info.PriceData.VideoSecondsTier)
 }
 
+func TestRelayTaskVideoSecondsAddsMiniMaxReferenceImagePrice(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
+	})
+
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode": `{"minimax/hailuo-3":"video_seconds"}`,
+	}))
+	require.NoError(t, ratio_setting.UpdateVideoSecondsPriceByJSONString(`{
+		"minimax/hailuo-3": {
+			"2k": {"default": 0.13, "silent": 0.13, "reference_image": 0.04}
+		}
+	}`))
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Set("group", "default")
+	ctx.Set("task_request", relaycommon.TaskSubmitReq{
+		Model:    "minimax/hailuo-3",
+		Duration: 5,
+		Images: []string{
+			"https://example.com/first.png",
+			"https://example.com/last.png",
+		},
+		Metadata: map[string]any{
+			"reference_images": []string{
+				"https://example.com/reference-1.png",
+				"https://example.com/reference-2.png",
+				"https://example.com/reference-3.png",
+				"https://example.com/reference-4.png",
+				"https://example.com/reference-5.png",
+				"https://example.com/reference-6.png",
+				"https://example.com/reference-7.png",
+			},
+		},
+	})
+
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "minimax/hailuo-3",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+	info.PriceData.GroupRatioInfo.GroupRatio = 1
+
+	require.NoError(t, applyVideoSecondsBilling(ctx, info))
+	assert.Equal(t, 0.08, info.PriceData.VideoFixedPrice)
+	expectedQuota := int((0.13*5 + 0.04*2) * common.QuotaPerUnit)
+	assert.Equal(t, expectedQuota, info.PriceData.Quota)
+}
+
 func TestRelayTaskVideoSecondsFailsWhenTierPriceMissing(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

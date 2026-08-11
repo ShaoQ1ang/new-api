@@ -13,6 +13,7 @@ type veoNormalizedRequest struct {
 	Prompt          string
 	DurationSeconds int
 	Resolution      string
+	Size            string
 	AspectRatio     string
 	GenerateAudio   *bool
 	Seed            any
@@ -32,6 +33,8 @@ var veoSupportedResolutions = map[string]struct{}{
 	"720p":  {},
 	"1080p": {},
 }
+var veoFrameTypes = map[string]struct{}{"first_frame": {}, "last_frame": {}}
+var veoReferenceTypes = map[string]struct{}{"image_url": {}}
 
 func init() {
 	taskcommon.RegisterVideoBillingConverter(func(modelName string) bool {
@@ -53,6 +56,9 @@ func (h *VeoHandler) BuildUpstreamRequest(info *relaycommon.RelayInfo, req *rela
 	}
 	if normalized.Resolution != "" {
 		body["resolution"] = normalized.Resolution
+	}
+	if normalized.Size != "" {
+		body["size"] = normalized.Size
 	}
 	if normalized.AspectRatio != "" {
 		body["aspect_ratio"] = normalized.AspectRatio
@@ -89,7 +95,7 @@ func (h *VeoHandler) EstimateBillingContext(req *relaycommon.TaskSubmitReq) (*Vi
 	if err != nil {
 		return nil, err
 	}
-	tier := normalizeTier(normalized.Resolution)
+	tier := normalizeTier(firstNonEmpty(normalized.Resolution, normalized.Size))
 	if tier == "" {
 		tier = normalizeResolutionTier(req)
 	}
@@ -104,38 +110,72 @@ func (h *VeoHandler) EstimateBillingContext(req *relaycommon.TaskSubmitReq) (*Vi
 }
 
 func (h *VeoHandler) normalizeRequest(req *relaycommon.TaskSubmitReq) (*veoNormalizedRequest, error) {
+	if err := validateRequestMetadata(req); err != nil {
+		return nil, err
+	}
+	if err := validateCallbackURL(req); err != nil {
+		return nil, err
+	}
+	if err := validateResolutionAndSize(req); err != nil {
+		return nil, err
+	}
+	if _, _, err := requestIntegerSeed(req); err != nil {
+		return nil, err
+	}
+	if frameImages, ok := requestFrameImages(req); ok {
+		if err := validateFrameImages(frameImages, veoFrameTypes); err != nil {
+			return nil, err
+		}
+	}
+	if inputReferences, ok := requestInputReferences(req); ok {
+		if err := validateInputReferences(inputReferences, veoReferenceTypes); err != nil {
+			return nil, err
+		}
+	}
 	duration := req.Duration
 	if duration <= 0 {
 		duration = parsePositiveInt(req.Seconds)
 	}
 	duration = normalizeSupportedDuration(duration, veoSupportedDurations, 8)
-	resolution := normalizeVeoResolution(firstNonEmpty(stringMetadata(req.Metadata, "resolution"), req.Size))
-	if raw := firstNonEmpty(stringMetadata(req.Metadata, "resolution"), req.Size); strings.TrimSpace(raw) != "" && resolution == "" {
+	rawSize := requestSize(req)
+	exactSize := normalizeExactVideoSize(rawSize)
+	rawResolution := requestResolution(req)
+	if exactSize == "" {
+		rawResolution = firstNonEmpty(rawResolution, rawSize)
+	}
+	resolution := normalizeVeoResolution(firstNonEmpty(rawResolution, exactSize))
+	if raw := firstNonEmpty(rawResolution, exactSize); strings.TrimSpace(raw) != "" && resolution == "" {
 		return nil, errf("unsupported veo resolution: %s", raw)
 	}
-	aspectRatio := firstNonEmpty(stringMetadata(req.Metadata, "aspect_ratio"), stringMetadata(req.Metadata, "ratio"))
+	if exactSize != "" {
+		resolution = ""
+	}
+	aspectRatio := requestAspectRatio(req)
 	if aspectRatio != "" {
 		if _, ok := veoSupportedAspectRatios[strings.TrimSpace(aspectRatio)]; !ok {
 			return nil, errf("unsupported veo aspect_ratio: %s", aspectRatio)
 		}
 	}
+	seed, _ := requestSeed(req)
+	provider, _ := requestProvider(req)
 	normalized := &veoNormalizedRequest{
 		Prompt:          strings.TrimSpace(req.Prompt),
 		DurationSeconds: duration,
 		Resolution:      resolution,
+		Size:            exactSize,
 		AspectRatio:     aspectRatio,
-		GenerateAudio:   resolveAudioEnabled(req.Metadata),
-		Seed:            req.Metadata["seed"],
-		Provider:        req.Metadata["provider"],
-		CallbackURL:     stringMetadata(req.Metadata, "callback_url"),
+		GenerateAudio:   requestAudioEnabled(req),
+		Seed:            seed,
+		Provider:        provider,
+		CallbackURL:     requestCallbackURL(req),
 		RawMetadata:     cloneMetadataExcludingKnown(req.Metadata),
 	}
-	if frameImages, ok := metadataMapSlice(req.Metadata, "frame_images"); ok && len(frameImages) > 0 {
+	if frameImages, ok := requestFrameImages(req); ok && len(frameImages) > 0 {
 		normalized.FrameImages = frameImages
 	} else {
 		normalized.FrameImages = inferFrameImages(req.Images)
 	}
-	if inputReferences, ok := metadataMapSlice(req.Metadata, "input_references"); ok && len(inputReferences) > 0 {
+	if inputReferences, ok := requestInputReferences(req); ok && len(inputReferences) > 0 {
 		normalized.InputReferences = inputReferences
 	} else {
 		normalized.InputReferences = inferVeoInputReferences(req.Images, len(normalized.FrameImages), req.Metadata)

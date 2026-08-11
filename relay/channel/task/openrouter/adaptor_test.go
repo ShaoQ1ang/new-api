@@ -2,6 +2,7 @@ package openrouter
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -18,6 +19,12 @@ func TestSelectHandlerUsesSupportedOpenRouterVideoFamilies(t *testing.T) {
 	}{
 		{model: "bytedance/seedance-2.0", family: "seedance"},
 		{model: "google/veo-3.1-lite", family: "veo"},
+		{model: "alibaba/happyhorse-1.1", family: "happyhorse"},
+		{model: "kwaivgi/kling-v3.0-std", family: "kling"},
+		{model: "kwaivgi/kling-v3.0-pro", family: "kling"},
+		{model: "kwaivgi/kling-video-o1", family: "kling"},
+		{model: "minimax/hailuo-3", family: "minimax"},
+		{model: "minimax/hailuo-2.3", family: "minimax"},
 		{model: "openai/sora-2", family: "default"},
 	}
 	for _, tt := range tests {
@@ -69,7 +76,7 @@ func TestVeoHandlerBuildsFramesReferencesAndNormalizedBilling(t *testing.T) {
 	references, ok := body["input_references"].([]map[string]any)
 	require.True(t, ok)
 	require.Len(t, references, 1)
-	assert.Equal(t, "image", references[0]["type"])
+	assert.Equal(t, "image_url", references[0]["type"])
 
 	billing, err := handler.EstimateBillingContext(req)
 	require.NoError(t, err)
@@ -77,6 +84,241 @@ func TestVeoHandlerBuildsFramesReferencesAndNormalizedBilling(t *testing.T) {
 	assert.Equal(t, "1080p", billing.ResolutionTier)
 	require.NotNil(t, billing.AudioEnabled)
 	assert.True(t, *billing.AudioEnabled)
+}
+
+func TestHappyHorseHandlerBuildsReferenceRequestAndBilling(t *testing.T) {
+	handler := &HappyHorseHandler{BaseHandler: NewBaseHandler("happyhorse")}
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "alibaba/happyhorse-1.1"}}
+	req := &relaycommon.TaskSubmitReq{
+		Model: "alibaba/happyhorse-1.1", Prompt: "preserve the subject", Seconds: "10",
+		Images:   []string{"https://example.com/a.png", "https://example.com/b.png"},
+		Metadata: map[string]any{"resolution": "720p", "aspect_ratio": "1:1", "audio": false},
+	}
+
+	body, err := handler.BuildUpstreamRequest(info, req)
+	require.NoError(t, err)
+	assert.Equal(t, 10, body["duration"])
+	assert.Equal(t, "720p", body["resolution"])
+	assert.NotContains(t, body, "generate_audio")
+	frames, ok := body["frame_images"].([]map[string]any)
+	require.True(t, ok)
+	require.Len(t, frames, 1)
+	assert.Equal(t, "first_frame", frames[0]["frame_type"])
+	references, ok := body["input_references"].([]map[string]any)
+	require.True(t, ok)
+	require.Len(t, references, 1)
+	assert.Equal(t, "image_url", references[0]["type"])
+
+	billing, err := handler.EstimateBillingContext(req)
+	require.NoError(t, err)
+	assert.Equal(t, "720p", billing.ResolutionTier)
+	assert.Equal(t, 10, billing.DurationSeconds)
+	require.NotNil(t, billing.AudioEnabled)
+	assert.False(t, *billing.AudioEnabled)
+}
+
+func TestOpenRouterHandlersAcceptCanonicalTopLevelVideoParameters(t *testing.T) {
+	audio := false
+	seed := int64(0)
+	handler := &HappyHorseHandler{BaseHandler: NewBaseHandler("happyhorse")}
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "alibaba/happyhorse-1.1"}}
+	req := &relaycommon.TaskSubmitReq{
+		Model:         "alibaba/happyhorse-1.1",
+		Prompt:        "cinematic",
+		Duration:      5,
+		Size:          "1280x720",
+		GenerateAudio: &audio,
+		Seed:          &seed,
+		CallbackURL:   "https://example.com/video-callback",
+		FrameImages: []map[string]any{
+			buildFrameImage("first_frame", "https://example.com/first.png"),
+		},
+		InputReferences: []map[string]any{
+			buildInputReference("image", "https://example.com/reference.png"),
+		},
+		Provider: map[string]any{"order": []string{"atlas-cloud"}},
+	}
+
+	body, err := handler.BuildUpstreamRequest(info, req)
+	require.NoError(t, err)
+	assert.Equal(t, "1280x720", body["size"])
+	assert.NotContains(t, body, "resolution")
+	assert.Equal(t, int64(0), body["seed"])
+	assert.Equal(t, "https://example.com/video-callback", body["callback_url"])
+	assert.Equal(t, req.FrameImages, body["frame_images"])
+	assert.Equal(t, req.InputReferences, body["input_references"])
+	assert.Equal(t, req.Provider, body["provider"])
+}
+
+func TestHappyHorseBuildsNativeOpenRouterPayload(t *testing.T) {
+	var req relaycommon.TaskSubmitReq
+	require.NoError(t, common.Unmarshal([]byte(`{
+		"model":"alibaba/happyhorse-1.1",
+		"prompt":"a slow cinematic push-in",
+		"duration":5,
+		"size":"1280x720",
+		"frame_images":[{
+			"type":"image_url",
+			"image_url":{"url":"data:image/png;base64,AAAA"},
+			"frame_type":"first_frame"
+		}]
+	}`), &req))
+
+	handler := &HappyHorseHandler{BaseHandler: NewBaseHandler("happyhorse")}
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: req.Model}}
+	body, err := handler.BuildUpstreamRequest(info, &req)
+	require.NoError(t, err)
+
+	assert.Equal(t, 5, body["duration"])
+	assert.Equal(t, "1280x720", body["size"])
+	assert.NotContains(t, body, "resolution")
+	assert.Equal(t, req.FrameImages, body["frame_images"])
+	assert.NotContains(t, body, "input_references")
+}
+
+func TestKlingHandlerPreservesExplicitAudioFalseAndProviderOptions(t *testing.T) {
+	handler := &KlingHandler{BaseHandler: NewBaseHandler("kling")}
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "kwaivgi/kling-v3.0-std"}}
+	req := &relaycommon.TaskSubmitReq{
+		Model: "kwaivgi/kling-v3.0-std", Prompt: "camera push in", Duration: 5,
+		Images:   []string{"https://example.com/first.png", "https://example.com/last.png"},
+		Metadata: map[string]any{"audio": false, "negative_prompt": "blur"},
+	}
+
+	body, err := handler.BuildUpstreamRequest(info, req)
+	require.NoError(t, err)
+	assert.Equal(t, false, body["generate_audio"])
+	frames, ok := body["frame_images"].([]map[string]any)
+	require.True(t, ok)
+	require.Len(t, frames, 2)
+	assert.Equal(t, "image_url", frames[0]["type"])
+	provider, ok := body["provider"].(map[string]any)
+	require.True(t, ok)
+	options := provider["options"].(map[string]any)["atlas-cloud"].(map[string]any)
+	assert.Equal(t, "blur", options["negative_prompt"])
+
+	billing, err := handler.EstimateBillingContext(req)
+	require.NoError(t, err)
+	assert.False(t, *billing.AudioEnabled)
+	assert.Equal(t, "720p", billing.ResolutionTier)
+}
+
+func TestKlingHandlerKeepsGenericReferencesWithExplicitFrames(t *testing.T) {
+	handler := &KlingHandler{BaseHandler: NewBaseHandler("kling")}
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "kwaivgi/kling-v3.0-std"}}
+	req := &relaycommon.TaskSubmitReq{
+		Model: "kwaivgi/kling-v3.0-std", Prompt: "cinematic", Duration: 5,
+		Images: []string{"https://example.com/reference.png"},
+		FrameImages: []map[string]any{
+			buildFrameImage("first_frame", "https://example.com/first.png"),
+		},
+	}
+
+	body, err := handler.BuildUpstreamRequest(info, req)
+	require.NoError(t, err)
+	references, ok := body["input_references"].([]map[string]any)
+	require.True(t, ok)
+	require.Len(t, references, 1)
+	assert.Equal(t, "https://example.com/reference.png", references[0]["image_url"].(map[string]any)["url"])
+}
+
+func TestKlingO1OnlyPassesSupportedProviderOptions(t *testing.T) {
+	handler := &KlingHandler{BaseHandler: NewBaseHandler("kling")}
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "kwaivgi/kling-video-o1"}}
+	req := &relaycommon.TaskSubmitReq{
+		Model: "kwaivgi/kling-video-o1", Prompt: "cinematic", Duration: 5,
+		Metadata: map[string]any{"negative_prompt": "blur", "cfg_scale": 0.7},
+	}
+
+	body, err := handler.BuildUpstreamRequest(info, req)
+	require.NoError(t, err)
+	provider := body["provider"].(map[string]any)
+	options := provider["options"].(map[string]any)["atlas-cloud"].(map[string]any)
+	assert.Equal(t, "blur", options["negative_prompt"])
+	assert.NotContains(t, options, "cfg_scale")
+}
+
+func TestOpenRouterHandlersRejectMalformedCanonicalInputs(t *testing.T) {
+	handler := &MiniMaxHandler{BaseHandler: NewBaseHandler("minimax")}
+	base := relaycommon.TaskSubmitReq{Model: "minimax/hailuo-2.3", Prompt: "cinematic", Duration: 6}
+
+	invalidFrame := base
+	invalidFrame.FrameImages = []map[string]any{buildFrameImage("last_frame", "https://example.com/last.png")}
+	require.ErrorContains(t, handler.Validate(&invalidFrame), "unsupported frame_type")
+
+	invalidReference := base
+	invalidReference.InputReferences = []map[string]any{{"type": "image_url"}}
+	require.ErrorContains(t, handler.Validate(&invalidReference), "image_url.url is required")
+
+	invalidCallback := base
+	invalidCallback.CallbackURL = "http://example.com/callback"
+	require.ErrorContains(t, handler.Validate(&invalidCallback), "valid HTTPS URL")
+}
+
+func TestMiniMaxHandlersUseModelCapabilitiesForRequestAndBilling(t *testing.T) {
+	tests := []struct {
+		name       string
+		model      string
+		duration   int
+		resolution string
+		audio      bool
+	}{
+		{name: "hailuo 3", model: "minimax/hailuo-3", duration: 5, resolution: "2K", audio: true},
+		{name: "hailuo 2.3", model: "minimax/hailuo-2.3", duration: 6, resolution: "1080p", audio: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := &MiniMaxHandler{BaseHandler: NewBaseHandler("minimax")}
+			info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: tt.model}}
+			req := &relaycommon.TaskSubmitReq{Model: tt.model, Prompt: "cinematic", Duration: tt.duration}
+
+			body, err := handler.BuildUpstreamRequest(info, req)
+			require.NoError(t, err)
+			assert.Equal(t, tt.resolution, body["resolution"])
+			assert.Equal(t, tt.audio, body["generate_audio"])
+
+			billing, err := handler.EstimateBillingContext(req)
+			require.NoError(t, err)
+			assert.Equal(t, strings.ToLower(tt.resolution), billing.ResolutionTier)
+			assert.Equal(t, tt.audio, *billing.AudioEnabled)
+		})
+	}
+}
+
+func TestMiniMaxH3KeepsGenericImagesAsReferencesWithExplicitFrames(t *testing.T) {
+	handler := &MiniMaxHandler{BaseHandler: NewBaseHandler("minimax")}
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "minimax/hailuo-3"}}
+	req := &relaycommon.TaskSubmitReq{
+		Model: "minimax/hailuo-3", Prompt: "cinematic", Duration: 5,
+		Images: []string{"https://example.com/reference.png"},
+		Metadata: map[string]any{
+			"frame_images": []map[string]any{
+				buildFrameImage("first_frame", "https://example.com/first.png"),
+			},
+		},
+	}
+
+	body, err := handler.BuildUpstreamRequest(info, req)
+	require.NoError(t, err)
+	references, ok := body["input_references"].([]map[string]any)
+	require.True(t, ok)
+	require.Len(t, references, 1)
+	assert.Equal(t, "image_url", references[0]["type"])
+	assert.Equal(t, "https://example.com/reference.png", references[0]["image_url"].(map[string]any)["url"])
+}
+
+func TestOpenRouterVideoHandlersRejectUnsupportedDurations(t *testing.T) {
+	tests := []struct {
+		handler ModelHandler
+		req     relaycommon.TaskSubmitReq
+	}{
+		{handler: &HappyHorseHandler{BaseHandler: NewBaseHandler("happyhorse")}, req: relaycommon.TaskSubmitReq{Model: "alibaba/happyhorse-1.1", Prompt: "x", Duration: 16}},
+		{handler: &KlingHandler{BaseHandler: NewBaseHandler("kling")}, req: relaycommon.TaskSubmitReq{Model: "kwaivgi/kling-video-o1", Prompt: "x", Duration: 7}},
+		{handler: &MiniMaxHandler{BaseHandler: NewBaseHandler("minimax")}, req: relaycommon.TaskSubmitReq{Model: "minimax/hailuo-2.3", Prompt: "x", Duration: 8}},
+	}
+	for _, tt := range tests {
+		require.Error(t, tt.handler.Validate(&tt.req))
+	}
 }
 
 func TestVeoHandlerRejectsUnsupportedOutput(t *testing.T) {
@@ -117,9 +359,9 @@ func TestSeedanceHandlerBuildsMultimodalReferences(t *testing.T) {
 	references, ok := body["input_references"].([]map[string]any)
 	require.True(t, ok)
 	require.Len(t, references, 3)
-	assert.Equal(t, "video", references[0]["type"])
-	assert.Equal(t, "image", references[1]["type"])
-	assert.Equal(t, "audio", references[2]["type"])
+	assert.Equal(t, "video_url", references[0]["type"])
+	assert.Equal(t, "image_url", references[1]["type"])
+	assert.Equal(t, "audio_url", references[2]["type"])
 
 	req.Duration = 16
 	require.ErrorContains(t, handler.Validate(req), "between 4 and 15")
@@ -170,6 +412,21 @@ func TestTaskAdaptorCheckedBillingSaturatesOversizedCharge(t *testing.T) {
 	assert.Equal(t, common.MaxQuota, quota)
 	require.NotNil(t, clamp)
 	assert.Equal(t, common.QuotaClampOverflow, clamp.Kind)
+}
+
+func TestTaskAdaptorCheckedBillingIncludesFixedVideoPrice(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	task := &model.Task{PrivateData: model.TaskPrivateData{BillingContext: &model.TaskBillingContext{
+		VideoSecondsUnitPrice: 0.13,
+		VideoFixedPrice:       0.08,
+		VideoDurationSeconds:  5,
+		GroupRatio:            1,
+	}}}
+
+	quota, clamp := adaptor.AdjustBillingOnCompleteChecked(task, &relaycommon.TaskInfo{DurationSeconds: 5})
+
+	assert.Nil(t, clamp)
+	assert.Equal(t, common.QuotaFromFloat(0.73*common.QuotaPerUnit), quota)
 }
 
 func TestBaseHandlerSaturatesUntrustedUsageAndDuration(t *testing.T) {

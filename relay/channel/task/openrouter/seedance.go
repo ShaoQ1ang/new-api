@@ -13,6 +13,7 @@ type seedanceNormalizedRequest struct {
 	Prompt          string
 	DurationSeconds int
 	Resolution      string
+	Size            string
 	AspectRatio     string
 	GenerateAudio   *bool
 	Seed            any
@@ -23,9 +24,37 @@ type seedanceNormalizedRequest struct {
 	RawMetadata     map[string]any
 }
 
+var seedanceFrameTypes = map[string]struct{}{"first_frame": {}, "last_frame": {}}
+var seedanceReferenceTypes = map[string]struct{}{"image_url": {}, "video_url": {}, "audio_url": {}}
+
 func (h *SeedanceHandler) Validate(req *relaycommon.TaskSubmitReq) error {
-	if err := h.BaseHandler.Validate(req); err != nil {
+	if err := validateRequestMetadata(req); err != nil {
 		return err
+	}
+	if strings.TrimSpace(req.Model) == "" {
+		return errf("model is required")
+	}
+	if strings.TrimSpace(req.Prompt) == "" && len(req.Images) == 0 && len(req.Videos) == 0 && !hasRequestInputs(req) {
+		return errf("prompt or media input is required")
+	}
+	if err := validateCallbackURL(req); err != nil {
+		return err
+	}
+	if err := validateResolutionAndSize(req); err != nil {
+		return err
+	}
+	if _, _, err := requestIntegerSeed(req); err != nil {
+		return err
+	}
+	if frameImages, ok := requestFrameImages(req); ok {
+		if err := validateFrameImages(frameImages, seedanceFrameTypes); err != nil {
+			return err
+		}
+	}
+	if inputReferences, ok := requestInputReferences(req); ok {
+		if err := validateInputReferences(inputReferences, seedanceReferenceTypes); err != nil {
+			return err
+		}
 	}
 	duration := req.Duration
 	if duration <= 0 {
@@ -51,6 +80,9 @@ func (h *SeedanceHandler) BuildUpstreamRequest(info *relaycommon.RelayInfo, req 
 	}
 	if normalized.Resolution != "" {
 		body["resolution"] = normalized.Resolution
+	}
+	if normalized.Size != "" {
+		body["size"] = normalized.Size
 	}
 	if normalized.AspectRatio != "" {
 		body["aspect_ratio"] = normalized.AspectRatio
@@ -87,7 +119,7 @@ func (h *SeedanceHandler) EstimateBillingContext(req *relaycommon.TaskSubmitReq)
 	if err != nil {
 		return nil, err
 	}
-	tier := normalizeTier(normalized.Resolution)
+	tier := normalizeTier(firstNonEmpty(normalized.Resolution, normalized.Size))
 	if tier == "" {
 		tier = normalizeResolutionTier(req)
 	}
@@ -115,25 +147,34 @@ func (h *SeedanceHandler) normalizeRequest(req *relaycommon.TaskSubmitReq) (*see
 	if duration <= 0 {
 		duration = 5
 	}
+	seed, _ := requestSeed(req)
+	provider, _ := requestProvider(req)
+	rawSize := requestSize(req)
+	exactSize := normalizeExactVideoSize(rawSize)
+	resolution := requestResolution(req)
+	if exactSize == "" {
+		resolution = firstNonEmpty(resolution, rawSize)
+	}
 	normalized := &seedanceNormalizedRequest{
 		Prompt:          strings.TrimSpace(req.Prompt),
 		DurationSeconds: duration,
-		Resolution:      firstNonEmpty(stringMetadata(req.Metadata, "resolution"), req.Size),
-		AspectRatio:     firstNonEmpty(stringMetadata(req.Metadata, "aspect_ratio"), stringMetadata(req.Metadata, "ratio")),
-		GenerateAudio:   resolveAudioEnabled(req.Metadata),
-		Seed:            req.Metadata["seed"],
-		Provider:        req.Metadata["provider"],
-		CallbackURL:     stringMetadata(req.Metadata, "callback_url"),
+		Resolution:      resolution,
+		Size:            exactSize,
+		AspectRatio:     requestAspectRatio(req),
+		GenerateAudio:   requestAudioEnabled(req),
+		Seed:            seed,
+		Provider:        provider,
+		CallbackURL:     requestCallbackURL(req),
 		RawMetadata:     cloneMetadataExcludingKnown(req.Metadata),
 	}
 
-	if frameImages, ok := metadataMapSlice(req.Metadata, "frame_images"); ok && len(frameImages) > 0 {
+	if frameImages, ok := requestFrameImages(req); ok && len(frameImages) > 0 {
 		normalized.FrameImages = frameImages
 	} else {
 		normalized.FrameImages = inferFrameImages(req.Images)
 	}
 
-	if inputReferences, ok := metadataMapSlice(req.Metadata, "input_references"); ok && len(inputReferences) > 0 {
+	if inputReferences, ok := requestInputReferences(req); ok && len(inputReferences) > 0 {
 		normalized.InputReferences = inputReferences
 	} else {
 		normalized.InputReferences = inferInputReferences(req.Images, req.Videos, req.Metadata, len(normalized.FrameImages))
@@ -159,6 +200,7 @@ func inferFrameImages(images []string) []map[string]any {
 func buildFrameImage(frameType, url string) map[string]any {
 	return map[string]any{
 		"frame_type": frameType,
+		"type":       "image_url",
 		"image_url": map[string]any{
 			"url": url,
 		},
@@ -180,9 +222,12 @@ func inferInputReferences(images []string, videos []string, metadata map[string]
 }
 
 func buildInputReference(refType, url string) map[string]any {
+	field := refType + "_url"
 	return map[string]any{
-		"type": refType,
-		"url":  url,
+		"type": field,
+		field: map[string]any{
+			"url": url,
+		},
 	}
 }
 

@@ -35,7 +35,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-import type { DifferencesMap, RatioType } from '../types'
+import type { DifferencesMap, RatioSyncValue, RatioType } from '../types'
 import { RATIO_TYPE_OPTIONS } from './constants'
 import { useUpstreamRatioSyncColumns } from './upstream-ratio-sync-columns'
 import {
@@ -60,7 +60,7 @@ type UpstreamRatioSyncTableProps = {
   onSelectValue: (
     model: string,
     ratioType: RatioType,
-    value: number | string,
+    value: RatioSyncValue,
     sourceName: string
   ) => void
   onSelectValues: (selections: ResolutionSelection[]) => void
@@ -152,7 +152,7 @@ export function UpstreamRatioSyncTable({
               selections.push({
                 model: row.model,
                 ratioType,
-                value: upstreamVal as number | string,
+                value: upstreamVal as RatioSyncValue,
                 sourceName: upstreamName,
               })
               const removalRatioTypes = removalPlan.get(row.model)

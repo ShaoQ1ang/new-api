@@ -52,28 +52,77 @@ func (h BaseHandler) Match(string) bool {
 }
 
 func (h BaseHandler) Validate(req *relaycommon.TaskSubmitReq) error {
+	if err := validateRequestMetadata(req); err != nil {
+		return err
+	}
 	if strings.TrimSpace(req.Model) == "" {
 		return errf("model is required")
 	}
-	if strings.TrimSpace(req.Prompt) == "" {
-		return errf("prompt is required")
+	if strings.TrimSpace(req.Prompt) == "" && len(req.Images) == 0 && len(req.Videos) == 0 && !hasRequestInputs(req) {
+		return errf("prompt or media input is required")
+	}
+	if err := validateCallbackURL(req); err != nil {
+		return err
+	}
+	if _, _, err := requestIntegerSeed(req); err != nil {
+		return err
+	}
+	if frameImages, ok := requestFrameImages(req); ok {
+		if err := validateFrameImages(frameImages, map[string]struct{}{"first_frame": {}, "last_frame": {}}); err != nil {
+			return err
+		}
+	}
+	if inputReferences, ok := requestInputReferences(req); ok {
+		if err := validateInputReferences(inputReferences, map[string]struct{}{"image_url": {}, "video_url": {}, "audio_url": {}}); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 func (h BaseHandler) BuildUpstreamRequest(info *relaycommon.RelayInfo, req *relaycommon.TaskSubmitReq) (map[string]any, error) {
+	if err := h.Validate(req); err != nil {
+		return nil, err
+	}
 	body := map[string]any{
 		"model":  info.UpstreamModelName,
 		"prompt": req.Prompt,
 	}
 	if req.Duration > 0 {
 		body["duration"] = req.Duration
-		body["seconds"] = req.Duration
 	} else if strings.TrimSpace(req.Seconds) != "" {
-		body["seconds"] = strings.TrimSpace(req.Seconds)
+		seconds, err := strconv.Atoi(strings.TrimSpace(req.Seconds))
+		if err != nil || seconds < 1 || seconds > relaycommon.MaxTaskDurationSeconds {
+			return nil, errf("seconds must be between 1 and %d", relaycommon.MaxTaskDurationSeconds)
+		}
+		body["duration"] = seconds
 	}
-	if req.Size != "" {
-		body["size"] = req.Size
+	if size := requestSize(req); size != "" {
+		body["size"] = size
+	}
+	if resolution := requestResolution(req); resolution != "" {
+		body["resolution"] = resolution
+	}
+	if aspectRatio := requestAspectRatio(req); aspectRatio != "" {
+		body["aspect_ratio"] = aspectRatio
+	}
+	if audio := requestAudioEnabled(req); audio != nil {
+		body["generate_audio"] = *audio
+	}
+	if frameImages, ok := requestFrameImages(req); ok {
+		body["frame_images"] = frameImages
+	}
+	if inputReferences, ok := requestInputReferences(req); ok {
+		body["input_references"] = inputReferences
+	}
+	if seed, ok := requestSeed(req); ok {
+		body["seed"] = seed
+	}
+	if provider, ok := requestProvider(req); ok {
+		body["provider"] = provider
+	}
+	if callbackURL := requestCallbackURL(req); callbackURL != "" {
+		body["callback_url"] = callbackURL
 	}
 	if req.Mode != "" {
 		body["mode"] = req.Mode
@@ -114,7 +163,7 @@ func (h BaseHandler) EstimateBillingContext(req *relaycommon.TaskSubmitReq) (*Vi
 		duration = 5
 	}
 	tier := normalizeResolutionTier(req)
-	audio := resolveAudioEnabled(req.Metadata)
+	audio := requestAudioEnabled(req)
 	return &VideoBillingContext{
 		DurationSeconds: duration,
 		ResolutionTier:  tier,

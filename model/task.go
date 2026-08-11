@@ -117,6 +117,7 @@ type TaskBillingContext struct {
 	VideoSecondsUnitPrice float64            `json:"video_seconds_unit_price,omitempty"`
 	VideoSecondsTier      string             `json:"video_seconds_tier,omitempty"`
 	VideoDurationSeconds  int                `json:"video_duration_seconds,omitempty"`
+	VideoFixedPrice       float64            `json:"video_fixed_price,omitempty"`
 	VideoAudioEnabled     *bool              `json:"video_audio_enabled,omitempty"`
 	OtherRatios           map[string]float64 `json:"other_ratios,omitempty"`      // 附加倍率（时长、分辨率等）
 	OriginModelName       string             `json:"origin_model_name,omitempty"` // 模型名称，必须为OriginModelName

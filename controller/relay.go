@@ -606,6 +606,7 @@ func RelayTask(c *gin.Context) {
 			VideoSecondsUnitPrice: relayInfo.PriceData.VideoSecondsUnitPrice,
 			VideoSecondsTier:      relayInfo.PriceData.VideoSecondsTier,
 			VideoDurationSeconds:  relayInfo.PriceData.VideoDurationSeconds,
+			VideoFixedPrice:       relayInfo.PriceData.VideoFixedPrice,
 			VideoAudioEnabled:     relayInfo.PriceData.VideoAudioEnabled,
 			OtherRatios:           relayInfo.PriceData.OtherRatios(),
 			OriginModelName:       relayInfo.OriginModelName,

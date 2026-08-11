@@ -362,6 +362,10 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 		return normalizeModelNames(models), nil
 	}
 
+	if channel.Type == constant.ChannelTypeOpenRouter {
+		return fetchOpenRouterUpstreamModelIDs(channel, baseURL)
+	}
+
 	if channel.Type == constant.ChannelTypeAdvancedCustom {
 		return fetchAdvancedCustomUpstreamModelIDs(channel, baseURL)
 	}
@@ -423,6 +427,34 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 		return item.ID
 	})
 	return normalizeModelNames(ids), nil
+}
+
+func fetchOpenRouterUpstreamModelIDs(channel *model.Channel, baseURL string) ([]string, error) {
+	key, _, apiErr := channel.GetNextEnabledKey()
+	if apiErr != nil {
+		return nil, fmt.Errorf("获取渠道密钥失败: %w", apiErr)
+	}
+	key = strings.TrimSpace(key)
+	headers, err := buildFetchModelsHeaders(channel, key)
+	if err != nil {
+		return nil, sanitizeFetchModelsError(err, key)
+	}
+
+	var models []string
+	for _, path := range []string{"/v1/models", "/v1/videos/models"} {
+		body, err := getFetchModelsResponseBody(http.MethodGet, strings.TrimRight(baseURL, "/")+path, channel, headers)
+		if err != nil {
+			return nil, sanitizeFetchModelsError(err, key)
+		}
+		var result OpenAIModelsResponse
+		if err := common.Unmarshal(body, &result); err != nil {
+			return nil, err
+		}
+		models = append(models, lo.Map(result.Data, func(item OpenAIModel, _ int) string {
+			return item.ID
+		})...)
+	}
+	return normalizeModelNames(models), nil
 }
 
 func fetchAdvancedCustomUpstreamModelIDs(channel *model.Channel, baseURL string) ([]string, error) {

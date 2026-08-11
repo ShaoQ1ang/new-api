@@ -3,6 +3,7 @@ package openrouter
 import (
 	"fmt"
 	"math"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -16,8 +17,9 @@ func errf(format string, args ...any) error {
 
 func normalizeResolutionTier(req *relaycommon.TaskSubmitReq) string {
 	candidates := []string{
-		req.Size,
+		req.Resolution,
 		stringMetadata(req.Metadata, "resolution"),
+		req.Size,
 		stringMetadata(req.Metadata, "size"),
 		stringMetadata(req.Metadata, "quality"),
 	}
@@ -35,9 +37,9 @@ func normalizeTier(value string) string {
 	switch normalized {
 	case "480p", "854x480", "832*480", "480*832", "624*624":
 		return "480p"
-	case "720p", "1280x720", "720x1280", "1280*720", "720*1280", "960*960", "1088*832", "832*1088", "std":
+	case "720p", "1280x720", "720x1280", "720x720", "960x720", "720x960", "1680x720", "720x1680", "1280*720", "720*1280", "960*960", "1088*832", "832*1088", "std":
 		return "720p"
-	case "1080p", "1920x1080", "1080x1920", "1920*1080", "1080*1920", "1440*1440", "1632*1248", "1248*1632", "pro":
+	case "1080p", "1920x1080", "1080x1920", "1080x1080", "1440x1080", "1080x1440", "2520x1080", "1080x2520", "1920*1080", "1080*1920", "1440*1440", "1632*1248", "1248*1632", "pro":
 		return "1080p"
 	case "2k":
 		return "2k"
@@ -45,6 +47,339 @@ func normalizeTier(value string) string {
 		return "4k"
 	}
 	return ""
+}
+
+func resolveRequestedDuration(req *relaycommon.TaskSubmitReq, fallback int) (int, error) {
+	if req.Duration != 0 {
+		if req.Duration < 1 || req.Duration > relaycommon.MaxTaskDurationSeconds {
+			return 0, errf("duration must be between 1 and %d seconds", relaycommon.MaxTaskDurationSeconds)
+		}
+		return req.Duration, nil
+	}
+	if strings.TrimSpace(req.Seconds) == "" {
+		return fallback, nil
+	}
+	duration, err := strconv.Atoi(strings.TrimSpace(req.Seconds))
+	if err != nil || duration < 1 || duration > relaycommon.MaxTaskDurationSeconds {
+		return 0, errf("seconds must be between 1 and %d", relaycommon.MaxTaskDurationSeconds)
+	}
+	return duration, nil
+}
+
+func requestResolution(req *relaycommon.TaskSubmitReq) string {
+	if req == nil {
+		return ""
+	}
+	return firstNonEmpty(req.Resolution, stringMetadata(req.Metadata, "resolution"))
+}
+
+func requestSize(req *relaycommon.TaskSubmitReq) string {
+	if req == nil {
+		return ""
+	}
+	return firstNonEmpty(req.Size, stringMetadata(req.Metadata, "size"))
+}
+
+func requestResolutionOrSize(req *relaycommon.TaskSubmitReq) string {
+	return firstNonEmpty(requestResolution(req), requestSize(req))
+}
+
+func requestAspectRatio(req *relaycommon.TaskSubmitReq) string {
+	if req == nil {
+		return ""
+	}
+	return firstNonEmpty(req.AspectRatio, stringMetadata(req.Metadata, "aspect_ratio"), stringMetadata(req.Metadata, "ratio"))
+}
+
+func requestAudioEnabled(req *relaycommon.TaskSubmitReq) *bool {
+	if req == nil {
+		return nil
+	}
+	if req.GenerateAudio != nil {
+		return req.GenerateAudio
+	}
+	return resolveAudioEnabled(req.Metadata)
+}
+
+func requestAudioWithDefault(req *relaycommon.TaskSubmitReq, fallback bool) *bool {
+	if audio := requestAudioEnabled(req); audio != nil {
+		return audio
+	}
+	return &fallback
+}
+
+func requestFrameImages(req *relaycommon.TaskSubmitReq) ([]map[string]any, bool) {
+	if req == nil {
+		return nil, false
+	}
+	if len(req.FrameImages) > 0 {
+		return req.FrameImages, true
+	}
+	return metadataMapSlice(req.Metadata, "frame_images")
+}
+
+func requestInputReferences(req *relaycommon.TaskSubmitReq) ([]map[string]any, bool) {
+	if req == nil {
+		return nil, false
+	}
+	if len(req.InputReferences) > 0 {
+		return req.InputReferences, true
+	}
+	return metadataMapSlice(req.Metadata, "input_references")
+}
+
+func requestSeed(req *relaycommon.TaskSubmitReq) (any, bool) {
+	if req == nil {
+		return nil, false
+	}
+	if req.Seed != nil {
+		return *req.Seed, true
+	}
+	seed, ok := req.Metadata["seed"]
+	return seed, ok && seed != nil
+}
+
+func requestProvider(req *relaycommon.TaskSubmitReq) (any, bool) {
+	if req == nil {
+		return nil, false
+	}
+	if len(req.Provider) > 0 {
+		return req.Provider, true
+	}
+	provider, ok := req.Metadata["provider"]
+	return provider, ok && provider != nil
+}
+
+func requestCallbackURL(req *relaycommon.TaskSubmitReq) string {
+	if req == nil {
+		return ""
+	}
+	return firstNonEmpty(req.CallbackURL, stringMetadata(req.Metadata, "callback_url"))
+}
+
+func normalizeExactVideoSize(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, "*", "x")
+	parts := strings.Split(normalized, "x")
+	if len(parts) != 2 {
+		return ""
+	}
+	width, widthErr := strconv.Atoi(parts[0])
+	height, heightErr := strconv.Atoi(parts[1])
+	if widthErr != nil || heightErr != nil || width <= 0 || height <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%dx%d", width, height)
+}
+
+func validateResolutionAndSize(req *relaycommon.TaskSubmitReq) error {
+	if requestResolution(req) != "" && normalizeExactVideoSize(requestSize(req)) != "" {
+		return errf("resolution and exact size cannot be used together")
+	}
+	return nil
+}
+
+func requestIntegerSeed(req *relaycommon.TaskSubmitReq) (int64, bool, error) {
+	value, ok := requestSeed(req)
+	if !ok {
+		return 0, false, nil
+	}
+	switch typed := value.(type) {
+	case int:
+		return int64(typed), true, nil
+	case int64:
+		return typed, true, nil
+	case float64:
+		if math.IsNaN(typed) || math.IsInf(typed, 0) || typed != math.Trunc(typed) || typed < math.MinInt64 || typed > math.MaxInt64 {
+			return 0, false, errf("seed must be an integer")
+		}
+		return int64(typed), true, nil
+	default:
+		return 0, false, errf("seed must be an integer")
+	}
+}
+
+func validateCallbackURL(req *relaycommon.TaskSubmitReq) error {
+	callbackURL := requestCallbackURL(req)
+	if callbackURL == "" {
+		return nil
+	}
+	parsed, err := url.Parse(callbackURL)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return errf("callback_url must be a valid HTTPS URL")
+	}
+	return nil
+}
+
+func validateRequestMetadata(req *relaycommon.TaskSubmitReq) error {
+	if req == nil || req.Metadata == nil {
+		return nil
+	}
+	for _, key := range []string{"resolution", "size", "aspect_ratio", "ratio", "callback_url"} {
+		if value, ok := req.Metadata[key]; ok {
+			if _, valid := value.(string); !valid {
+				return errf("metadata.%s must be a string", key)
+			}
+		}
+	}
+	for _, key := range []string{"audio", "generate_audio"} {
+		if value, ok := req.Metadata[key]; ok {
+			if _, valid := value.(bool); !valid {
+				return errf("metadata.%s must be a boolean", key)
+			}
+		}
+	}
+	for _, key := range []string{"frame_images", "input_references"} {
+		value, ok := req.Metadata[key]
+		if !ok {
+			continue
+		}
+		raw, err := common.Marshal(value)
+		if err != nil {
+			return errf("metadata.%s must be an array of objects", key)
+		}
+		var items []map[string]any
+		if err := common.Unmarshal(raw, &items); err != nil {
+			return errf("metadata.%s must be an array of objects", key)
+		}
+	}
+	for _, key := range []string{"reference_images", "reference_videos", "reference_audios"} {
+		value, ok := req.Metadata[key]
+		if !ok {
+			continue
+		}
+		raw, err := common.Marshal(value)
+		if err != nil {
+			return errf("metadata.%s must be an array of strings", key)
+		}
+		var items []string
+		if err := common.Unmarshal(raw, &items); err != nil {
+			return errf("metadata.%s must be an array of strings", key)
+		}
+	}
+	if provider, ok := req.Metadata["provider"]; ok {
+		raw, err := common.Marshal(provider)
+		if err != nil {
+			return errf("metadata.provider must be an object")
+		}
+		var object map[string]any
+		if err := common.Unmarshal(raw, &object); err != nil {
+			return errf("metadata.provider must be an object")
+		}
+	}
+	return nil
+}
+
+func validateFrameImages(frameImages []map[string]any, allowedFrameTypes map[string]struct{}) error {
+	seen := make(map[string]struct{}, len(frameImages))
+	for _, frame := range frameImages {
+		if frame["type"] != "image_url" {
+			return errf("frame_images type must be image_url")
+		}
+		frameType, _ := frame["frame_type"].(string)
+		if _, ok := allowedFrameTypes[frameType]; !ok {
+			return errf("unsupported frame_type: %s", frameType)
+		}
+		if _, exists := seen[frameType]; exists {
+			return errf("duplicate frame_type: %s", frameType)
+		}
+		seen[frameType] = struct{}{}
+		imageURL, ok := frame["image_url"].(map[string]any)
+		if !ok || strings.TrimSpace(stringValue(imageURL["url"])) == "" {
+			return errf("frame_images image_url.url is required")
+		}
+	}
+	return nil
+}
+
+func validateInputReferences(inputReferences []map[string]any, allowedTypes map[string]struct{}) error {
+	for _, reference := range inputReferences {
+		referenceType, _ := reference["type"].(string)
+		if _, ok := allowedTypes[referenceType]; !ok {
+			return errf("unsupported input reference type: %s", referenceType)
+		}
+		referenceURL, ok := reference[referenceType].(map[string]any)
+		if !ok || strings.TrimSpace(stringValue(referenceURL["url"])) == "" {
+			return errf("input_references %s.url is required", referenceType)
+		}
+	}
+	return nil
+}
+
+func stringValue(value any) string {
+	str, _ := value.(string)
+	return str
+}
+
+func validateAllowedValue(field, value string, allowed map[string]struct{}) error {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	if _, ok := allowed[strings.TrimSpace(value)]; !ok {
+		return errf("unsupported %s: %s", field, value)
+	}
+	return nil
+}
+
+func hasRequestInputs(req *relaycommon.TaskSubmitReq) bool {
+	if req == nil {
+		return false
+	}
+	if len(req.FrameImages) > 0 || len(req.InputReferences) > 0 {
+		return true
+	}
+	if frameImages, ok := metadataMapSlice(req.Metadata, "frame_images"); ok && len(frameImages) > 0 {
+		return true
+	}
+	if inputReferences, ok := metadataMapSlice(req.Metadata, "input_references"); ok && len(inputReferences) > 0 {
+		return true
+	}
+	if referenceImages, ok := metadataStringSlice(req.Metadata, "reference_images"); ok && len(referenceImages) > 0 {
+		return true
+	}
+	return false
+}
+
+func buildImageReferences(urls []string) []map[string]any {
+	refs := make([]map[string]any, 0, len(urls))
+	for _, url := range urls {
+		if strings.TrimSpace(url) != "" {
+			refs = append(refs, buildInputReference("image", url))
+		}
+	}
+	return refs
+}
+
+func addCommonRequestOptions(body map[string]any, req *relaycommon.TaskSubmitReq) {
+	if provider, ok := requestProvider(req); ok {
+		body["provider"] = provider
+	}
+	if callbackURL := requestCallbackURL(req); callbackURL != "" {
+		body["callback_url"] = callbackURL
+	}
+}
+
+func addProviderPassthrough(body map[string]any, metadata map[string]any, providerSlug string, keys ...string) {
+	if metadata == nil {
+		return
+	}
+	if _, exists := body["provider"]; exists {
+		return
+	}
+	options := make(map[string]any)
+	for _, key := range keys {
+		if value, ok := metadata[key]; ok {
+			options[key] = value
+		}
+	}
+	if len(options) == 0 {
+		return
+	}
+	body["provider"] = map[string]any{
+		"options": map[string]any{
+			providerSlug: options,
+		},
+	}
 }
 
 func resolveAudioEnabled(metadata map[string]any) *bool {

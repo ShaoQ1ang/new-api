@@ -139,6 +139,9 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 		if bc.VideoDurationSeconds > 0 {
 			other["video_duration_seconds"] = bc.VideoDurationSeconds
 		}
+		if bc.VideoFixedPrice > 0 {
+			other["video_fixed_price"] = bc.VideoFixedPrice
+		}
 		if bc.VideoAudioEnabled != nil {
 			other["video_audio_enabled"] = *bc.VideoAudioEnabled
 		}

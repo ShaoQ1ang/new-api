@@ -268,6 +268,7 @@ export type BillingSettings = {
   ImageRatio: string
   AudioRatio: string
   AudioCompletionRatio: string
+  VideoSecondsPrice: string
   ExposeRatioEnabled: boolean
   'billing_setting.billing_mode': string
   'billing_setting.billing_expr': string
@@ -405,12 +406,15 @@ export type RatioType =
   | 'audio_ratio'
   | 'audio_completion_ratio'
   | 'model_price'
+  | 'video_seconds_price'
   | 'billing_mode'
   | 'billing_expr'
 
+export type RatioSyncValue = number | string | { [key: string]: RatioSyncValue }
+
 export type RatioDifference = {
-  current: number | string | null
-  upstreams: Record<string, number | string | 'same'>
+  current: RatioSyncValue | null
+  upstreams: Record<string, RatioSyncValue | 'same'>
   confidence: Record<string, boolean>
 }
 

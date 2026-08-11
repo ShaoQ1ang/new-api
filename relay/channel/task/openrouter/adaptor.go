@@ -43,15 +43,25 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		}
 	}
 	handler := selectRequestHandler(info, req.Model)
-	if err := handler.Validate(&req); err != nil {
+	resolvedReq := requestForHandler(info, &req)
+	if err := handler.Validate(&resolvedReq); err != nil {
 		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 	}
+	frameImages, _ := requestFrameImages(&resolvedReq)
+	inputReferences, _ := requestInputReferences(&resolvedReq)
+	hasVideoReference := false
+	for _, reference := range inputReferences {
+		if reference["type"] == "video_url" {
+			hasVideoReference = true
+			break
+		}
+	}
 	info.Action = constant.TaskActionTextGenerate
-	if len(req.Videos) > 0 {
+	if len(req.Videos) > 0 || hasVideoReference {
 		info.Action = constant.TaskActionRemix
-	} else if len(req.Images) > 1 {
+	} else if len(req.Images) > 1 || len(frameImages) > 1 {
 		info.Action = constant.TaskActionFirstTailGenerate
-	} else if len(req.Images) == 1 {
+	} else if len(req.Images) == 1 || len(frameImages) == 1 || len(inputReferences) > 0 {
 		info.Action = constant.TaskActionGenerate
 	}
 	c.Set("task_request", req)
@@ -64,7 +74,8 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		return nil
 	}
 	handler := selectRequestHandler(info, req.Model)
-	ctx, err := handler.EstimateBillingContext(&req)
+	resolvedReq := requestForHandler(info, &req)
+	ctx, err := handler.EstimateBillingContext(&resolvedReq)
 	if err != nil || ctx == nil {
 		return nil
 	}
@@ -99,7 +110,8 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		return nil, err
 	}
 	handler := selectRequestHandler(info, req.Model)
-	body, err := handler.BuildUpstreamRequest(info, &req)
+	resolvedReq := requestForHandler(info, &req)
+	body, err := handler.BuildUpstreamRequest(info, &resolvedReq)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +217,7 @@ func (a *TaskAdaptor) AdjustBillingOnCompleteChecked(task *model.Task, taskResul
 			duration = bc.VideoDurationSeconds
 		}
 		if duration > 0 {
-			return common.QuotaFromFloatChecked(bc.VideoSecondsUnitPrice * float64(duration) * groupRatio * common.QuotaPerUnit)
+			return common.QuotaFromFloatChecked((bc.VideoSecondsUnitPrice*float64(duration) + bc.VideoFixedPrice) * groupRatio * common.QuotaPerUnit)
 		}
 	}
 	if taskResult.TotalTokens <= 0 {

@@ -13,7 +13,7 @@ const (
 	BillingModeTieredExpr   = "tiered_expr"
 	BillingModeVideoSeconds = "video_seconds"
 	BillingModeField        = "billing_mode"
-	BillingExprField      = "billing_expr"
+	BillingExprField        = "billing_expr"
 )
 
 // BillingSetting is managed by config.GlobalConfig.Register.
@@ -24,7 +24,15 @@ type BillingSetting struct {
 }
 
 var billingSetting = BillingSetting{
-	BillingMode: make(map[string]string),
+	BillingMode: map[string]string{
+		"alibaba/happyhorse-1.0": BillingModeVideoSeconds,
+		"alibaba/happyhorse-1.1": BillingModeVideoSeconds,
+		"kwaivgi/kling-v3.0-std": BillingModeVideoSeconds,
+		"kwaivgi/kling-v3.0-pro": BillingModeVideoSeconds,
+		"kwaivgi/kling-video-o1": BillingModeVideoSeconds,
+		"minimax/hailuo-3":       BillingModeVideoSeconds,
+		"minimax/hailuo-2.3":     BillingModeVideoSeconds,
+	},
 	BillingExpr: make(map[string]string),
 }
 

@@ -275,6 +275,7 @@ export default function UpstreamRatioSync(props) {
   const syncFieldOrder = [
     ...ratioSyncFields,
     'model_price',
+    'video_seconds_price',
     'billing_mode',
     'billing_expr',
   ];
@@ -289,6 +290,7 @@ export default function UpstreamRatioSync(props) {
       audio_ratio: t('音频倍率'),
       audio_completion_ratio: t('音频补全倍率'),
       model_price: t('固定价格'),
+      video_seconds_price: t('视频按秒价格'),
       billing_mode: t('计费模式'),
       billing_expr: t('表达式计费'),
     };
@@ -314,6 +316,10 @@ export default function UpstreamRatioSync(props) {
     }
     if (ratioType === 'billing_mode') {
       delete newRes[model].billing_expr;
+      delete newRes[model].video_seconds_price;
+    }
+    if (ratioType === 'video_seconds_price') {
+      delete newRes[model].billing_mode;
     }
     if (Object.keys(newRes[model]).length === 0) {
       delete newRes[model];
@@ -322,6 +328,7 @@ export default function UpstreamRatioSync(props) {
 
   function getBillingCategory(ratioType) {
     if (ratioType === 'model_price') return 'price';
+    if (ratioType === 'video_seconds_price') return 'video';
     if (ratioType === 'billing_mode' || ratioType === 'billing_expr') {
       return 'tiered';
     }
@@ -332,6 +339,7 @@ export default function UpstreamRatioSync(props) {
     const explicit = {
       billing_mode: 'billing_setting.billing_mode',
       billing_expr: 'billing_setting.billing_expr',
+      video_seconds_price: 'VideoSecondsPrice',
     };
     if (explicit[ratioType]) return explicit[ratioType];
     return ratioType
@@ -352,6 +360,17 @@ export default function UpstreamRatioSync(props) {
     const exprValue = getUpstreamValue(model, 'billing_expr', sourceName);
     if (ratioType !== 'billing_expr' && isSelectableUpstreamValue(exprValue)) {
       return 'billing_expr';
+    }
+    const videoPrice = getUpstreamValue(
+      model,
+      'video_seconds_price',
+      sourceName,
+    );
+    if (
+      ratioType !== 'video_seconds_price' &&
+      isSelectableUpstreamValue(videoPrice)
+    ) {
+      return 'video_seconds_price';
     }
     return ratioType;
   }
@@ -412,6 +431,14 @@ export default function UpstreamRatioSync(props) {
             newModelRes.billing_expr = exprValue;
           }
         }
+        if (category === 'video' && sourceName) {
+          const modeValue =
+            differences[model]?.billing_mode?.upstreams?.[sourceName];
+          delete newModelRes.billing_expr;
+          newModelRes.billing_mode = isSelectableUpstreamValue(modeValue)
+            ? modeValue
+            : 'video_seconds';
+        }
 
         return {
           ...prev,
@@ -434,6 +461,7 @@ export default function UpstreamRatioSync(props) {
         props.options.AudioCompletionRatio || '{}',
       ),
       ModelPrice: JSON.parse(props.options.ModelPrice || '{}'),
+      VideoSecondsPrice: JSON.parse(props.options.VideoSecondsPrice || '{}'),
       'billing_setting.billing_mode': JSON.parse(
         props.options['billing_setting.billing_mode'] || '{}',
       ),
@@ -445,6 +473,7 @@ export default function UpstreamRatioSync(props) {
     const conflicts = [];
 
     const getLocalBillingCategory = (model) => {
+      if (currentRatios.VideoSecondsPrice[model] !== undefined) return 'video';
       if (currentRatios.ModelPrice[model] !== undefined) return 'price';
       if (
         currentRatios.ModelRatio[model] !== undefined ||
@@ -462,7 +491,10 @@ export default function UpstreamRatioSync(props) {
     const findSourceChannel = (model, ratioType, value) => {
       if (differences[model] && differences[model][ratioType]) {
         const upMap = differences[model][ratioType].upstreams || {};
-        const entry = Object.entries(upMap).find(([_, v]) => v === value);
+        const target = JSON.stringify(value);
+        const entry = Object.entries(upMap).find(
+          ([_, v]) => JSON.stringify(v) === target,
+        );
         if (entry) return entry[0];
       }
       return t('未知');
@@ -470,22 +502,28 @@ export default function UpstreamRatioSync(props) {
 
     Object.entries(resolutions).forEach(([model, ratios]) => {
       const localCat = getLocalBillingCategory(model);
-      const newCat =
-        'model_price' in ratios
-          ? 'price'
-          : ratioSyncFields.some((rt) => rt in ratios)
-            ? 'ratio'
-            : 'tiered';
+      let newCat = 'tiered';
+      if ('model_price' in ratios) {
+        newCat = 'price';
+      } else if ('video_seconds_price' in ratios) {
+        newCat = 'video';
+      } else if (ratioSyncFields.some((rt) => rt in ratios)) {
+        newCat = 'ratio';
+      }
 
       if (localCat && newCat !== 'tiered' && localCat !== newCat) {
-        const currentDesc =
-          localCat === 'price'
-            ? `${t('固定价格')} : ${currentRatios.ModelPrice[model]}`
-            : `${t('模型倍率')} : ${currentRatios.ModelRatio[model] ?? '-'}\n${t('补全倍率')} : ${currentRatios.CompletionRatio[model] ?? '-'}`;
+        let currentDesc = `${t('模型倍率')} : ${currentRatios.ModelRatio[model] ?? '-'}\n${t('补全倍率')} : ${currentRatios.CompletionRatio[model] ?? '-'}`;
+        if (localCat === 'price') {
+          currentDesc = `${t('固定价格')} : ${currentRatios.ModelPrice[model]}`;
+        } else if (localCat === 'video') {
+          currentDesc = `${t('视频按秒价格')} : ${JSON.stringify(currentRatios.VideoSecondsPrice[model])}`;
+        }
 
         let newDesc = '';
         if (newCat === 'price') {
           newDesc = `${t('固定价格')} : ${ratios['model_price']}`;
+        } else if (newCat === 'video') {
+          newDesc = `${t('视频按秒价格')} : ${JSON.stringify(ratios['video_seconds_price'])}`;
         } else {
           const newModelRatio = ratios['model_ratio'] ?? '-';
           const newCompRatio = ratios['completion_ratio'] ?? '-';
@@ -526,6 +564,7 @@ export default function UpstreamRatioSync(props) {
         AudioRatio: { ...currentRatios.AudioRatio },
         AudioCompletionRatio: { ...currentRatios.AudioCompletionRatio },
         ModelPrice: { ...currentRatios.ModelPrice },
+        VideoSecondsPrice: { ...currentRatios.VideoSecondsPrice },
         'billing_setting.billing_mode': {
           ...currentRatios['billing_setting.billing_mode'],
         },
@@ -537,6 +576,7 @@ export default function UpstreamRatioSync(props) {
       Object.entries(resolutions).forEach(([model, ratios]) => {
         const selectedTypes = Object.keys(ratios);
         const hasPrice = selectedTypes.includes('model_price');
+        const hasVideo = selectedTypes.includes('video_seconds_price');
         const hasRatio = selectedTypes.some((rt) =>
           ratioSyncFields.includes(rt),
         );
@@ -549,9 +589,34 @@ export default function UpstreamRatioSync(props) {
           delete finalRatios.ImageRatio[model];
           delete finalRatios.AudioRatio[model];
           delete finalRatios.AudioCompletionRatio[model];
+          delete finalRatios.VideoSecondsPrice[model];
+          if (
+            finalRatios['billing_setting.billing_mode'][model] ===
+            'video_seconds'
+          ) {
+            delete finalRatios['billing_setting.billing_mode'][model];
+          }
         }
         if (hasRatio) {
           delete finalRatios.ModelPrice[model];
+          delete finalRatios.VideoSecondsPrice[model];
+          if (
+            finalRatios['billing_setting.billing_mode'][model] ===
+            'video_seconds'
+          ) {
+            delete finalRatios['billing_setting.billing_mode'][model];
+          }
+        }
+        if (hasVideo) {
+          delete finalRatios.ModelPrice[model];
+          delete finalRatios.ModelRatio[model];
+          delete finalRatios.CompletionRatio[model];
+          delete finalRatios.CacheRatio[model];
+          delete finalRatios.CreateCacheRatio[model];
+          delete finalRatios.ImageRatio[model];
+          delete finalRatios.AudioRatio[model];
+          delete finalRatios.AudioCompletionRatio[model];
+          delete finalRatios['billing_setting.billing_expr'][model];
         }
 
         Object.entries(ratios).forEach(([ratioType, value]) => {
@@ -689,6 +754,9 @@ export default function UpstreamRatioSync(props) {
                 {t('音频补全倍率')}
               </Select.Option>
               <Select.Option value='model_price'>{t('固定价格')}</Select.Option>
+              <Select.Option value='video_seconds_price'>
+                {t('视频按秒价格')}
+              </Select.Option>
               <Select.Option value='billing_expr'>
                 {t('表达式计费')}
               </Select.Option>
@@ -752,7 +820,8 @@ export default function UpstreamRatioSync(props) {
         );
       }
 
-      const text = String(value);
+      const text =
+        typeof value === 'object' ? JSON.stringify(value) : String(value);
       return (
         <Tooltip content={text}>
           <Tag color={color} shape='circle'>
@@ -802,10 +871,14 @@ export default function UpstreamRatioSync(props) {
         );
       }
 
-      const text = String(upstreamVal);
+      const text =
+        typeof upstreamVal === 'object'
+          ? JSON.stringify(upstreamVal)
+          : String(upstreamVal);
       const isSelected =
         isPreferredField &&
-        resolutions[record.model]?.[ratioType] === upstreamVal;
+        JSON.stringify(resolutions[record.model]?.[ratioType]) ===
+          JSON.stringify(upstreamVal);
       const valueNode = isPreferredField ? (
         <Checkbox
           checked={isSelected}
@@ -949,7 +1022,10 @@ export default function UpstreamRatioSync(props) {
                 isSelectableUpstreamValue(upstreamVal)
               ) {
                 selectableCount++;
-                if (resolutions[row.model]?.[ratioType] === upstreamVal) {
+                if (
+                  JSON.stringify(resolutions[row.model]?.[ratioType]) ===
+                  JSON.stringify(upstreamVal)
+                ) {
                   selectedCount++;
                 }
               }
@@ -1096,6 +1172,9 @@ export default function UpstreamRatioSync(props) {
               props.options.AudioCompletionRatio || '{}',
             ),
             ModelPrice: JSON.parse(props.options.ModelPrice || '{}'),
+            VideoSecondsPrice: JSON.parse(
+              props.options.VideoSecondsPrice || '{}',
+            ),
             'billing_setting.billing_mode': JSON.parse(
               props.options['billing_setting.billing_mode'] || '{}',
             ),
