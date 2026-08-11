@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"gorm.io/plugin/soft_delete"
 )
 
 const (
@@ -35,38 +36,38 @@ const (
 )
 
 type SkillHubSkill struct {
-	Id                  int            `json:"-" gorm:"primaryKey"`
-	SkillID             string         `json:"id" gorm:"column:skill_id;size:128;not null;uniqueIndex:uk_skill_hub_skill_id_delete_at,priority:1"`
-	Name                string         `json:"name" gorm:"size:160;not null"`
-	Description         string         `json:"description,omitempty" gorm:"type:text"`
-	Version             string         `json:"version" gorm:"size:64;not null"`
-	Author              string         `json:"author,omitempty" gorm:"size:128"`
-	Origin              string         `json:"origin,omitempty" gorm:"size:64"`
-	OriginURL           string         `json:"originUrl,omitempty" gorm:"type:text"`
-	License             string         `json:"license,omitempty" gorm:"size:128"`
-	Icon                string         `json:"icon,omitempty" gorm:"type:text"`
-	Tags                string         `json:"-" gorm:"type:text"`
-	Verified            bool           `json:"verified" gorm:"default:false"`
-	Recommended         bool           `json:"recommended" gorm:"default:false"`
-	Status              int            `json:"status" gorm:"default:0;index"`
-	Sort                int            `json:"sort" gorm:"default:0;index"`
-	ConnectorMinVersion string         `json:"-" gorm:"size:64"`
-	Platforms           string         `json:"-" gorm:"type:text"`
-	Permissions         string         `json:"-" gorm:"type:text"`
-	ManifestEntry       string         `json:"-" gorm:"size:128;default:SKILL.md"`
-	ManifestPermissions string         `json:"-" gorm:"type:text"`
-	ManifestTools       string         `json:"-" gorm:"type:text"`
-	SourceType          string         `json:"-" gorm:"size:32;not null"`
-	SourceURL           string         `json:"-" gorm:"type:text"`
-	SourceRef           string         `json:"-" gorm:"type:text"`
-	SourceChecksum      string         `json:"-" gorm:"size:128"`
-	SkillMarkdown       string         `json:"-" gorm:"type:text"`
-	EvaluationJSON      string         `json:"-" gorm:"type:text"`
-	TestcasesJSON       string         `json:"-" gorm:"type:text"`
-	Changelog           string         `json:"changelog,omitempty" gorm:"type:text"`
-	CreatedTime         int64          `json:"createdTime" gorm:"bigint"`
-	UpdatedTime         int64          `json:"updatedTime" gorm:"bigint"`
-	DeletedAt           gorm.DeletedAt `json:"-" gorm:"index;uniqueIndex:uk_skill_hub_skill_id_delete_at,priority:2"`
+	Id                  int                   `json:"-" gorm:"primaryKey"`
+	SkillID             string                `json:"id" gorm:"column:skill_id;size:128;not null;uniqueIndex:uk_skill_hub_skill_id_delete_key,priority:1"`
+	Name                string                `json:"name" gorm:"size:160;not null"`
+	Description         string                `json:"description,omitempty" gorm:"type:text"`
+	Version             string                `json:"version" gorm:"size:64;not null"`
+	Author              string                `json:"author,omitempty" gorm:"size:128"`
+	Origin              string                `json:"origin,omitempty" gorm:"size:64"`
+	OriginURL           string                `json:"originUrl,omitempty" gorm:"type:text"`
+	License             string                `json:"license,omitempty" gorm:"size:128"`
+	Icon                string                `json:"icon,omitempty" gorm:"type:text"`
+	Tags                string                `json:"-" gorm:"type:text"`
+	Verified            bool                  `json:"verified" gorm:"default:false"`
+	Recommended         bool                  `json:"recommended" gorm:"default:false"`
+	Status              int                   `json:"status" gorm:"default:0;index"`
+	Sort                int                   `json:"sort" gorm:"default:0;index"`
+	ConnectorMinVersion string                `json:"-" gorm:"size:64"`
+	Platforms           string                `json:"-" gorm:"type:text"`
+	Permissions         string                `json:"-" gorm:"type:text"`
+	ManifestEntry       string                `json:"-" gorm:"size:128;default:SKILL.md"`
+	ManifestPermissions string                `json:"-" gorm:"type:text"`
+	ManifestTools       string                `json:"-" gorm:"type:text"`
+	SourceType          string                `json:"-" gorm:"size:32;not null"`
+	SourceURL           string                `json:"-" gorm:"type:text"`
+	SourceRef           string                `json:"-" gorm:"type:text"`
+	SourceChecksum      string                `json:"-" gorm:"size:128"`
+	SkillMarkdown       string                `json:"-" gorm:"type:text"`
+	EvaluationJSON      string                `json:"-" gorm:"type:text"`
+	TestcasesJSON       string                `json:"-" gorm:"type:text"`
+	Changelog           string                `json:"changelog,omitempty" gorm:"type:text"`
+	CreatedTime         int64                 `json:"createdTime" gorm:"bigint"`
+	UpdatedTime         int64                 `json:"updatedTime" gorm:"bigint"`
+	DeleteKey           soft_delete.DeletedAt `json:"-" gorm:"column:delete_key;not null;default:0;softDelete:nano;uniqueIndex:uk_skill_hub_skill_id_delete_key,priority:2"`
 }
 
 type SkillHubCompatibility struct {
@@ -153,12 +154,12 @@ type SkillHubListResponse struct {
 }
 
 type SkillHubTag struct {
-	Id          int            `json:"-" gorm:"primaryKey"`
-	Name        string         `json:"name" gorm:"size:64;not null;uniqueIndex:uk_skill_hub_tag_name_delete_at,priority:1"`
-	Sort        int            `json:"sort" gorm:"default:0;index"`
-	CreatedTime int64          `json:"createdTime" gorm:"bigint"`
-	UpdatedTime int64          `json:"updatedTime" gorm:"bigint"`
-	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index;uniqueIndex:uk_skill_hub_tag_name_delete_at,priority:2"`
+	Id          int                   `json:"-" gorm:"primaryKey"`
+	Name        string                `json:"name" gorm:"size:64;not null;uniqueIndex:uk_skill_hub_tag_name_delete_key,priority:1"`
+	Sort        int                   `json:"sort" gorm:"default:0;index"`
+	CreatedTime int64                 `json:"createdTime" gorm:"bigint"`
+	UpdatedTime int64                 `json:"updatedTime" gorm:"bigint"`
+	DeleteKey   soft_delete.DeletedAt `json:"-" gorm:"column:delete_key;not null;default:0;softDelete:nano;uniqueIndex:uk_skill_hub_tag_name_delete_key,priority:2"`
 }
 
 type SkillHubSkillTag struct {
@@ -662,7 +663,7 @@ func searchSkillHubTags(keyword string, publishedOnly bool, syncBeforeSearch boo
 	if publishedOnly {
 		db = db.
 			Joins("JOIN skill_hub_skill_tags ON skill_hub_skill_tags.tag_id = skill_hub_tags.id").
-			Joins("JOIN skill_hub_skills ON skill_hub_skills.id = skill_hub_skill_tags.skill_id AND skill_hub_skills.deleted_at IS NULL").
+			Joins("JOIN skill_hub_skills ON skill_hub_skills.id = skill_hub_skill_tags.skill_id AND skill_hub_skills.delete_key = 0").
 			Where("skill_hub_skills.status = ?", SkillHubStatusPublished)
 	}
 	like, err := skillHubContainsLikePattern(keyword)
@@ -832,7 +833,7 @@ func SkillHubTagUsageCounts(names []string, publishedOnly ...bool) (map[string]i
 	query := DB.Model(&SkillHubTag{}).
 		Select("skill_hub_tags.name AS name, COUNT(DISTINCT skill_hub_skill_tags.skill_id) AS count").
 		Joins("JOIN skill_hub_skill_tags ON skill_hub_skill_tags.tag_id = skill_hub_tags.id").
-		Joins("JOIN skill_hub_skills ON skill_hub_skills.id = skill_hub_skill_tags.skill_id AND skill_hub_skills.deleted_at IS NULL").
+		Joins("JOIN skill_hub_skills ON skill_hub_skills.id = skill_hub_skill_tags.skill_id AND skill_hub_skills.delete_key = 0").
 		Where("skill_hub_tags.name IN ?", cleanNames)
 	if len(publishedOnly) > 0 && publishedOnly[0] {
 		query = query.Where("skill_hub_skills.status = ?", SkillHubStatusPublished)
@@ -871,7 +872,7 @@ func upsertSkillHubTagsTx(tx *gorm.DB, tags []string) error {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
-		if err := tx.Create(&SkillHubTag{Name: tag}).Error; err != nil {
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&SkillHubTag{Name: tag}).Error; err != nil {
 			return err
 		}
 	}

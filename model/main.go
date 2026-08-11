@@ -267,6 +267,9 @@ func migrateDB() error {
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
 	}
+	if err := migrateSkillHubSoftDeleteKeys(DB); err != nil {
+		return err
+	}
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -327,6 +330,9 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
+	if err := migrateSkillHubSoftDeleteKeys(DB); err != nil {
+		return err
+	}
 
 	var wg sync.WaitGroup
 
