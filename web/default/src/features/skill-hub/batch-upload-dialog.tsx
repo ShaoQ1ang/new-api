@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo, useRef, useState } from 'react'
 import {
   Alert02Icon,
   CheckmarkCircle02Icon,
@@ -24,8 +23,10 @@ import {
   FolderUploadIcon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
+import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -68,12 +69,15 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+
 import {
+  SKILL_HUB_BATCH_LIMITS,
   createSkillHubBatchOptions,
   createSkillHubBatchReport,
   issueMessage,
   parseSkillHubBatchDirectory,
   resolveSkillHubBatchSort,
+  splitSkillHubBatchItems,
   validateSkillHubBatchOptions,
   type SkillHubBatchDirectory,
   type SkillHubBatchEntry,
@@ -142,7 +146,7 @@ export function SkillHubBatchUploadDialog({
   const abortRef = useRef<AbortController | null>(null)
   const workingRef = useRef(false)
 
-  const entries = directory?.entries || []
+  const entries = useMemo(() => directory?.entries || [], [directory])
   const localErrorCount = entries.reduce(
     (count, entry) => count + entry.errors.length,
     0
@@ -230,8 +234,9 @@ export function SkillHubBatchUploadDialog({
   }
 
   async function startUpload(targetIndexes?: number[]) {
-    if (!directory || working || workingRef.current || localErrorCount > 0)
+    if (!directory || working || workingRef.current || localErrorCount > 0) {
       return
+    }
     try {
       validateSkillHubBatchOptions(options)
     } catch (error) {
@@ -268,13 +273,80 @@ export function SkillHubBatchUploadDialog({
       })
     }
 
+    let successfulCount = 0
+    try {
+      const batches = splitSkillHubBatchItems(targets)
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+        if (controller.signal.aborted) {
+          markBatchEntries(
+            batches.slice(batchIndex).flat(),
+            'cancelled',
+            t('Batch upload was cancelled.')
+          )
+          break
+        }
+        const result = await processUploadBatch(batches[batchIndex], controller)
+        successfulCount += result.successfulCount
+        if (options.stopOnError && result.failed) {
+          markBatchEntries(
+            batches.slice(batchIndex + 1).flat(),
+            'cancelled',
+            t('Failed to upload batch item.')
+          )
+          break
+        }
+      }
+    } finally {
+      abortRef.current = null
+      workingRef.current = false
+      setWorking(false)
+      setFinished(true)
+      if (successfulCount > 0) {
+        try {
+          await onComplete()
+        } catch {
+          toast.warning(t('Failed to load Skill Hub'))
+        }
+      }
+    }
+  }
+
+  function markBatchEntries(
+    batchEntries: SkillHubBatchEntry[],
+    status: BatchRowStatus,
+    message: string,
+    onlyNonTerminal = false
+  ) {
+    setRows((current) => {
+      const next = { ...current }
+      for (const entry of batchEntries) {
+        const row = current[entry.index]
+        if (onlyNonTerminal && row && isTerminal(row.status)) {
+          continue
+        }
+        next[entry.index] = {
+          ...(row || createRow(entry, 'pending')),
+          status,
+          message,
+          progress: 100,
+        }
+      }
+      return next
+    })
+  }
+
+  async function processUploadBatch(
+    batchEntries: SkillHubBatchEntry[],
+    controller: AbortController
+  ) {
     const cleanupTickets = new Set<string>()
     let successfulCount = 0
+    let failed = false
     try {
       const initPayload = await initSkillHubBatchUpload({
         mode: options.mode,
         options: commitOptions(options),
-        items: targets.map((entry) => ({
+        items: batchEntries.map((entry) => ({
           index: entry.index,
           skill: entryToCommitSkill(entry),
           zip: {
@@ -282,10 +354,7 @@ export function SkillHubBatchUploadDialog({
             size: entry.zipFile?.size || 0,
           },
           icon: entry.iconFile
-            ? {
-                fileName: entry.iconFile.name,
-                size: entry.iconFile.size,
-              }
+            ? { fileName: entry.iconFile.name, size: entry.iconFile.size }
             : undefined,
         })),
       })
@@ -295,24 +364,27 @@ export function SkillHubBatchUploadDialog({
         )
       }
 
+      const entryByIndex = new Map(
+        batchEntries.map((entry) => [entry.index, entry])
+      )
       const ready: ReadyUpload[] = []
       for (const item of initPayload.data.items) {
-        const entry = targets.find((target) => target.index === item.index)
+        const entry = entryByIndex.get(item.index)
         if (!entry) continue
         if (item.status !== 'ready' || !item.zip) {
+          const status = item.status === 'skipped' ? 'skipped' : 'failed'
           patchRow(item.index, {
-            status: item.status === 'skipped' ? 'skipped' : 'failed',
+            status,
             action: item.action,
             message: item.message,
             progress: 100,
           })
+          if (status === 'failed') failed = true
           continue
         }
         ready.push({ entry, zip: item.zip, icon: item.icon })
         cleanupTickets.add(item.zip.uploadTicket)
-        if (item.icon?.uploadTicket) {
-          cleanupTickets.add(item.icon.uploadTicket)
-        }
+        if (item.icon?.uploadTicket) cleanupTickets.add(item.icon.uploadTicket)
       }
 
       const uploaded = await uploadReadyItems(
@@ -323,32 +395,25 @@ export function SkillHubBatchUploadDialog({
         patchRow,
         t
       )
+      if (uploaded.length !== ready.length) failed = true
       if (controller.signal.aborted) {
-        setRows((current) => {
-          const next = { ...current }
-          for (const item of ready) {
-            const row = current[item.entry.index]
-            if (!row || !isTerminal(row.status)) {
-              next[item.entry.index] = {
-                ...(row || createRow(item.entry, 'pending')),
-                status: 'cancelled',
-                message: t('Batch upload was cancelled.'),
-                progress: 100,
-              }
-            }
-          }
-          return next
-        })
+        markBatchEntries(
+          ready.map((item) => item.entry),
+          'cancelled',
+          t('Batch upload was cancelled.'),
+          true
+        )
       }
 
       if (uploaded.length && !controller.signal.aborted) {
-        const commitItems = uploaded.map((item) => ({
-          index: item.entry.index,
-          skill: entryToCommitSkill(item.entry),
-          zipUploadTicket: item.zip.uploadTicket,
-          iconUploadTicket: item.icon?.uploadTicket || '',
-        }))
-        const chunks = splitCommitItems(commitItems)
+        const chunks = splitCommitItems(
+          uploaded.map((item) => ({
+            index: item.entry.index,
+            skill: entryToCommitSkill(item.entry),
+            zipUploadTicket: item.zip.uploadTicket,
+            iconUploadTicket: item.icon?.uploadTicket || '',
+          }))
+        )
         for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
           if (controller.signal.aborted) {
             for (const item of chunks.slice(chunkIndex).flat()) {
@@ -358,6 +423,7 @@ export function SkillHubBatchUploadDialog({
                 progress: 100,
               })
             }
+            failed = true
             break
           }
           const chunk = chunks[chunkIndex]
@@ -380,6 +446,7 @@ export function SkillHubBatchUploadDialog({
                   progress: 100,
                 })
               }
+              failed = true
               break
             }
             const responseByIndex = new Map(
@@ -399,6 +466,7 @@ export function SkillHubBatchUploadDialog({
                   ),
                   progress: 100,
                 })
+                failed = true
                 continue
               }
               if (result.status === 'success') {
@@ -406,24 +474,27 @@ export function SkillHubBatchUploadDialog({
                 if (item.iconUploadTicket) {
                   cleanupTickets.delete(item.iconUploadTicket)
                 }
+                successfulCount += 1
+              } else if (result.status !== 'skipped') {
+                failed = true
+              }
+              let status: BatchRowStatus = 'failed'
+              if (result.status === 'success') {
+                status = 'success'
+              } else if (result.status === 'skipped') {
+                status = 'skipped'
               }
               patchRow(item.index, {
-                status:
-                  result.status === 'success'
-                    ? 'success'
-                    : result.status === 'skipped'
-                      ? 'skipped'
-                      : 'failed',
+                status,
                 action: result.action,
                 message: result.message,
                 progress: 100,
               })
-              if (result.status === 'success') successfulCount += 1
             }
           } catch (error) {
+            // The server may have committed this chunk even if its response was
+            // interrupted, so do not retry it or discard its upload tickets.
             for (const item of chunk) {
-              // The server may have committed the request after the connection
-              // was lost. Do not retry or discard these tickets automatically.
               cleanupTickets.delete(item.zipUploadTicket)
               if (item.iconUploadTicket) {
                 cleanupTickets.delete(item.iconUploadTicket)
@@ -441,13 +512,12 @@ export function SkillHubBatchUploadDialog({
             }
             for (const item of chunks.slice(chunkIndex + 1).flat()) {
               patchRow(item.index, {
-                status: controller.signal.aborted ? 'cancelled' : 'failed',
-                message: controller.signal.aborted
-                  ? t('Batch upload was cancelled.')
-                  : t('Failed to commit batch upload.'),
+                status: 'failed',
+                message: t('Failed to commit batch upload.'),
                 progress: 100,
               })
             }
+            failed = true
             break
           }
         }
@@ -457,26 +527,25 @@ export function SkillHubBatchUploadDialog({
         error instanceof Error
           ? error.message
           : t('Batch upload failed to start.')
-      setRows((current) => {
-        const next = { ...current }
-        for (const entry of targets) {
-          const row = current[entry.index]
-          if (row && isTerminal(row.status)) continue
-          next[entry.index] = {
-            ...(row || createRow(entry, 'pending')),
-            status: controller.signal.aborted ? 'cancelled' : 'failed',
-            message,
-            progress: 100,
-          }
-        }
-        return next
-      })
+      markBatchEntries(
+        batchEntries,
+        controller.signal.aborted ? 'cancelled' : 'failed',
+        message,
+        true
+      )
       toast.error(message)
+      failed = true
     } finally {
       if (cleanupTickets.size) {
-        try {
-          await discardSkillHubBatchUploads([...cleanupTickets])
-        } catch {
+        let cleanupFailed = false
+        for (const tickets of splitSkillHubBatchItems([...cleanupTickets])) {
+          try {
+            await discardSkillHubBatchUploads(tickets)
+          } catch {
+            cleanupFailed = true
+          }
+        }
+        if (cleanupFailed) {
           toast.warning(
             t(
               'Some temporary uploads could not be removed immediately and will be cleaned by the OSS lifecycle rule.'
@@ -484,18 +553,8 @@ export function SkillHubBatchUploadDialog({
           )
         }
       }
-      abortRef.current = null
-      workingRef.current = false
-      setWorking(false)
-      setFinished(true)
-      if (successfulCount > 0) {
-        try {
-          await onComplete()
-        } catch {
-          toast.warning(t('Failed to load Skill Hub'))
-        }
-      }
     }
+    return { successfulCount, failed }
   }
 
   function cancelUpload() {
@@ -908,9 +967,9 @@ export function SkillHubBatchUploadDialog({
                                 <span className='text-muted-foreground truncate text-xs'>
                                   {entry.id} · {entry.version}
                                 </span>
-                                {entry.errors.map((error, errorIndex) => (
+                                {entry.errors.map((error) => (
                                   <span
-                                    key={errorIndex}
+                                    key={`${entry.index}-${error.code}-${error.message}`}
                                     className='text-destructive text-xs whitespace-normal'
                                   >
                                     {issueMessage(error, t)}
@@ -1017,13 +1076,16 @@ async function uploadReadyItems(
       if (currentIndex >= ready.length) return
       const item = ready[currentIndex]
       try {
+        if (!item.entry.zipFile) {
+          throw new Error('ZIP path is required.')
+        }
         patchRow(item.entry.index, {
           status: 'uploading',
           action: '',
           message: '',
           progress: 10,
         })
-        await putSkillHubBatchObject(item.zip, item.entry.zipFile!, {
+        await putSkillHubBatchObject(item.zip, item.entry.zipFile, {
           signal: controller.signal,
           onProgress: (percent) =>
             patchRow(item.entry.index, {
@@ -1117,7 +1179,11 @@ function splitCommitItems<T>(items: T[]) {
   let currentBytes = 0
   for (const item of items) {
     const bytes = new TextEncoder().encode(JSON.stringify(item)).byteLength
-    if (current.length && currentBytes + bytes > commitChunkTargetBytes) {
+    if (
+      current.length &&
+      (current.length >= SKILL_HUB_BATCH_LIMITS.transferBatchSize ||
+        currentBytes + bytes > commitChunkTargetBytes)
+    ) {
       chunks.push(current)
       current = []
       currentBytes = 0
@@ -1273,11 +1339,11 @@ function StatusBadge({
     cancelled: t('Cancelled'),
     unknown: t('Needs review'),
   }
-  const variant =
-    status === 'failed'
-      ? 'destructive'
-      : status === 'success'
-        ? 'default'
-        : 'secondary'
+  let variant: 'default' | 'destructive' | 'secondary' = 'secondary'
+  if (status === 'failed') {
+    variant = 'destructive'
+  } else if (status === 'success') {
+    variant = 'default'
+  }
   return <Badge variant={variant}>{labelByStatus[status]}</Badge>
 }

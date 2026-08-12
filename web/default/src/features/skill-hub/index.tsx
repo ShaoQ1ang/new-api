@@ -59,6 +59,7 @@ import {
   issueMessage,
   readSkillHubTestcasesFile,
   resolveSkillHubTestcases,
+  splitSkillHubBatchItems,
 } from '../../../../shared/skill-hub-batch-import.mjs'
 import {
   createSkillHubSkill,
@@ -94,6 +95,11 @@ export function SkillHub() {
   const [selectedId, setSelectedId] = useState('')
   const [checkedIds, setCheckedIds] = useState<string[]>([])
   const [batchWorking, setBatchWorking] = useState(false)
+  const [exportState, setExportState] = useState<{
+    mode: 'selected' | 'all'
+    current: number
+    total: number
+  } | null>(null)
   const [form, setForm] = useState<SkillHubForm>(() => skillToForm())
   const [testcasesOverride, setTestcasesOverride] = useState<{
     active: boolean
@@ -146,13 +152,30 @@ export function SkillHub() {
         recommended: nextRecommendedOnly || undefined,
         page_size: 100,
       }
-      const payload = tagIds.length
-        ? await listAdminSkillHubSkillsByTags(tagIds, params)
-        : await listAdminSkillHubSkills(params)
+      const fetchPage = (page: number) =>
+        tagIds.length
+          ? listAdminSkillHubSkillsByTags(tagIds, { ...params, p: page })
+          : listAdminSkillHubSkills({ ...params, p: page })
+      const payload = await fetchPage(1)
       if (!payload.success) {
         throw new Error(payload.message || t('Failed to load Skill Hub'))
       }
-      const items = payload.data?.items || []
+      const firstPageItems = payload.data?.items || []
+      const total = payload.data?.total || firstPageItems.length
+      const pageCount = Math.ceil(total / params.page_size)
+      const remainingPayloads = await Promise.all(
+        Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) =>
+          fetchPage(index + 2)
+        )
+      )
+      const failedPayload = remainingPayloads.find((page) => !page.success)
+      if (failedPayload) {
+        throw new Error(failedPayload.message || t('Failed to load Skill Hub'))
+      }
+      const items = [
+        ...firstPageItems,
+        ...remainingPayloads.flatMap((page) => page.data?.items || []),
+      ]
       setSkills(items)
       setCheckedIds((current) =>
         current.filter((id) => items.some((item) => item.id === id))
@@ -482,17 +505,34 @@ export function SkillHub() {
     }
   }
 
+  async function downloadSkillExportBatches(
+    ids: string[],
+    mode: 'selected' | 'all'
+  ) {
+    const batches = splitSkillHubBatchItems(ids)
+    setExportState({ mode, current: 0, total: batches.length })
+    for (let index = 0; index < batches.length; index += 1) {
+      setExportState({ mode, current: index + 1, total: batches.length })
+      const blob = await batchExportSkillHubSkills(batches[index])
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download =
+        batches.length === 1
+          ? 'skill-hub-export.zip'
+          : `skill-hub-export-${String(index + 1).padStart(3, '0')}-of-${String(batches.length).padStart(3, '0')}.zip`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    }
+  }
+
   async function batchExport() {
     if (!checkedIds.length) return
     setBatchWorking(true)
     try {
-      const blob = await batchExportSkillHubSkills(checkedIds)
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = 'skill-hub-export.zip'
-      link.click()
-      URL.revokeObjectURL(url)
+      await downloadSkillExportBatches(checkedIds, 'selected')
       toast.success(
         t('{{count}} skills exported', { count: checkedIds.length })
       )
@@ -503,6 +543,49 @@ export function SkillHub() {
           : t('Failed to export selected skills')
       )
     } finally {
+      setExportState(null)
+      setBatchWorking(false)
+    }
+  }
+
+  async function exportAll() {
+    setBatchWorking(true)
+    setExportState({ mode: 'all', current: 0, total: 0 })
+    try {
+      const pageSize = 100
+      const firstPayload = await listAdminSkillHubSkills({
+        p: 1,
+        page_size: pageSize,
+      })
+      if (!firstPayload.success) {
+        throw new Error(firstPayload.message || t('Failed to load Skill Hub'))
+      }
+      const firstPageItems = firstPayload.data?.items || []
+      const total = firstPayload.data?.total || firstPageItems.length
+      const pageCount = Math.ceil(total / pageSize)
+      const remainingPayloads = await Promise.all(
+        Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) =>
+          listAdminSkillHubSkills({ p: index + 2, page_size: pageSize })
+        )
+      )
+      const failedPayload = remainingPayloads.find((page) => !page.success)
+      if (failedPayload) {
+        throw new Error(failedPayload.message || t('Failed to load Skill Hub'))
+      }
+      const ids = [
+        ...firstPageItems,
+        ...remainingPayloads.flatMap((page) => page.data?.items || []),
+      ].map((skill) => skill.id)
+      await downloadSkillExportBatches(ids, 'all')
+      toast.success(t('{{count}} skills exported', { count: ids.length }))
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t('Failed to export all skills')
+      )
+    } finally {
+      setExportState(null)
       setBatchWorking(false)
     }
   }
@@ -708,19 +791,6 @@ export function SkillHub() {
                 </div>
               )}
               <div className='flex flex-wrap items-center gap-2 border-y py-2'>
-                <label className='flex items-center gap-2 text-sm'>
-                  <Checkbox
-                    checked={
-                      skills.length > 0 && checkedIds.length === skills.length
-                    }
-                    onCheckedChange={(checked) =>
-                      setCheckedIds(
-                        checked ? skills.map((skill) => skill.id) : []
-                      )
-                    }
-                  />
-                  {t('Select all')}
-                </label>
                 <span className='text-muted-foreground text-sm'>
                   {t('{{count}} selected', { count: checkedIds.length })}
                 </span>
@@ -731,7 +801,20 @@ export function SkillHub() {
                   onClick={() => void batchExport()}
                 >
                   <Download data-icon='inline-start' />
-                  {t('Export selected')}
+                  {exportState?.mode === 'selected' && exportState.total
+                    ? t('Exporting batch {{current}} of {{total}}', exportState)
+                    : t('Export selected')}
+                </Button>
+                <Button
+                  size='sm'
+                  variant='outline'
+                  disabled={batchWorking || loading}
+                  onClick={() => void exportAll()}
+                >
+                  <Download data-icon='inline-start' />
+                  {exportState?.mode === 'all' && exportState.total
+                    ? t('Exporting batch {{current}} of {{total}}', exportState)
+                    : t('Export all')}
                 </Button>
                 <Button
                   size='sm'
@@ -1241,9 +1324,7 @@ export function SkillHub() {
                     <Field label={t('Zip URL')}>
                       <Input
                         value={form.sourceUrl}
-                        onChange={(event) =>
-                          update('sourceUrl', event.target.value)
-                        }
+                        readOnly
                         placeholder='https://example.com/skill.zip'
                       />
                     </Field>
@@ -1252,9 +1333,7 @@ export function SkillHub() {
                     <Field label={t('SHA256 checksum')}>
                       <Input
                         value={form.sourceChecksum}
-                        onChange={(event) =>
-                          update('sourceChecksum', event.target.value)
-                        }
+                        readOnly
                         placeholder='sha256:...'
                       />
                     </Field>

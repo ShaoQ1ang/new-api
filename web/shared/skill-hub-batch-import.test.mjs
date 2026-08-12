@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
+
 import {
   buildSkillHubBatchPayload,
   createSkillHubBatchOptions,
@@ -26,6 +27,7 @@ import {
   readSkillHubTestcasesFile,
   resolveSkillHubTestcases,
   resolveSkillHubBatchSort,
+  splitSkillHubBatchItems,
   summarizeSkillHubBatchResults,
 } from './skill-hub-batch-import.mjs'
 
@@ -39,6 +41,46 @@ function selectedFile(path, content, type = '') {
 }
 
 const zipBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04])
+
+test('large transfers are split into bounded batches without losing order', () => {
+  const items = Array.from({ length: 1000 }, (_, index) => index)
+  const batches = splitSkillHubBatchItems(items)
+
+  assert.equal(batches.length, 10)
+  assert.ok(batches.every((batch) => batch.length === 100))
+  assert.deepEqual(batches.flat(), items)
+})
+
+test('directory parsing accepts one thousand skills and rejects larger manifests', async () => {
+  const manifest = Array.from({ length: 1000 }, (_, index) => ({
+    id: `skill-${index}`,
+    name: `Skill ${index}`,
+    zip: `./packages/skill-${index}.zip`,
+  }))
+  const files = [
+    selectedFile('manifest.json', JSON.stringify(manifest)),
+    ...manifest.map((item) =>
+      selectedFile(item.zip.slice(2), zipBytes, 'application/zip'),
+    ),
+  ]
+
+  const directory = await parseSkillHubBatchDirectory(files)
+  assert.equal(directory.entries.length, 1000)
+  assert.ok(directory.entries.every((entry) => entry.errors.length === 0))
+
+  await assert.rejects(
+    parseSkillHubBatchDirectory([
+      selectedFile(
+        'manifest.json',
+        JSON.stringify([
+          ...manifest,
+          { id: 'skill-1000', name: 'Skill 1000', zip: './skill-1000.zip' },
+        ]),
+      ),
+    ]),
+    /at most 1000/,
+  )
+})
 
 test('single test case upload reads the currently selected file', async () => {
   const tomato = new File(

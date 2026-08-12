@@ -17,6 +17,7 @@ import (
 
 const (
 	skillHubBatchImportMaxItems       = 200
+	skillHubBatchImportMaxTotalItems  = 1000
 	skillHubBatchImportMaxTickets     = skillHubBatchImportMaxItems * 2
 	skillHubBatchImportMaxBodyBytes   = 32 << 20
 	skillHubBatchValidationWorkers    = 2
@@ -421,7 +422,7 @@ func validateSkillHubBatchInitItems(items []skillHubBatchUploadInitItemRequest) 
 		if _, ok := seenIndexes[item.Index]; ok {
 			return fmt.Errorf("duplicate batch item index: %d", item.Index)
 		}
-		if item.Index < 0 || item.Index >= skillHubBatchImportMaxItems {
+		if item.Index < 0 || item.Index >= skillHubBatchImportMaxTotalItems {
 			return fmt.Errorf("batch item index is out of range: %d", item.Index)
 		}
 		seenIDs[id] = struct{}{}
@@ -448,7 +449,7 @@ func validateSkillHubBatchCommitItems(items []skillHubBatchImportCommitItemReque
 		if _, ok := seenIndexes[item.Index]; ok {
 			return fmt.Errorf("duplicate batch item index: %d", item.Index)
 		}
-		if item.Index < 0 || item.Index >= skillHubBatchImportMaxItems {
+		if item.Index < 0 || item.Index >= skillHubBatchImportMaxTotalItems {
 			return fmt.Errorf("batch item index is out of range: %d", item.Index)
 		}
 		seenIDs[id] = struct{}{}
@@ -528,9 +529,6 @@ func validateSkillHubBatchOptions(options *skillHubBatchImportOptionsRequest) er
 			return errors.New("missing resource policy must be retain or clear")
 		}
 	}
-	if _, err := skillHubBatchSortValue(*options, skillHubBatchImportMaxItems-1); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -589,7 +587,7 @@ func skillHubBatchSortValue(options skillHubBatchImportOptionsRequest, index int
 	}
 	value := options.FixedSort
 	if options.SortMode == skillHubBatchSortModeSequence {
-		if index < 0 || index >= skillHubBatchImportMaxItems {
+		if index < 0 || index >= skillHubBatchImportMaxTotalItems {
 			return 0, errors.New("batch item index is out of range")
 		}
 		value = options.SortStart + int64(index)*options.SortStep
