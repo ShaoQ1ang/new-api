@@ -20,11 +20,13 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useMemo, useRef, useState } from 'react';
 import { Button, Input, Modal, Space, Tag } from '@douyinfe/semi-ui';
 import {
+  SKILL_HUB_BATCH_LIMITS,
   createSkillHubBatchOptions,
   createSkillHubBatchReport,
   issueMessage,
   parseSkillHubBatchDirectory,
   resolveSkillHubBatchSort,
+  splitSkillHubBatchItems,
   validateSkillHubBatchOptions,
 } from '../../../../shared/skill-hub-batch-import.mjs';
 import { API, showError, showSuccess } from '../../helpers';
@@ -159,13 +161,80 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
       });
     }
 
+    let successCount = 0;
+    try {
+      const batches = splitSkillHubBatchItems(targets);
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+        if (controller.signal.aborted) {
+          markBatchEntries(
+            batches.slice(batchIndex).flat(),
+            'cancelled',
+            '批量上传已取消',
+          );
+          break;
+        }
+        const result = await processUploadBatch(
+          batches[batchIndex],
+          controller,
+        );
+        successCount += result.successCount;
+        if (options.stopOnError && result.failed) {
+          markBatchEntries(
+            batches.slice(batchIndex + 1).flat(),
+            'cancelled',
+            '前一批次发生错误，后续批次未执行',
+          );
+          break;
+        }
+      }
+    } finally {
+      abortRef.current = null;
+      workingRef.current = false;
+      setWorking(false);
+      setFinished(true);
+      if (successCount > 0) {
+        try {
+          await onComplete();
+        } catch {
+          showError('上传已保存，但刷新技能列表失败');
+        }
+        showSuccess(`成功保存 ${successCount} 个 Skill`);
+      }
+    }
+  };
+
+  const markBatchEntries = (
+    batchEntries,
+    status,
+    message,
+    onlyNonTerminal = false,
+  ) => {
+    setRows((current) => {
+      const next = { ...current };
+      for (const entry of batchEntries) {
+        const row = current[entry.index];
+        if (onlyNonTerminal && row && terminalStatuses.has(row.status))
+          continue;
+        next[entry.index] = {
+          ...(row || createRow(entry, 'pending')),
+          status,
+          message,
+          progress: 100,
+        };
+      }
+      return next;
+    });
+  };
+
+  const processUploadBatch = async (batchEntries, controller) => {
     const cleanupTickets = new Set();
     let successCount = 0;
+    let failed = false;
     try {
       const initRes = await API.post('/api/admin/skill-hub/batch-upload/init', {
         mode: options.mode,
         options: commitOptions(options),
-        items: targets.map((entry) => ({
+        items: batchEntries.map((entry) => ({
           index: entry.index,
           skill: entryToCommitSkill(entry),
           zip: {
@@ -173,10 +242,7 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
             size: entry.zipFile?.size || 0,
           },
           icon: entry.iconFile
-            ? {
-                fileName: entry.iconFile.name,
-                size: entry.iconFile.size,
-              }
+            ? { fileName: entry.iconFile.name, size: entry.iconFile.size }
             : undefined,
         })),
       });
@@ -185,24 +251,27 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
         throw new Error(initPayload.message || '批量上传初始化失败');
       }
 
+      const entryByIndex = new Map(
+        batchEntries.map((entry) => [entry.index, entry]),
+      );
       const ready = [];
       for (const item of initPayload.data.items || []) {
-        const entry = targets.find((target) => target.index === item.index);
+        const entry = entryByIndex.get(item.index);
         if (!entry) continue;
         if (item.status !== 'ready' || !item.zip) {
+          const status = item.status === 'skipped' ? 'skipped' : 'failed';
           patchRow(item.index, {
-            status: item.status === 'skipped' ? 'skipped' : 'failed',
+            status,
             action: item.action,
             message: item.message,
             progress: 100,
           });
+          if (status === 'failed') failed = true;
           continue;
         }
         ready.push({ entry, zip: item.zip, icon: item.icon });
         cleanupTickets.add(item.zip.uploadTicket);
-        if (item.icon?.uploadTicket) {
-          cleanupTickets.add(item.icon.uploadTicket);
-        }
+        if (item.icon?.uploadTicket) cleanupTickets.add(item.icon.uploadTicket);
       }
 
       const uploaded = await uploadReadyItems(
@@ -212,32 +281,25 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
         options.stopOnError,
         patchRow,
       );
+      if (uploaded.length !== ready.length) failed = true;
       if (controller.signal.aborted) {
-        setRows((current) => {
-          const next = { ...current };
-          for (const item of ready) {
-            const row = current[item.entry.index];
-            if (!row || !terminalStatuses.has(row.status)) {
-              next[item.entry.index] = {
-                ...(row || createRow(item.entry, 'pending')),
-                status: 'cancelled',
-                message: '批量上传已取消',
-                progress: 100,
-              };
-            }
-          }
-          return next;
-        });
+        markBatchEntries(
+          ready.map((item) => item.entry),
+          'cancelled',
+          '批量上传已取消',
+          true,
+        );
       }
 
       if (uploaded.length && !controller.signal.aborted) {
-        const commitItems = uploaded.map((item) => ({
-          index: item.entry.index,
-          skill: entryToCommitSkill(item.entry),
-          zipUploadTicket: item.zip.uploadTicket,
-          iconUploadTicket: item.icon?.uploadTicket || '',
-        }));
-        const chunks = splitCommitItems(commitItems);
+        const chunks = splitCommitItems(
+          uploaded.map((item) => ({
+            index: item.entry.index,
+            skill: entryToCommitSkill(item.entry),
+            zipUploadTicket: item.zip.uploadTicket,
+            iconUploadTicket: item.icon?.uploadTicket || '',
+          })),
+        );
         for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
           if (controller.signal.aborted) {
             for (const item of chunks.slice(chunkIndex).flat()) {
@@ -247,6 +309,7 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
                 progress: 100,
               });
             }
+            failed = true;
             break;
           }
           const chunk = chunks[chunkIndex];
@@ -272,6 +335,7 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
                   progress: 100,
                 });
               }
+              failed = true;
               break;
             }
             const responseByIndex = new Map(
@@ -284,21 +348,23 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
               const result = responseByIndex.get(item.index);
               if (!result) {
                 cleanupTickets.delete(item.zipUploadTicket);
-                if (item.iconUploadTicket) {
+                if (item.iconUploadTicket)
                   cleanupTickets.delete(item.iconUploadTicket);
-                }
                 patchRow(item.index, {
                   status: 'unknown',
                   message: '提交响应不完整，请刷新列表确认后再操作',
                   progress: 100,
                 });
+                failed = true;
                 continue;
               }
               if (result.status === 'success') {
                 cleanupTickets.delete(item.zipUploadTicket);
-                if (item.iconUploadTicket) {
+                if (item.iconUploadTicket)
                   cleanupTickets.delete(item.iconUploadTicket);
-                }
+                successCount += 1;
+              } else if (result.status !== 'skipped') {
+                failed = true;
               }
               patchRow(item.index, {
                 status:
@@ -311,15 +377,13 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
                 message: result.message,
                 progress: 100,
               });
-              if (result.status === 'success') successCount += 1;
             }
           } catch (error) {
+            // 服务端可能已完成提交。此处不自动重试或清理，避免重复写入。
             for (const item of chunk) {
-              // 服务端可能已完成提交。此处不自动重试或清理，避免重复写入。
               cleanupTickets.delete(item.zipUploadTicket);
-              if (item.iconUploadTicket) {
+              if (item.iconUploadTicket)
                 cleanupTickets.delete(item.iconUploadTicket);
-              }
               patchRow(item.index, {
                 status: 'unknown',
                 message:
@@ -331,13 +395,12 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
             }
             for (const item of chunks.slice(chunkIndex + 1).flat()) {
               patchRow(item.index, {
-                status: controller.signal.aborted ? 'cancelled' : 'failed',
-                message: controller.signal.aborted
-                  ? '批量上传已取消'
-                  : '批量提交未执行',
+                status: 'failed',
+                message: '批量提交未执行',
                 progress: 100,
               });
             }
+            failed = true;
             break;
           }
         }
@@ -345,44 +408,32 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : '批量上传启动失败';
-      setRows((current) => {
-        const next = { ...current };
-        for (const entry of targets) {
-          const row = current[entry.index];
-          if (row && terminalStatuses.has(row.status)) continue;
-          next[entry.index] = {
-            ...(row || createRow(entry, 'pending')),
-            status: controller.signal.aborted ? 'cancelled' : 'failed',
-            message,
-            progress: 100,
-          };
-        }
-        return next;
-      });
+      markBatchEntries(
+        batchEntries,
+        controller.signal.aborted ? 'cancelled' : 'failed',
+        message,
+        true,
+      );
       showError(message);
+      failed = true;
     } finally {
       if (cleanupTickets.size) {
-        try {
-          await API.post('/api/admin/skill-hub/batch-upload/discard', {
-            uploadTickets: [...cleanupTickets],
-          });
-        } catch {
+        let cleanupFailed = false;
+        for (const tickets of splitSkillHubBatchItems([...cleanupTickets])) {
+          try {
+            await API.post('/api/admin/skill-hub/batch-upload/discard', {
+              uploadTickets: tickets,
+            });
+          } catch {
+            cleanupFailed = true;
+          }
+        }
+        if (cleanupFailed) {
           showError('部分临时文件未能立即清理，将由 OSS 生命周期规则回收');
         }
       }
-      abortRef.current = null;
-      workingRef.current = false;
-      setWorking(false);
-      setFinished(true);
-      if (successCount > 0) {
-        try {
-          await onComplete();
-        } catch {
-          showError('上传已保存，但刷新技能列表失败');
-        }
-        showSuccess(`成功保存 ${successCount} 个 Skill`);
-      }
     }
+    return { successCount, failed };
   };
 
   const downloadReport = () => {
@@ -495,7 +546,8 @@ const BatchUploadModal = ({ tagOptions, onComplete }) => {
 
           {directory && localErrorCount === 0 ? (
             <div className='rounded border border-semi-color-success bg-semi-color-success-light-default p-3 text-sm text-semi-color-success'>
-              本地校验已通过。开始上传时，服务端会在签发上传地址前再次校验全部 Skill 元数据。
+              本地校验已通过。开始上传时，服务端会在签发上传地址前再次校验全部
+              Skill 元数据。
             </div>
           ) : null}
 
@@ -933,7 +985,11 @@ function splitCommitItems(items) {
   let currentBytes = 0;
   for (const item of items) {
     const bytes = new TextEncoder().encode(JSON.stringify(item)).byteLength;
-    if (current.length && currentBytes + bytes > commitChunkTargetBytes) {
+    if (
+      current.length &&
+      (current.length >= SKILL_HUB_BATCH_LIMITS.transferBatchSize ||
+        currentBytes + bytes > commitChunkTargetBytes)
+    ) {
       chunks.push(current);
       current = [];
       currentBytes = 0;

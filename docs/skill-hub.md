@@ -198,7 +198,7 @@ batch-folder/
 
 manifest 使用相对于该目录的本地路径引用 Zip、图标和案例文件。`testcases` 字段应填写 `.json` 文件路径；浏览器会在联网前完成安全相对路径、重复路径、UTF-8、文件类型、大小和案例结构校验，再把解析后的 `SkillHubTestcases` 对象提交给管理接口。界面显示“本地校验已通过”后才允许开始；服务端还会在签发任何上传地址前完成整批冲突检查、统一配置校验和 Skill 元数据预检。禁止绝对路径、盘符、反斜杠、URL、`.`、`..` 和大小写不敏感的重复路径。
 
-单个目录最多包含 200 个技能和 5000 个文件；manifest 最大 10 MB，Zip 最大 50 MB，图标最大 1 MB，案例文件最大 2 MB。服务端仍会重新校验上传票据、文件大小、Zip 或图标文件头、Zip 内 `SKILL.md` 和最终 Skill 数据，不能把浏览器校验当作安全边界。
+单个目录最多包含 1000 个技能和 5000 个文件；manifest 最大 10 MB，Zip 最大 50 MB，图标最大 1 MB，案例文件最大 2 MB。服务端仍会重新校验上传票据、文件大小、Zip 或图标文件头、Zip 内 `SKILL.md` 和最终 Skill 数据，不能把浏览器校验当作安全边界。
 
 批量配置会强制覆盖以下字段：
 
@@ -210,10 +210,11 @@ manifest 使用相对于该目录的本地路径引用 Zip、图标和案例文�
 
 后台批量上传使用三组管理接口：
 
-1. `POST /api/admin/skill-hub/batch-upload/init`：一次初始化最多 200 项；服务端先预检全部 Skill 元数据和统一配置，全部预检完成后才批量返回可处理项的 Zip 和可选图标 OSS PUT signed URL。请求体上限为 32 MB。
-2. 浏览器按配置的有限并发直接 PUT 到 OSS，不让文件内容经过 New API。
-3. `POST /api/admin/skill-hub/batch-upload/commit`：一次验证上传票据、重新预检并保存最多 200 项；前端会把过大的提交体按约 8 MB 分片，服务端请求体上限为 32 MB。
-4. `POST /api/admin/skill-hub/batch-upload/discard`：一次清理最多 400 个未提交的临时上传票据。
+1. 浏览器按 manifest 顺序每 100 个 Skill 划分一个传输批次，依次完成 init、OSS PUT、commit 和临时票据清理；后一个批次不会提前申请 signed URL，避免大目录上传时后部票据过期。
+2. `POST /api/admin/skill-hub/batch-upload/init`：单次初始化最多 200 项；服务端先预检当前批次的 Skill 元数据和统一配置，再返回可处理项的 Zip 和可选图标 OSS PUT signed URL。请求体上限为 32 MB。
+3. 浏览器按配置的有限并发直接 PUT 到 OSS，不让文件内容经过 New API。
+4. `POST /api/admin/skill-hub/batch-upload/commit`：一次验证上传票据、重新预检并保存最多 200 项；前端同时按每批 100 项和约 8 MB 请求体上限拆分提交，服务端请求体上限为 32 MB。
+5. `POST /api/admin/skill-hub/batch-upload/discard`：一次清理最多 400 个未提交的临时上传票据。
 
 这样每批只产生少量 New API 请求和使用日志，不会为每个文件分别调用初始化、完成、保存和丢弃接口。预检不读取文件本体；Zip 文件头、压缩包内容和 `SKILL.md` 等只有在浏览器完成 PUT 后才能由服务端可信校验，但这些检查仍发生在数据库保存之前。服务端只用固定 2 个 worker 并发读取并校验 OSS 对象，数据库写入保持串行，避免在批量请求内制造数据库写竞争；单项失败不会回滚已经成功的其他项。
 
@@ -221,7 +222,7 @@ manifest 使用相对于该目录的本地路径引用 Zip、图标和案例文�
 
 `scripts/skill-hub-batch-upload` 仍可用于命令行批量上传。脚本的默认排序兼容规则保持不变：manifest 的 `sort` 为 `0` 或省略时写入 `1000000`；后台批量上传则始终使用界面配置的强制排序策略。
 
-后台批量导出的 ZIP 包包含 `manifest.json`、`packages/`、可选的 `icons/`，以及可选的 `testcases/`。每个有案例的 Skill 会生成 `testcases/<skill-id>.json`，manifest 通过相对路径引用该文件，因此导出包解压后可直接交给批量上传脚本重新导入。
+后台提供“导出选中”和不受搜索、标签、推荐筛选影响的“全部导出”；不再提供容易与跨页选择混淆的“全选”。浏览器每 100 个 Skill 请求一个独立 ZIP，文件名包含当前批次和总批次数，单批失败不会让服务端维持一个超长的大文件请求。每个 ZIP 包含 `manifest.json`、`packages/`、可选的 `icons/`，以及可选的 `testcases/`；有案例的 Skill 会生成 `testcases/<skill-id>.json`，manifest 通过相对路径引用该文件，解压后可直接交给批量上传脚本重新导入。
 
 ## 举报通知
 
@@ -448,7 +449,7 @@ GET /api/skill-hub/tags/skills?tag_ids=1,2&p=1&page_size=20
 | `GET /api/admin/skill-hub/skills`                  | 管理员 | 分页搜索后台 Skill 列表，支持 `keyword`、`p`、`page_size`         |
 | `POST /api/admin/skill-hub/skills`                 | 管理员 | 新建 Skill                                                        |
 | `POST /api/admin/skill-hub/skills/batch-delete`    | 管理员 | 批量删除 1 至 200 个 Skill 及其关联 OSS 对象                      |
-| `POST /api/admin/skill-hub/skills/batch-export`    | 管理员 | 导出可再次批量导入的 ZIP，包含包、图标、案例文件和 manifest       |
+| `POST /api/admin/skill-hub/skills/batch-export`    | 管理员 | 每次导出 1 至 200 个 Skill 的 ZIP；网页端固定按 100 个分批调用    |
 | `GET /api/admin/skill-hub/skills/:id`              | 管理员 | 获取后台 Skill 详情                                               |
 | `PUT /api/admin/skill-hub/skills/:id`              | 管理员 | 更新 Skill，保存成功后清理被替换的旧 OSS 对象                     |
 | `DELETE /api/admin/skill-hub/skills/:id`           | 管理员 | 删除 Skill，并 best-effort 删除关联 OSS 对象                      |

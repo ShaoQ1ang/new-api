@@ -18,7 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 export const SKILL_HUB_BATCH_LIMITS = Object.freeze({
-  maxEntries: 200,
+  maxEntries: 1000,
+  transferBatchSize: 100,
   maxFiles: 5000,
   manifestBytes: 10 * 1024 * 1024,
   zipBytes: 50 * 1024 * 1024,
@@ -26,6 +27,20 @@ export const SKILL_HUB_BATCH_LIMITS = Object.freeze({
   testcasesBytes: 2 * 1024 * 1024,
   defaultSort: 1_000_000,
 })
+
+export function splitSkillHubBatchItems(
+  items,
+  batchSize = SKILL_HUB_BATCH_LIMITS.transferBatchSize,
+) {
+  if (!Number.isInteger(batchSize) || batchSize <= 0) {
+    throw new TypeError('batchSize must be a positive integer')
+  }
+  const batches = []
+  for (let start = 0; start < items.length; start += batchSize) {
+    batches.push(items.slice(start, start + batchSize))
+  }
+  return batches
+}
 
 const skillIDPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 const evaluationDimensions = ['safety', 'access', 'frontier', 'economy']

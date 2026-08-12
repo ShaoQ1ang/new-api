@@ -8,6 +8,8 @@ import (
 
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestValidateSkillHubBatchInitItemsRejectsDuplicates(t *testing.T) {
@@ -105,6 +107,22 @@ func TestSkillHubBatchSortValue(t *testing.T) {
 	}
 }
 
+func TestSkillHubBatchIndexesRemainGlobalAcrossTransferBatches(t *testing.T) {
+	items := []skillHubBatchUploadInitItemRequest{
+		{
+			Index: skillHubBatchImportMaxTotalItems - 1,
+			Skill: skillHubSkillRequest{ID: "last.skill", Version: "1.0.0"},
+			Zip:   skillHubBatchUploadFileRequest{FileName: "last.zip", Size: 10},
+		},
+	}
+	require.NoError(t, validateSkillHubBatchInitItems(items))
+
+	items[0].Index = skillHubBatchImportMaxTotalItems
+	err := validateSkillHubBatchInitItems(items)
+	require.Error(t, err)
+	assert.Equal(t, "batch item index is out of range: 1000", err.Error())
+}
+
 func TestApplySkillHubBatchOptionsOverridesAndRetains(t *testing.T) {
 	score := 4.5
 	evaluationJSON, err := model.SkillHubEvaluationToJSON(&model.SkillHubEvaluation{
@@ -179,13 +197,19 @@ func TestApplySkillHubBatchOptionsOverridesAndRetains(t *testing.T) {
 	}
 }
 
-func TestValidateSkillHubBatchOptionsRejectsSequenceOverflow(t *testing.T) {
+func TestApplySkillHubBatchOptionsRejectsSequenceOverflowAtActualIndex(t *testing.T) {
 	options := skillHubBatchImportOptionsRequest{
 		SortMode:  skillHubBatchSortModeSequence,
 		SortStart: 2147483600,
 		SortStep:  1,
 	}
-	if err := validateSkillHubBatchOptions(&options); err == nil {
-		t.Fatal("validateSkillHubBatchOptions() accepted an overflowing sequence")
-	}
+	require.NoError(t, validateSkillHubBatchOptions(&options))
+
+	request := skillHubSkillRequest{}
+	require.NoError(t, applySkillHubBatchOptions(&request, options, 10, nil))
+	assert.Equal(t, 2147483610, request.Sort)
+
+	err := applySkillHubBatchOptions(&request, options, 100, nil)
+	require.Error(t, err)
+	assert.Equal(t, "batch sort result must fit in a 32-bit integer", err.Error())
 }

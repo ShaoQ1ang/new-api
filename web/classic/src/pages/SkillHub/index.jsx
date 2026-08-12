@@ -35,6 +35,7 @@ import { API, showError, showSuccess } from '../../helpers';
 import {
   readSkillHubTestcasesFile,
   resolveSkillHubTestcases,
+  splitSkillHubBatchItems,
 } from '../../../../shared/skill-hub-batch-import.mjs';
 import BatchUploadModal from './BatchUploadModal';
 import SkillClientPreviewModal from './SkillClientPreviewModal';
@@ -543,6 +544,7 @@ const SkillHub = () => {
   const [selectedId, setSelectedId] = useState('');
   const [checkedIds, setCheckedIds] = useState([]);
   const [batchWorking, setBatchWorking] = useState(false);
+  const [exportState, setExportState] = useState(null);
   const [form, setForm] = useState(createDefaultForm);
   const [testcasesOverride, setTestcasesOverride] = useState({
     active: false,
@@ -585,20 +587,44 @@ const SkillHub = () => {
   const loadSkills = async (tagIds = selectedTagIds) => {
     setLoading(true);
     try {
-      const params = { keyword, page_size: 200 };
-      const res = tagIds.length
-        ? await API.get('/api/admin/skill-hub/tags/skills', {
-            params: { ...params, tag_ids: tagIds.join(',') },
-          })
-        : await API.get('/api/admin/skill-hub/skills', {
-            params,
-          });
+      const params = { keyword, page_size: 100 };
+      const fetchPage = (page) =>
+        tagIds.length
+          ? API.get('/api/admin/skill-hub/tags/skills', {
+              params: {
+                ...params,
+                p: page,
+                tag_ids: tagIds.join(','),
+              },
+            })
+          : API.get('/api/admin/skill-hub/skills', {
+              params: { ...params, p: page },
+            });
+      const res = await fetchPage(1);
       const { success, data, message } = res.data;
       if (!success) {
         showError(message);
         return;
       }
-      const items = data?.items || [];
+      const firstPageItems = data?.items || [];
+      const total = data?.total || firstPageItems.length;
+      const pageCount = Math.ceil(total / params.page_size);
+      const remainingResponses = await Promise.all(
+        Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) =>
+          fetchPage(index + 2),
+        ),
+      );
+      const failedResponse = remainingResponses.find(
+        (page) => !page.data.success,
+      );
+      if (failedResponse) {
+        showError(failedResponse.data.message);
+        return;
+      }
+      const items = [
+        ...firstPageItems,
+        ...remainingResponses.flatMap((page) => page.data.data?.items || []),
+      ];
       setSkills(items);
       setCheckedIds((current) =>
         current.filter((id) => items.some((item) => item.id === id)),
@@ -1020,25 +1046,80 @@ const SkillHub = () => {
     });
   };
 
-  const batchExport = async () => {
-    if (!checkedIds.length) return;
-    setBatchWorking(true);
-    try {
+  const downloadSkillExportBatches = async (ids, mode) => {
+    const batches = splitSkillHubBatchItems(ids);
+    setExportState({ mode, current: 0, total: batches.length });
+    for (let index = 0; index < batches.length; index += 1) {
+      setExportState({ mode, current: index + 1, total: batches.length });
       const res = await API.post(
         '/api/admin/skill-hub/skills/batch-export',
-        { ids: checkedIds },
+        { ids: batches[index] },
         { responseType: 'blob' },
       );
       const url = URL.createObjectURL(res.data);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'skill-hub-export.zip';
+      link.download =
+        batches.length === 1
+          ? 'skill-hub-export.zip'
+          : `skill-hub-export-${String(index + 1).padStart(3, '0')}-of-${String(batches.length).padStart(3, '0')}.zip`;
+      document.body.appendChild(link);
       link.click();
-      URL.revokeObjectURL(url);
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  };
+
+  const batchExport = async () => {
+    if (!checkedIds.length) return;
+    setBatchWorking(true);
+    try {
+      await downloadSkillExportBatches(checkedIds, 'selected');
       showSuccess(`已导出 ${checkedIds.length} 个 Skill`);
     } catch (error) {
       showError(error.message || '批量导出失败');
     } finally {
+      setExportState(null);
+      setBatchWorking(false);
+    }
+  };
+
+  const exportAll = async () => {
+    setBatchWorking(true);
+    setExportState({ mode: 'all', current: 0, total: 0 });
+    try {
+      const pageSize = 100;
+      const firstResponse = await API.get('/api/admin/skill-hub/skills', {
+        params: { p: 1, page_size: pageSize },
+      });
+      const { success, data, message } = firstResponse.data;
+      if (!success) throw new Error(message || 'Skill 列表加载失败');
+      const firstPageItems = data?.items || [];
+      const total = data?.total || firstPageItems.length;
+      const pageCount = Math.ceil(total / pageSize);
+      const remainingResponses = await Promise.all(
+        Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) =>
+          API.get('/api/admin/skill-hub/skills', {
+            params: { p: index + 2, page_size: pageSize },
+          }),
+        ),
+      );
+      const failedResponse = remainingResponses.find(
+        (page) => !page.data.success,
+      );
+      if (failedResponse) {
+        throw new Error(failedResponse.data.message || 'Skill 列表加载失败');
+      }
+      const ids = [
+        ...firstPageItems,
+        ...remainingResponses.flatMap((page) => page.data.data?.items || []),
+      ].map((skill) => skill.id);
+      await downloadSkillExportBatches(ids, 'all');
+      showSuccess(`已导出 ${ids.length} 个 Skill`);
+    } catch (error) {
+      showError(error.message || '全部导出失败');
+    } finally {
+      setExportState(null);
       setBatchWorking(false);
     }
   };
@@ -1103,18 +1184,6 @@ const SkillHub = () => {
               </div>
             ) : null}
             <div className='mb-3 flex flex-wrap items-center gap-2 border-y border-semi-color-border py-2'>
-              <Checkbox
-                checked={
-                  skills.length > 0 && checkedIds.length === skills.length
-                }
-                onChange={(event) =>
-                  setCheckedIds(
-                    event.target.checked ? skills.map((skill) => skill.id) : [],
-                  )
-                }
-              >
-                全选
-              </Checkbox>
               <Typography.Text type='tertiary'>
                 已选择 {checkedIds.length} 项
               </Typography.Text>
@@ -1123,7 +1192,18 @@ const SkillHub = () => {
                 disabled={!checkedIds.length || batchWorking}
                 onClick={batchExport}
               >
-                批量导出
+                {exportState?.mode === 'selected' && exportState.total
+                  ? `正在导出第 ${exportState.current}/${exportState.total} 批`
+                  : '导出选中'}
+              </Button>
+              <Button
+                size='small'
+                disabled={batchWorking || loading}
+                onClick={exportAll}
+              >
+                {exportState?.mode === 'all' && exportState.total
+                  ? `正在导出第 ${exportState.current}/${exportState.total} 批`
+                  : '全部导出'}
               </Button>
               <Button
                 size='small'
@@ -1563,7 +1643,7 @@ const SkillHub = () => {
                     <Input
                       value={form.sourceUrl}
                       placeholder='https://.../skill.zip'
-                      onChange={(value) => updateForm('sourceUrl', value)}
+                      readonly
                     />
                   </Field>
                 </div>
@@ -1572,7 +1652,7 @@ const SkillHub = () => {
                     <Input
                       value={form.sourceChecksum}
                       placeholder='sha256:...'
-                      onChange={(value) => updateForm('sourceChecksum', value)}
+                      readonly
                     />
                   </Field>
                 </div>
