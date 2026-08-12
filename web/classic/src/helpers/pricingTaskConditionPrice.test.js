@@ -198,3 +198,42 @@ test(
   );
   },
 );
+
+test(
+  'calculateModelPrice returns image resolution prices for model marketplace',
+  { timeout: 60000 },
+  async () => {
+    const { calculateModelPrice, getModelPriceItems } =
+      await loadPricingHelpers();
+    const priceData = calculateModelPrice({
+      record: {
+        quota_type: 1,
+        model_price: 0,
+        image_resolution_price: {
+          '1k': 0.04,
+          '2k': 0.08,
+          '4k': 0.16,
+        },
+      },
+      selectedGroup: 'vip',
+      groupRatio: { vip: 1.5 },
+      tokenUnit: 'M',
+      displayPrice: (value) => `$${value.toFixed(3)}`,
+      currency: 'USD',
+      quotaDisplayType: 'USD',
+    });
+
+    assert.equal(priceData.isImageResolutionPricing, true);
+    assert.equal(priceData.imageResolutionPrices['2k'], '$0.120');
+
+    const items = getModelPriceItems(priceData, (value) => value, 'USD');
+    assert.deepEqual(
+      items.map((item) => [item.label, item.value, item.suffix]),
+      [
+        ['1K 价格', '$0.060', ' / 次'],
+        ['2K 价格', '$0.120', ' / 次'],
+        ['4K 价格', '$0.240', ' / 次'],
+      ],
+    );
+  },
+);

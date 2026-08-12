@@ -276,6 +276,12 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "ImageResolutionPrice":
+		err = ratio_setting.UpdateImageResolutionPriceByJSONString(option.Value.(string))
+		if err != nil {
+			common.ApiErrorMsg(c, "图片分辨率价格设置失败: "+err.Error())
+			return
+		}
 	case "AudioRatio":
 		err = ratio_setting.UpdateAudioRatioByJSONString(option.Value.(string))
 		if err != nil {

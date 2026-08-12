@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -179,6 +180,84 @@ func TestModelPriceHelperTieredRejectsPreConsumeOverflow(t *testing.T) {
 	require.ErrorAs(t, err, &clamp)
 	require.Equal(t, "QuotaRound", clamp.Op)
 	require.Equal(t, common.QuotaClampOverflow, clamp.Kind)
+}
+
+func TestModelPriceHelperUsesConfiguredImageResolutionPrice(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	savedModelPrices := ratio_setting.ModelPrice2JSONString()
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"resolution-image":0.03}`))
+	require.NoError(t, ratio_setting.UpdateImageResolutionPriceByJSONString(`{
+		"resolution-image":{"1k":0.04,"2k":0.08}
+	}`))
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedModelPrices))
+		require.NoError(t, ratio_setting.UpdateImageResolutionPriceByJSONString(`{}`))
+	})
+
+	newRequest := func(size string) (*gin.Context, *relaycommon.RelayInfo, *types.TokenCountMeta) {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Set("group", "default")
+		return ctx, &relaycommon.RelayInfo{
+				OriginModelName: "resolution-image",
+				UserGroup:       "default",
+				UsingGroup:      "default",
+			}, &types.TokenCountMeta{
+				ImageSize:       size,
+				ImagePriceRatio: 9,
+				BillingRatios:   map[string]float64{"n": 2},
+			}
+	}
+
+	ctx, info, meta := newRequest("1696x2528")
+	priceData, err := ModelPriceHelper(ctx, info, 0, meta)
+	require.NoError(t, err)
+	assert.Equal(t, 0.08, priceData.ModelPrice)
+	assert.Equal(t, "2k", priceData.ImageResolutionTier)
+	assert.Equal(t, "1696x2528", priceData.ImageSize)
+	assert.Equal(t, int(0.08*common.QuotaPerUnit*2), priceData.QuotaToPreConsume)
+
+	ctx, info, meta = newRequest("4096x4096")
+	priceData, err = ModelPriceHelper(ctx, info, 0, meta)
+	require.NoError(t, err)
+	assert.Equal(t, 0.27, priceData.ModelPrice, "an unconfigured 4k SKU falls back to legacy fixed-price behavior")
+	assert.Empty(t, priceData.ImageResolutionTier)
+
+	ctx, info, meta = newRequest("1600x1600")
+	meta.ImagePriceRatio = 1
+	priceData, err = ModelPriceHelper(ctx, info, 0, meta)
+	require.NoError(t, err)
+	assert.Equal(t, 0.03, priceData.ModelPrice, "an unknown custom size falls back to ModelPrice")
+	assert.Empty(t, priceData.ImageResolutionTier)
+}
+
+func TestModelPriceHelperAllowsResolutionOnlyFixedPrice(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	savedModelPrices := ratio_setting.ModelPrice2JSONString()
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{}`))
+	require.NoError(t, ratio_setting.UpdateImageResolutionPriceByJSONString(`{
+		"resolution-only-image":{"1k":0.04}
+	}`))
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedModelPrices))
+		require.NoError(t, ratio_setting.UpdateImageResolutionPriceByJSONString(`{}`))
+	})
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "resolution-only-image",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+	priceData, err := ModelPriceHelper(ctx, info, 0, &types.TokenCountMeta{
+		ImageSize:     "1024x1024",
+		BillingRatios: map[string]float64{"n": 1},
+	})
+	require.NoError(t, err)
+	assert.True(t, priceData.UsePrice)
+	assert.Equal(t, 0.04, priceData.ModelPrice)
+	assert.Equal(t, "1k", priceData.ImageResolutionTier)
+	assert.True(t, HasModelBillingConfig("resolution-only-image"))
 }
 
 func TestModelPriceHelperRequestBillingRatiosOnlyApplyToFixedPrice(t *testing.T) {

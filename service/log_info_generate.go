@@ -162,6 +162,12 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 	if relayInfo.UserSetting.BillingPreference != "" {
 		other["billing_preference"] = relayInfo.UserSetting.BillingPreference
 	}
+	if relayInfo.PriceData.ImageSize != "" {
+		other["image_size"] = relayInfo.PriceData.ImageSize
+	}
+	if relayInfo.PriceData.ImageResolutionTier != "" {
+		other["image_resolution_tier"] = relayInfo.PriceData.ImageResolutionTier
+	}
 	if relayInfo.BillingSource == "subscription" {
 		if relayInfo.SubscriptionId != 0 {
 			other["subscription_id"] = relayInfo.SubscriptionId

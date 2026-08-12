@@ -475,16 +475,51 @@ export default function ModelPricingEditor({
                 ) : null}
 
                 {selectedModel.billingMode === 'per-request' ? (
-                  <PriceInput
-                    label={t('固定价格')}
-                    value={selectedModel.fixedPrice}
-                    placeholder={t('输入每次调用价格')}
-                    suffix={t('$/次')}
-                    onChange={(value) =>
-                      handleNumericFieldChange('fixedPrice', value)
-                    }
-                    extraText={t('适合 MJ / 任务类等按次收费模型。')}
-                  />
+                  <>
+                    <PriceInput
+                      label={t('固定价格')}
+                      value={selectedModel.fixedPrice}
+                      placeholder={t('输入每次调用价格')}
+                      suffix={t('$/次')}
+                      onChange={(value) =>
+                        handleNumericFieldChange('fixedPrice', value)
+                      }
+                      extraText={t('适合 MJ / 任务类等按次收费模型。')}
+                    />
+                    <Card
+                      bodyStyle={{ padding: 16 }}
+                      style={{
+                        marginBottom: 16,
+                        background: 'var(--semi-color-fill-0)',
+                      }}
+                    >
+                      <div className='mb-3'>
+                        <div className='font-medium'>
+                          {t('图片输入价格')} (1K / 2K / 4K)
+                        </div>
+                        <div className='text-xs text-gray-500 mt-1'>
+                          {t('这些价格都是可选项，不填也可以。')}
+                        </div>
+                      </div>
+                      {['1K', '2K', '4K'].map((tier) => (
+                        <PriceInput
+                          key={tier}
+                          label={`${tier} ${t('价格')}`}
+                          value={
+                            selectedModel[`imageResolution${tier}Price`]
+                          }
+                          placeholder={t('输入每次调用价格')}
+                          suffix={t('$/次')}
+                          onChange={(value) =>
+                            handleNumericFieldChange(
+                              `imageResolution${tier}Price`,
+                              value,
+                            )
+                          }
+                        />
+                      ))}
+                    </Card>
+                  </>
                 ) : selectedModel.billingMode === 'video-seconds' ? (
                   <Card
                     bodyStyle={{ padding: 16 }}

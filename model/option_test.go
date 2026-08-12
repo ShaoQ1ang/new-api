@@ -212,3 +212,36 @@ func TestVideoSecondsPriceOptionLifecycle(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, 0.15, price)
 }
+
+func TestImageResolutionPriceOptionLifecycle(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(&Option{}))
+	require.NoError(t, DB.Delete(&Option{}, "key = ?", "ImageResolutionPrice").Error)
+	require.NoError(t, ratio_setting.UpdateImageResolutionPriceByJSONString(`{}`))
+	t.Cleanup(func() {
+		require.NoError(t, DB.Delete(&Option{}, "key = ?", "ImageResolutionPrice").Error)
+		require.NoError(t, ratio_setting.UpdateImageResolutionPriceByJSONString(`{}`))
+		InitOptionMap()
+	})
+
+	InitOptionMap()
+	common.OptionMapRWMutex.RLock()
+	initialValue, exists := common.OptionMap["ImageResolutionPrice"]
+	common.OptionMapRWMutex.RUnlock()
+	assert.True(t, exists)
+	assert.JSONEq(t, `{}`, initialValue)
+
+	configuredValue := `{"image-model":{"1k":0.04,"2k":0.08}}`
+	require.NoError(t, UpdateOption("ImageResolutionPrice", configuredValue))
+
+	price, tier, ok := ratio_setting.GetImageResolutionPrice("image-model", "2048x2048")
+	require.True(t, ok)
+	assert.Equal(t, "2k", tier)
+	assert.Equal(t, 0.08, price)
+
+	require.NoError(t, ratio_setting.UpdateImageResolutionPriceByJSONString(`{}`))
+	loadOptionsFromDatabase()
+	price, tier, ok = ratio_setting.GetImageResolutionPrice("image-model", "2048x2048")
+	require.True(t, ok)
+	assert.Equal(t, "2k", tier)
+	assert.Equal(t, 0.08, price)
+}

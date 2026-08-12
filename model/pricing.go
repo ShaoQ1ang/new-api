@@ -31,6 +31,7 @@ type Pricing struct {
 	ImageRatio             *float64                      `json:"image_ratio,omitempty"`
 	AudioRatio             *float64                      `json:"audio_ratio,omitempty"`
 	AudioCompletionRatio   *float64                      `json:"audio_completion_ratio,omitempty"`
+	ImageResolutionPrice   map[string]float64            `json:"image_resolution_price,omitempty"`
 	TaskConditionPrice     map[string]map[string]float64 `json:"task_condition_price,omitempty"`
 	VideoSecondsPrice      map[string]map[string]float64 `json:"video_seconds_price,omitempty"`
 	EnableGroup            []string                      `json:"enable_groups"`
@@ -391,7 +392,7 @@ func updatePricing() {
 
 	// 防止大更新后数据不通用
 	if len(pricingMap) > 0 {
-		pricingMap[0].PricingVersion = "5a90f2b86c08bd983a9a2e6d66c255f4eaef9c4bc934386d2b6ae84ef0ff1f1f"
+		pricingMap[0].PricingVersion = "e03d1790ac88706d85e244a60979077fa8787c955f719ac5f81e426a94451852"
 	}
 
 	// 刷新缓存映射，供高并发快速查询
@@ -429,6 +430,10 @@ func applyConfiguredPricing(model string, pricing *Pricing) {
 	if ratio_setting.ContainsAudioCompletionRatio(model) {
 		audioCompletionRatio := ratio_setting.GetAudioCompletionRatio(model)
 		pricing.AudioCompletionRatio = &audioCompletionRatio
+	}
+	if imageResolutionPrice, ok := ratio_setting.GetImageResolutionPriceCopy()[model]; ok && len(imageResolutionPrice) > 0 {
+		pricing.ImageResolutionPrice = imageResolutionPrice
+		pricing.QuotaType = 1
 	}
 	if taskConditionPrice, ok := ratio_setting.GetTaskConditionPriceCopy()[model]; ok && len(taskConditionPrice) > 0 {
 		pricing.TaskConditionPrice = taskConditionPrice
