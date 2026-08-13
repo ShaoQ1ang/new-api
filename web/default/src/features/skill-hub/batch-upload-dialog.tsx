@@ -71,12 +71,12 @@ import {
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 
 import {
-  SKILL_HUB_BATCH_LIMITS,
   createSkillHubBatchOptions,
   createSkillHubBatchReport,
   issueMessage,
   parseSkillHubBatchDirectory,
   resolveSkillHubBatchSort,
+  splitSkillHubCommitItems,
   splitSkillHubBatchItems,
   validateSkillHubBatchOptions,
   type SkillHubBatchDirectory,
@@ -118,8 +118,6 @@ type ReadyUpload = {
 }
 
 type UploadedItem = ReadyUpload
-
-const commitChunkTargetBytes = 8 * 1024 * 1024
 
 export function SkillHubBatchUploadDialog({
   tags,
@@ -406,7 +404,7 @@ export function SkillHubBatchUploadDialog({
       }
 
       if (uploaded.length && !controller.signal.aborted) {
-        const chunks = splitCommitItems(
+        const chunks = splitSkillHubCommitItems(
           uploaded.map((item) => ({
             index: item.entry.index,
             skill: entryToCommitSkill(item.entry),
@@ -1171,28 +1169,6 @@ function commitOptions(options: SkillHubBatchOptions) {
     missingTestcases: options.missingTestcases,
     missingEvaluation: options.missingEvaluation,
   }
-}
-
-function splitCommitItems<T>(items: T[]) {
-  const chunks: T[][] = []
-  let current: T[] = []
-  let currentBytes = 0
-  for (const item of items) {
-    const bytes = new TextEncoder().encode(JSON.stringify(item)).byteLength
-    if (
-      current.length &&
-      (current.length >= SKILL_HUB_BATCH_LIMITS.transferBatchSize ||
-        currentBytes + bytes > commitChunkTargetBytes)
-    ) {
-      chunks.push(current)
-      current = []
-      currentBytes = 0
-    }
-    current.push(item)
-    currentBytes += bytes
-  }
-  if (current.length) chunks.push(current)
-  return chunks
 }
 
 function parseCommonTags(value: string) {

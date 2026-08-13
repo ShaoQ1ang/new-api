@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FileJson, Image as ImageIcon } from 'lucide-react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   Button,
   Card,
@@ -537,7 +538,10 @@ const TagEditor = ({ value, suggestions, placeholder, onChange }) => {
   );
 };
 
-const SkillHub = () => {
+const SkillHub = ({ editorOnly = false }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { skillId } = useParams();
   const [skills, setSkills] = useState([]);
   const [tagOptions, setTagOptions] = useState([]);
   const [selectedTagIds, setSelectedTagIds] = useState([]);
@@ -658,9 +662,17 @@ const SkillHub = () => {
   };
 
   useEffect(() => {
-    loadSkills();
     loadTags();
-  }, []);
+    if (editorOnly) {
+      if (skillId) {
+        selectSkill({ id: skillId });
+      } else {
+        handleNew();
+      }
+    } else {
+      loadSkills();
+    }
+  }, [editorOnly, skillId]);
 
   useEffect(() => {
     return () => {
@@ -760,6 +772,7 @@ const SkillHub = () => {
         showError(message || 'Skill 详情加载失败');
         return;
       }
+      setSkills([data]);
       setForm(skillToForm(data));
     } catch (error) {
       if (detailRequestIdRef.current === requestId) {
@@ -841,10 +854,20 @@ const SkillHub = () => {
       setTestcasesDirty(false);
       if (data) {
         settlePendingUploads(data);
+        setSkills([data]);
         setForm(skillToForm(data));
       }
       setSelectedId(data?.id || payload.id);
-      await loadSkills();
+      if (editorOnly) {
+        if (!skillId) {
+          navigate(
+            `/console/skill-hub/${encodeURIComponent(data?.id || payload.id)}${location.search}`,
+            { replace: true },
+          );
+        }
+      } else {
+        await loadSkills();
+      }
     } finally {
       setSaving(false);
     }
@@ -987,7 +1010,12 @@ const SkillHub = () => {
     );
     if (res.data.success) {
       showSuccess(published ? '已发布' : '已取消发布');
-      await loadSkills();
+      if (res.data.data) {
+        setSkills([res.data.data]);
+        setForm(skillToForm(res.data.data));
+      } else if (!editorOnly) {
+        await loadSkills();
+      }
     } else {
       showError(res.data.message);
     }
@@ -1006,7 +1034,11 @@ const SkillHub = () => {
         if (res.data.success) {
           showSuccess('已删除');
           handleNew();
-          await loadSkills();
+          if (editorOnly) {
+            navigate(`/console/skill-hub${location.search}`);
+          } else {
+            await loadSkills();
+          }
         } else {
           showError(res.data.message);
         }
@@ -1130,167 +1162,188 @@ const SkillHub = () => {
         <div className='flex flex-wrap items-center justify-between gap-3'>
           <div>
             <Typography.Title heading={3} className='!mb-1'>
-              技能管理
+              {editorOnly
+                ? selectedSkill
+                  ? '编辑 Skill'
+                  : '新建 Skill'
+                : '技能管理'}
             </Typography.Title>
             <Typography.Text type='tertiary'>
-              配置可被本地连接器安装的 Skill
-              包；当前只保留目录展示、标签、图标和 Zip 安装数据。
+              {editorOnly
+                ? '配置目录卡片、Zip 安装包和发布状态。'
+                : '配置可被本地连接器安装的 Skill 包。'}
             </Typography.Text>
           </div>
-          <Space>
-            <BatchUploadModal
-              tagOptions={tagOptions}
-              onComplete={() => loadSkills()}
-            />
-            <Button onClick={handleNew}>新建</Button>
-            <Button onClick={() => loadSkills()} loading={loading}>
-              刷新
+          {editorOnly ? (
+            <Button
+              onClick={() => navigate(`/console/skill-hub${location.search}`)}
+            >
+              返回技能列表
             </Button>
-          </Space>
+          ) : (
+            <Space>
+              <BatchUploadModal
+                tagOptions={tagOptions}
+                onComplete={() => loadSkills()}
+              />
+              <Button onClick={handleNew}>新建</Button>
+              <Button onClick={() => loadSkills()} loading={loading}>
+                刷新
+              </Button>
+            </Space>
+          )}
         </div>
 
-        <div className='grid grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]'>
-          <Card>
-            <div className='mb-3 flex gap-2'>
-              <Input
-                placeholder='搜索 ID / 名称 / 标签'
-                value={keyword}
-                onChange={setKeyword}
-                onEnterPress={() => loadSkills()}
-              />
-              <Button onClick={() => loadSkills()}>搜索</Button>
-            </div>
-            {tagOptions.length ? (
-              <div className='mb-3 flex flex-wrap gap-2'>
+        <div
+          className={
+            editorOnly
+              ? 'grid grid-cols-1 gap-4'
+              : 'grid grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]'
+          }
+        >
+          {!editorOnly && (
+            <Card>
+              <div className='mb-3 flex gap-2'>
+                <Input
+                  placeholder='搜索 ID / 名称 / 标签'
+                  value={keyword}
+                  onChange={setKeyword}
+                  onEnterPress={() => loadSkills()}
+                />
+                <Button onClick={() => loadSkills()}>搜索</Button>
+              </div>
+              {tagOptions.length ? (
+                <div className='mb-3 flex flex-wrap gap-2'>
+                  <Button
+                    size='small'
+                    type={selectedTagIds.length ? 'tertiary' : 'primary'}
+                    onClick={clearTagFilter}
+                  >
+                    全部标签
+                  </Button>
+                  {tagOptions.map((tag) => (
+                    <Button
+                      key={tag.id || tag.name}
+                      size='small'
+                      type={
+                        selectedTagIds.includes(tag.id) ? 'primary' : 'tertiary'
+                      }
+                      onClick={() => applyTagFilter(tag.id)}
+                    >
+                      {tag.name}
+                    </Button>
+                  ))}
+                </div>
+              ) : null}
+              <div className='mb-3 flex flex-wrap items-center gap-2 border-y border-semi-color-border py-2'>
+                <Typography.Text type='tertiary'>
+                  已选择 {checkedIds.length} 项
+                </Typography.Text>
                 <Button
                   size='small'
-                  type={selectedTagIds.length ? 'tertiary' : 'primary'}
-                  onClick={clearTagFilter}
+                  disabled={!checkedIds.length || batchWorking}
+                  onClick={batchExport}
                 >
-                  全部标签
+                  {exportState?.mode === 'selected' && exportState.total
+                    ? `正在导出第 ${exportState.current}/${exportState.total} 批`
+                    : '导出选中'}
                 </Button>
-                {tagOptions.map((tag) => (
-                  <Button
-                    key={tag.id || tag.name}
-                    size='small'
-                    type={
-                      selectedTagIds.includes(tag.id) ? 'primary' : 'tertiary'
-                    }
-                    onClick={() => applyTagFilter(tag.id)}
-                  >
-                    {tag.name}
-                  </Button>
-                ))}
+                <Button
+                  size='small'
+                  disabled={batchWorking || loading}
+                  onClick={exportAll}
+                >
+                  {exportState?.mode === 'all' && exportState.total
+                    ? `正在导出第 ${exportState.current}/${exportState.total} 批`
+                    : '全部导出'}
+                </Button>
+                <Button
+                  size='small'
+                  type='danger'
+                  disabled={!checkedIds.length || batchWorking}
+                  onClick={batchDelete}
+                >
+                  批量删除
+                </Button>
               </div>
-            ) : null}
-            <div className='mb-3 flex flex-wrap items-center gap-2 border-y border-semi-color-border py-2'>
-              <Typography.Text type='tertiary'>
-                已选择 {checkedIds.length} 项
-              </Typography.Text>
-              <Button
-                size='small'
-                disabled={!checkedIds.length || batchWorking}
-                onClick={batchExport}
-              >
-                {exportState?.mode === 'selected' && exportState.total
-                  ? `正在导出第 ${exportState.current}/${exportState.total} 批`
-                  : '导出选中'}
-              </Button>
-              <Button
-                size='small'
-                disabled={batchWorking || loading}
-                onClick={exportAll}
-              >
-                {exportState?.mode === 'all' && exportState.total
-                  ? `正在导出第 ${exportState.current}/${exportState.total} 批`
-                  : '全部导出'}
-              </Button>
-              <Button
-                size='small'
-                type='danger'
-                disabled={!checkedIds.length || batchWorking}
-                onClick={batchDelete}
-              >
-                批量删除
-              </Button>
-            </div>
-            <Spin spinning={loading}>
-              <div className='flex max-h-[70vh] flex-col gap-2 overflow-auto pr-1 pb-2'>
-                {skills.map((skill) => {
-                  const tags = normalizeTags(skill.tags);
-                  return (
-                    <div
-                      key={skill.id}
-                      className={`rounded border p-3 text-left transition ${
-                        selectedId === skill.id
-                          ? 'border-semi-color-primary bg-semi-color-primary-light-default'
-                          : 'border-semi-color-border bg-semi-color-bg-1 hover:bg-semi-color-fill-0'
-                      }`}
-                    >
-                      <div className='mb-2 flex items-center gap-2'>
-                        <Checkbox
-                          checked={checkedIds.includes(skill.id)}
-                          onChange={(event) =>
-                            setCheckedIds((current) =>
-                              event.target.checked
-                                ? [...new Set([...current, skill.id])]
-                                : current.filter((id) => id !== skill.id),
-                            )
-                          }
-                        />
-                        <button
-                          type='button'
-                          className='min-w-0 flex-1 text-left'
-                          onClick={() => selectSkill(skill)}
-                        >
-                          <div className='flex items-center justify-between gap-2'>
-                            <span className='truncate font-semibold'>
-                              {skill.name}
-                            </span>
-                            <Space spacing={4}>
-                              {skill.recommended ? (
-                                <Tag color='violet'>推荐</Tag>
-                              ) : null}
-                              <Tag
-                                color={
-                                  isPublishedSkill(skill) ? 'green' : 'grey'
-                                }
-                              >
-                                {isPublishedSkill(skill) ? '已发布' : '草稿'}
-                              </Tag>
-                            </Space>
-                          </div>
-                          <div className='mt-1 truncate text-xs text-semi-color-text-2'>
-                            {skill.id} · {skill.version}
-                            {skill.author ? ` · ${skill.author}` : ''}
-                            {skill.origin ? ` · ${skill.origin}` : ''}
-                          </div>
-                          <div className='mt-2 line-clamp-2 min-h-[40px] text-sm text-semi-color-text-1'>
-                            {skill.description || '暂无描述'}
-                          </div>
-                          <div className='mt-2 flex min-h-7 max-h-7 flex-wrap gap-1 overflow-hidden'>
-                            {tags.slice(0, 4).map((tag) => (
-                              <span
-                                key={tag}
-                                className='rounded bg-semi-color-fill-0 px-2 py-0.5 text-xs text-semi-color-text-2'
-                              >
-                                {tag}
+              <Spin spinning={loading}>
+                <div className='flex max-h-[70vh] flex-col gap-2 overflow-auto pr-1 pb-2'>
+                  {skills.map((skill) => {
+                    const tags = normalizeTags(skill.tags);
+                    return (
+                      <div
+                        key={skill.id}
+                        className={`rounded border p-3 text-left transition ${
+                          selectedId === skill.id
+                            ? 'border-semi-color-primary bg-semi-color-primary-light-default'
+                            : 'border-semi-color-border bg-semi-color-bg-1 hover:bg-semi-color-fill-0'
+                        }`}
+                      >
+                        <div className='mb-2 flex items-center gap-2'>
+                          <Checkbox
+                            checked={checkedIds.includes(skill.id)}
+                            onChange={(event) =>
+                              setCheckedIds((current) =>
+                                event.target.checked
+                                  ? [...new Set([...current, skill.id])]
+                                  : current.filter((id) => id !== skill.id),
+                              )
+                            }
+                          />
+                          <button
+                            type='button'
+                            className='min-w-0 flex-1 text-left'
+                            onClick={() => selectSkill(skill)}
+                          >
+                            <div className='flex items-center justify-between gap-2'>
+                              <span className='truncate font-semibold'>
+                                {skill.name}
                               </span>
-                            ))}
-                          </div>
-                        </button>
+                              <Space spacing={4}>
+                                {skill.recommended ? (
+                                  <Tag color='violet'>推荐</Tag>
+                                ) : null}
+                                <Tag
+                                  color={
+                                    isPublishedSkill(skill) ? 'green' : 'grey'
+                                  }
+                                >
+                                  {isPublishedSkill(skill) ? '已发布' : '草稿'}
+                                </Tag>
+                              </Space>
+                            </div>
+                            <div className='mt-1 truncate text-xs text-semi-color-text-2'>
+                              {skill.id} · {skill.version}
+                              {skill.author ? ` · ${skill.author}` : ''}
+                              {skill.origin ? ` · ${skill.origin}` : ''}
+                            </div>
+                            <div className='mt-2 line-clamp-2 min-h-[40px] text-sm text-semi-color-text-1'>
+                              {skill.description || '暂无描述'}
+                            </div>
+                            <div className='mt-2 flex min-h-7 max-h-7 flex-wrap gap-1 overflow-hidden'>
+                              {tags.slice(0, 4).map((tag) => (
+                                <span
+                                  key={tag}
+                                  className='rounded bg-semi-color-fill-0 px-2 py-0.5 text-xs text-semi-color-text-2'
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          </button>
+                        </div>
                       </div>
+                    );
+                  })}
+                  {skills.length === 0 && (
+                    <div className='py-8 text-center text-semi-color-text-2'>
+                      暂无 Skill
                     </div>
-                  );
-                })}
-                {skills.length === 0 && (
-                  <div className='py-8 text-center text-semi-color-text-2'>
-                    暂无 Skill
-                  </div>
-                )}
-              </div>
-            </Spin>
-          </Card>
+                  )}
+                </div>
+              </Spin>
+            </Card>
+          )}
 
           <Card>
             <div

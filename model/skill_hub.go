@@ -492,12 +492,24 @@ func IsSkillHubSkillIDDuplicated(id int, skillID string) (bool, error) {
 	return count > 0, err
 }
 
-func SearchSkillHubSkills(keyword string, admin bool, offset int, limit int, recommendedOnly ...bool) ([]*SkillHubSkill, int64, error) {
+type SkillHubSkillSearchFilter struct {
+	RecommendedOnly bool
+	Statuses        []int
+}
+
+func SearchSkillHubSkills(keyword string, admin bool, offset int, limit int, filters ...SkillHubSkillSearchFilter) ([]*SkillHubSkill, int64, error) {
 	db := skillHubSummaryQuery(DB.Model(&SkillHubSkill{}))
 	if !admin {
 		db = db.Where("status = ?", SkillHubStatusPublished)
 	}
-	if len(recommendedOnly) > 0 && recommendedOnly[0] {
+	filter := SkillHubSkillSearchFilter{}
+	if len(filters) > 0 {
+		filter = filters[0]
+	}
+	if admin && len(filter.Statuses) > 0 {
+		db = db.Where("status IN ?", filter.Statuses)
+	}
+	if filter.RecommendedOnly {
 		db = db.Where("recommended = ?", true)
 	}
 	like, err := skillHubContainsLikePattern(keyword)
@@ -546,7 +558,7 @@ func SearchRecommendedSkillHubSkills(limit int) ([]*SkillHubSkill, int64, error)
 	return skills, total, err
 }
 
-func SearchSkillHubSkillsByTagIDs(tagIDs []int, keyword string, admin bool, offset int, limit int, recommendedOnly ...bool) ([]*SkillHubSkill, int64, error) {
+func SearchSkillHubSkillsByTagIDs(tagIDs []int, keyword string, admin bool, offset int, limit int, filters ...SkillHubSkillSearchFilter) ([]*SkillHubSkill, int64, error) {
 	tags, err := GetSkillHubTagsByIDs(tagIDs)
 	if err != nil {
 		return nil, 0, err
@@ -569,7 +581,14 @@ func SearchSkillHubSkillsByTagIDs(tagIDs []int, keyword string, admin bool, offs
 	if !admin {
 		db = db.Where("status = ?", SkillHubStatusPublished)
 	}
-	if len(recommendedOnly) > 0 && recommendedOnly[0] {
+	filter := SkillHubSkillSearchFilter{}
+	if len(filters) > 0 {
+		filter = filters[0]
+	}
+	if admin && len(filter.Statuses) > 0 {
+		db = db.Where("skill_hub_skills.status IN ?", filter.Statuses)
+	}
+	if filter.RecommendedOnly {
 		db = db.Where("skill_hub_skills.recommended = ?", true)
 	}
 	keywordLike, err := skillHubContainsLikePattern(keyword)

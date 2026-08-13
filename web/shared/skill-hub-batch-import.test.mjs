@@ -27,6 +27,7 @@ import {
   readSkillHubTestcasesFile,
   resolveSkillHubTestcases,
   resolveSkillHubBatchSort,
+  splitSkillHubCommitItems,
   splitSkillHubBatchItems,
   summarizeSkillHubBatchResults,
 } from './skill-hub-batch-import.mjs'
@@ -49,6 +50,23 @@ test('large transfers are split into bounded batches without losing order', () =
   assert.equal(batches.length, 10)
   assert.ok(batches.every((batch) => batch.length === 100))
   assert.deepEqual(batches.flat(), items)
+})
+
+test('commit requests settle large batches incrementally', () => {
+  const items = Array.from({ length: 12 }, (_, index) => ({ index }))
+  const batches = splitSkillHubCommitItems(items)
+
+  assert.deepEqual(
+    batches.map((batch) => batch.length),
+    [10, 2],
+  )
+  assert.deepEqual(batches.flat(), items)
+
+  const byteLimited = splitSkillHubCommitItems(items.slice(0, 3), 100, 12)
+  assert.deepEqual(
+    byteLimited.map((batch) => batch.length),
+    [1, 1, 1],
+  )
 })
 
 test('directory parsing accepts one thousand skills and rejects larger manifests', async () => {

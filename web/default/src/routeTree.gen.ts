@@ -54,6 +54,8 @@ import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
 import { Route as AuthenticatedSkillHubTagsRouteImport } from './routes/_authenticated/skill-hub/tags'
 import { Route as AuthenticatedSkillHubReportsRouteImport } from './routes/_authenticated/skill-hub/reports'
+import { Route as AuthenticatedSkillHubNewRouteImport } from './routes/_authenticated/skill-hub/new'
+import { Route as AuthenticatedSkillHubSkillIdRouteImport } from './routes/_authenticated/skill-hub/$skillId'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
@@ -314,6 +316,18 @@ const AuthenticatedSkillHubReportsRoute =
     path: '/skill-hub/reports',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedSkillHubNewRoute =
+  AuthenticatedSkillHubNewRouteImport.update({
+    id: '/skill-hub/new',
+    path: '/skill-hub/new',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSkillHubSkillIdRoute =
+  AuthenticatedSkillHubSkillIdRouteImport.update({
+    id: '/skill-hub/$skillId',
+    path: '/skill-hub/$skillId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedModelsSectionRoute =
   AuthenticatedModelsSectionRouteImport.update({
     id: '/models/$section',
@@ -457,6 +471,8 @@ export interface FileRoutesByFullPath {
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
+  '/skill-hub/$skillId': typeof AuthenticatedSkillHubSkillIdRoute
+  '/skill-hub/new': typeof AuthenticatedSkillHubNewRoute
   '/skill-hub/reports': typeof AuthenticatedSkillHubReportsRoute
   '/skill-hub/tags': typeof AuthenticatedSkillHubTagsRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
@@ -520,6 +536,8 @@ export interface FileRoutesByTo {
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
+  '/skill-hub/$skillId': typeof AuthenticatedSkillHubSkillIdRoute
+  '/skill-hub/new': typeof AuthenticatedSkillHubNewRoute
   '/skill-hub/reports': typeof AuthenticatedSkillHubReportsRoute
   '/skill-hub/tags': typeof AuthenticatedSkillHubTagsRoute
   '/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
@@ -587,6 +605,8 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/_authenticated/models/$section': typeof AuthenticatedModelsSectionRoute
+  '/_authenticated/skill-hub/$skillId': typeof AuthenticatedSkillHubSkillIdRoute
+  '/_authenticated/skill-hub/new': typeof AuthenticatedSkillHubNewRoute
   '/_authenticated/skill-hub/reports': typeof AuthenticatedSkillHubReportsRoute
   '/_authenticated/skill-hub/tags': typeof AuthenticatedSkillHubTagsRoute
   '/_authenticated/usage-logs/$section': typeof AuthenticatedUsageLogsSectionRoute
@@ -653,6 +673,8 @@ export interface FileRouteTypes {
     | '/dashboard/$section'
     | '/errors/$error'
     | '/models/$section'
+    | '/skill-hub/$skillId'
+    | '/skill-hub/new'
     | '/skill-hub/reports'
     | '/skill-hub/tags'
     | '/usage-logs/$section'
@@ -716,6 +738,8 @@ export interface FileRouteTypes {
     | '/dashboard/$section'
     | '/errors/$error'
     | '/models/$section'
+    | '/skill-hub/$skillId'
+    | '/skill-hub/new'
     | '/skill-hub/reports'
     | '/skill-hub/tags'
     | '/usage-logs/$section'
@@ -782,6 +806,8 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/$section'
     | '/_authenticated/errors/$error'
     | '/_authenticated/models/$section'
+    | '/_authenticated/skill-hub/$skillId'
+    | '/_authenticated/skill-hub/new'
     | '/_authenticated/skill-hub/reports'
     | '/_authenticated/skill-hub/tags'
     | '/_authenticated/usage-logs/$section'
@@ -1155,6 +1181,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSkillHubReportsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/skill-hub/new': {
+      id: '/_authenticated/skill-hub/new'
+      path: '/skill-hub/new'
+      fullPath: '/skill-hub/new'
+      preLoaderRoute: typeof AuthenticatedSkillHubNewRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/skill-hub/$skillId': {
+      id: '/_authenticated/skill-hub/$skillId'
+      path: '/skill-hub/$skillId'
+      fullPath: '/skill-hub/$skillId'
+      preLoaderRoute: typeof AuthenticatedSkillHubSkillIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/models/$section': {
       id: '/_authenticated/models/$section'
       path: '/models/$section'
@@ -1381,6 +1421,8 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardSectionRoute: typeof AuthenticatedDashboardSectionRoute
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
   AuthenticatedModelsSectionRoute: typeof AuthenticatedModelsSectionRoute
+  AuthenticatedSkillHubSkillIdRoute: typeof AuthenticatedSkillHubSkillIdRoute
+  AuthenticatedSkillHubNewRoute: typeof AuthenticatedSkillHubNewRoute
   AuthenticatedSkillHubReportsRoute: typeof AuthenticatedSkillHubReportsRoute
   AuthenticatedSkillHubTagsRoute: typeof AuthenticatedSkillHubTagsRoute
   AuthenticatedUsageLogsSectionRoute: typeof AuthenticatedUsageLogsSectionRoute
@@ -1408,6 +1450,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardSectionRoute: AuthenticatedDashboardSectionRoute,
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,
   AuthenticatedModelsSectionRoute: AuthenticatedModelsSectionRoute,
+  AuthenticatedSkillHubSkillIdRoute: AuthenticatedSkillHubSkillIdRoute,
+  AuthenticatedSkillHubNewRoute: AuthenticatedSkillHubNewRoute,
   AuthenticatedSkillHubReportsRoute: AuthenticatedSkillHubReportsRoute,
   AuthenticatedSkillHubTagsRoute: AuthenticatedSkillHubTagsRoute,
   AuthenticatedUsageLogsSectionRoute: AuthenticatedUsageLogsSectionRoute,

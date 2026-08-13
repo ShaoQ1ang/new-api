@@ -65,9 +65,17 @@ type SkillHubDirectUploadInitResult struct {
 }
 
 type SkillHubDirectUploadCompleteResult struct {
-	Kind    string
-	SkillID string
-	Upload  *SkillHubUploadResult
+	Kind          string
+	SkillID       string
+	SkillMarkdown string
+	Upload        *SkillHubUploadResult
+}
+
+type skillHubZipInspection struct {
+	Size          int64
+	Checksum      string
+	Header        []byte
+	SkillMarkdown string
 }
 
 type SkillHubPromoteResult struct {
@@ -200,9 +208,29 @@ func CompleteSkillHubDirectUpload(uploadTicket string) (*SkillHubDirectUploadCom
 		return nil, fmt.Errorf("skill hub upload must be <= %d MB", skillHubUploadMaxBytes(ticket.Kind)>>20)
 	}
 
-	size, checksum, header, err := hashSkillHubObject(bucket, ticket.Object, skillHubUploadMaxBytes(ticket.Kind))
-	if err != nil {
-		return nil, err
+	var size int64
+	var checksum string
+	var header []byte
+	var skillMarkdown string
+	if ticket.Kind == SkillHubUploadKindZip {
+		reader, getErr := bucket.GetObject(ticket.Object)
+		if getErr != nil {
+			return nil, getErr
+		}
+		inspection, inspectErr := inspectSkillHubZip(reader, skillHubUploadMaxBytes(ticket.Kind))
+		_ = reader.Close()
+		if inspectErr != nil {
+			return nil, inspectErr
+		}
+		size = inspection.Size
+		checksum = inspection.Checksum
+		header = inspection.Header
+		skillMarkdown = inspection.SkillMarkdown
+	} else {
+		size, checksum, header, err = hashSkillHubObject(bucket, ticket.Object, skillHubUploadMaxBytes(ticket.Kind))
+		if err != nil {
+			return nil, err
+		}
 	}
 	if size != ticket.Size {
 		_ = bucket.DeleteObject(ticket.Object)
@@ -229,9 +257,10 @@ func CompleteSkillHubDirectUpload(uploadTicket string) (*SkillHubDirectUploadCom
 		result.URL = objectPublicURL(cfg.PublicBaseURL, ticket.Object)
 	}
 	return &SkillHubDirectUploadCompleteResult{
-		Kind:    ticket.Kind,
-		SkillID: ticket.SkillID,
-		Upload:  result,
+		Kind:          ticket.Kind,
+		SkillID:       ticket.SkillID,
+		SkillMarkdown: skillMarkdown,
+		Upload:        result,
 	}, nil
 }
 
@@ -383,11 +412,13 @@ func promoteSkillHubZipObject(skill *model.SkillHubSkill, result *SkillHubPromot
 	if err != nil {
 		return err
 	}
-	markdown, err := readSkillHubMarkdownFromZipObject(bucket, objectKey)
-	if err != nil {
-		return err
+	if skill.SkillMarkdown == "" {
+		markdown, err := readSkillHubMarkdownFromZipObject(bucket, objectKey)
+		if err != nil {
+			return err
+		}
+		skill.SkillMarkdown = markdown
 	}
-	skill.SkillMarkdown = markdown
 	if _, err := bucket.CopyObject(objectKey, finalObject, oss.ForbidOverWrite(true)); err != nil {
 		return err
 	}
@@ -980,6 +1011,65 @@ func hashSkillHubObject(bucket *oss.Bucket, objectKey string, maxBytes int64) (i
 		}
 	}
 	return size, "sha256:" + hex.EncodeToString(hasher.Sum(nil)), header, nil
+}
+
+func inspectSkillHubZip(reader io.Reader, maxBytes int64) (*skillHubZipInspection, error) {
+	tempFile, err := os.CreateTemp("", "skill-hub-package-inspection-*.zip")
+	if err != nil {
+		return nil, err
+	}
+	tempPath := tempFile.Name()
+	defer func() {
+		_ = tempFile.Close()
+		_ = os.Remove(tempPath)
+	}()
+
+	hasher := sha256.New()
+	header := make([]byte, 0, 512)
+	buffer := make([]byte, 32*1024)
+	var size int64
+	for {
+		n, readErr := reader.Read(buffer)
+		if n > 0 {
+			chunk := buffer[:n]
+			size += int64(n)
+			if size > maxBytes {
+				return nil, fmt.Errorf("skill hub upload must be <= %d MB", maxBytes>>20)
+			}
+			if len(header) < 512 {
+				remaining := 512 - len(header)
+				if n < remaining {
+					remaining = n
+				}
+				header = append(header, chunk[:remaining]...)
+			}
+			if _, err := hasher.Write(chunk); err != nil {
+				return nil, err
+			}
+			if _, err := tempFile.Write(chunk); err != nil {
+				return nil, err
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return nil, readErr
+		}
+	}
+	if err := tempFile.Close(); err != nil {
+		return nil, err
+	}
+	markdown, err := readSkillHubMarkdownFromZipPath(tempPath)
+	if err != nil {
+		return nil, err
+	}
+	return &skillHubZipInspection{
+		Size:          size,
+		Checksum:      "sha256:" + hex.EncodeToString(hasher.Sum(nil)),
+		Header:        header,
+		SkillMarkdown: markdown,
+	}, nil
 }
 
 func validateSkillHubUploadedHeader(ticket *skillHubUploadTicket, header []byte) error {

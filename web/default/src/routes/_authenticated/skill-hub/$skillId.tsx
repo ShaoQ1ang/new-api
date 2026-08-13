@@ -22,10 +22,10 @@ import {
   MANAGEMENT_PERMISSION,
   hasManagementPermission,
 } from '@/lib/management-permissions'
-import { SkillHubList } from '@/features/skill-hub/list'
+import { SkillHub } from '@/features/skill-hub'
 import { skillHubSearchSchema } from '@/features/skill-hub/search'
 
-export const Route = createFileRoute('/_authenticated/skill-hub/')({
+export const Route = createFileRoute('/_authenticated/skill-hub/$skillId')({
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
     if (
@@ -38,25 +38,20 @@ export const Route = createFileRoute('/_authenticated/skill-hub/')({
     }
   },
   validateSearch: skillHubSearchSchema,
-  component: SkillHubListRoute,
+  component: EditSkillHubRoute,
 })
 
-function SkillHubListRoute() {
+function EditSkillHubRoute() {
+  const { skillId } = Route.useParams()
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
 
   return (
-    <SkillHubList
-      search={search}
-      onSearchChange={(next) => void navigate({ search: next })}
-      onCreate={() => void navigate({ to: '/skill-hub/new', search })}
-      onEdit={(skillId) =>
-        void navigate({
-          to: '/skill-hub/$skillId',
-          params: { skillId },
-          search,
-        })
-      }
+    <SkillHub
+      editorOnly
+      initialSkillId={skillId}
+      onBack={() => void navigate({ to: '/skill-hub', search })}
+      onDeleted={() => void navigate({ to: '/skill-hub', search })}
     />
   )
 }
