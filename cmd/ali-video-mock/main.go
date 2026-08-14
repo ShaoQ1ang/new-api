@@ -29,12 +29,14 @@ const (
 )
 
 type mockServer struct {
-	mu         sync.Mutex
-	nextID     int64
-	tasks      map[string]*mockTask
-	config     mockConfig
-	rng        *rand.Rand
-	videoBytes []byte
+	mu            sync.Mutex
+	nextID        int64
+	nextHistoryID int64
+	tasks         map[string]*mockTask
+	history       []mockRequestRecord
+	config        mockConfig
+	rng           *rand.Rand
+	videoBytes    []byte
 }
 
 type mockConfig struct {
@@ -167,6 +169,7 @@ func newMockServerWithConfig(cfg mockConfig) *mockServer {
 	}
 	return &mockServer{
 		tasks:      make(map[string]*mockTask),
+		history:    make([]mockRequestRecord, 0, mockHistoryLimit),
 		config:     cfg,
 		rng:        rand.New(rand.NewSource(time.Now().UnixNano())),
 		videoBytes: videoBytes,
@@ -185,6 +188,8 @@ func main() {
 
 func (s *mockServer) routes() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/history", s.handleHistoryPage)
+	mux.HandleFunc("/api/mock/history", s.handleRequestHistory)
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/api/v1/services/aigc/video-generation/video-synthesis", s.handleSubmit)
 	mux.HandleFunc("/api/v1/tasks/", s.handleFetchTask)
@@ -195,7 +200,7 @@ func (s *mockServer) routes() http.Handler {
 	mux.HandleFunc("/v1/videos/", s.handleOpenRouterVideoFetch)
 	mux.HandleFunc("/mock-assets/videos/", s.handleMockVideo)
 	mux.HandleFunc("/", s.handleVeo)
-	return mux
+	return s.captureRequests(mux)
 }
 
 func (s *mockServer) handleHealth(w http.ResponseWriter, r *http.Request) {
