@@ -272,6 +272,14 @@ ALI_VIDEO_MOCK_PORT=18081 docker compose -f docker-compose.dev.mock.yml up -d --
 curl http://localhost:18080/healthz
 ```
 
+请求历史调试页：
+
+```text
+http://localhost:18080/history
+```
+
+mock 会在内存中保留最近 500 条上游请求，完整记录 method、path、query、header、原始 body、响应状态和处理耗时，便于检查 New API 转换后的实际请求。服务重启后记录自动清空，也可以在页面内手动清空。`/history`、`/api/mock/history`、`/healthz` 和视频资源请求不会写入历史，避免调试页面刷新、健康检查与视频下载污染记录。
+
 给 `new-api` 里的对应渠道配置本地 mock 时，把渠道 `base_url` 改成：
 
 ```text
