@@ -17,44 +17,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ClipboardEvent,
-  type ReactNode,
-} from 'react'
-import {
-  Check,
-  Download,
-  Package,
-  Plus,
-  RefreshCw,
-  Save,
-  Trash2,
-  UploadCloud,
-} from 'lucide-react'
+  Add01Icon,
+  RefreshIcon,
+  Shield02Icon,
+} from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { useAuthStore } from '@/stores/auth-store'
+
+import { SectionPageLayout } from '@/components/layout'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   MANAGEMENT_PERMISSION,
   hasManagementPermission,
 } from '@/lib/management-permissions'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
-import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
-import { SectionPageLayout } from '@/components/layout'
+import { useAuthStore } from '@/stores/auth-store'
+
 import {
   clientReleaseToForm,
   createClientRelease,
@@ -65,6 +45,13 @@ import {
   updateClientRelease,
   uploadClientRelease,
 } from './api'
+import { ClientReleaseEditor } from './client-release-editor'
+import { ClientReleaseTable } from './client-release-table'
+import {
+  clientReleaseFileMatchesTarget,
+  isClientReleaseTargetReady,
+  resolvePublicDownloadURL,
+} from './release-target'
 import type {
   ClientRelease,
   ClientReleaseArch,
@@ -73,9 +60,17 @@ import type {
   ClientReleasePlatform,
 } from './types'
 
-const platformOptions: ClientReleasePlatform[] = ['windows', 'darwin', 'linux']
-const archOptions: ClientReleaseArch[] = ['x64', 'arm64', 'ia32', 'universal']
-const channelOptions: ClientReleaseChannel[] = ['stable', 'beta']
+const platformOptions: ClientReleasePlatform[] = ['windows', 'macos', 'linux']
+const versionPattern = /^\d+\.\d+\.\d+$/
+
+type ReleaseListQuery = {
+  platform: ClientReleasePlatform
+  keyword: string
+  arch: ClientReleaseArch | ''
+  channel: ClientReleaseChannel | ''
+}
+
+type PendingUpload = { ticket: string; object: string } | null
 
 export function ClientReleases() {
   const { t } = useTranslation()
@@ -88,103 +83,145 @@ export function ClientReleases() {
     user,
     MANAGEMENT_PERMISSION.CLIENT_RELEASES_PUBLISH
   )
+
+  const [activePlatform, setActivePlatform] =
+    useState<ClientReleasePlatform>('windows')
   const [releases, setReleases] = useState<ClientRelease[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [form, setForm] = useState<ClientReleaseForm>(() =>
-    clientReleaseToForm()
+    clientReleaseToForm(undefined, 'windows')
   )
   const [keyword, setKeyword] = useState('')
-  const [platformFilter, setPlatformFilter] = useState('')
-  const [archFilter, setArchFilter] = useState('')
-  const [channelFilter, setChannelFilter] = useState('')
+  const [archFilter, setArchFilter] = useState<ClientReleaseArch | ''>('')
+  const [channelFilter, setChannelFilter] = useState<ClientReleaseChannel | ''>(
+    ''
+  )
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const pendingUploadRef = useRef<{ ticket: string; object: string } | null>(
+  const [uploading, setUploading] = useState<'installer' | 'updater' | null>(
     null
   )
 
+  const listAbortRef = useRef<AbortController | null>(null)
+  const listRequestRef = useRef(0)
+  const savingRef = useRef(false)
+  const uploadingRef = useRef(false)
+  const formRef = useRef(form)
+  const pendingUploadsRef = useRef<{
+    installer: PendingUpload
+    updater: PendingUpload
+  }>({ installer: null, updater: null })
+  formRef.current = form
+
   const selected = useMemo(
     () => releases.find((release) => release.id === selectedId),
-    [selectedId, releases]
+    [releases, selectedId]
   )
   const selectedPublished =
     selected?.published === true || selected?.status === 1
   const canEditSelected = canManage && (!selectedPublished || canPublish)
+  const canEdit = selected ? canEditSelected : canManage
+  const baselineForm = clientReleaseToForm(selected, activePlatform)
+  const isDirty = JSON.stringify(form) !== JSON.stringify(baselineForm)
+  const busy = saving || uploading !== null
 
-  async function loadReleases() {
-    setLoading(true)
-    try {
-      const payload = await listAdminClientReleases({
-        keyword: keyword.trim(),
-        platform: platformFilter || undefined,
-        arch: archFilter || undefined,
-        channel: channelFilter.trim() || undefined,
-        page_size: 100,
-      })
-      if (!payload.success) {
-        throw new Error(payload.message || t('Failed to load client releases'))
+  const loadReleases = useCallback(
+    async (query: ReleaseListQuery) => {
+      listAbortRef.current?.abort()
+      const controller = new AbortController()
+      listAbortRef.current = controller
+      const requestID = ++listRequestRef.current
+      setLoading(true)
+      try {
+        const payload = await listAdminClientReleases({
+          keyword: query.keyword.trim() || undefined,
+          platform: query.platform,
+          arch: query.arch || undefined,
+          channel: query.channel || undefined,
+          page_size: 100,
+          signal: controller.signal,
+        })
+        if (controller.signal.aborted || requestID !== listRequestRef.current) {
+          return []
+        }
+        if (!payload.success) {
+          throw new Error(
+            payload.message || t('Failed to load client releases')
+          )
+        }
+        const items = (payload.data?.items || []).filter(
+          (release) => release.platform === query.platform
+        )
+        setReleases(items)
+        return items
+      } catch (error) {
+        if (controller.signal.aborted) return []
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : t('Failed to load client releases')
+        )
+        return []
+      } finally {
+        if (requestID === listRequestRef.current) setLoading(false)
       }
-      setReleases(payload.data?.items || [])
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : t('Failed to load client releases')
-      )
-    } finally {
-      setLoading(false)
-    }
-  }
+    },
+    [t]
+  )
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadReleases()
-    }, 0)
-    return () => window.clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    void loadReleases({
+      platform: activePlatform,
+      keyword: '',
+      arch: '',
+      channel: '',
+    })
+  }, [activePlatform, loadReleases])
 
   useEffect(() => {
     return () => {
-      const pending = pendingUploadRef.current
-      if (pending?.ticket) {
-        void discardClientReleaseUpload(pending.ticket).catch(() => undefined)
-      }
+      listAbortRef.current?.abort()
+      const uploads = Object.values(pendingUploadsRef.current)
+        .filter((pending): pending is NonNullable<PendingUpload> =>
+          Boolean(pending?.ticket)
+        )
+        .map((pending) =>
+          discardClientReleaseUpload(pending.ticket).catch(() => undefined)
+        )
+      void Promise.all(uploads)
     }
   }, [])
 
-  function createDraft() {
-    discardPendingUpload()
-    setSelectedId(null)
-    setForm(clientReleaseToForm())
-  }
-
-  function selectRelease(release: ClientRelease) {
-    discardPendingUpload()
-    setSelectedId(release.id)
-    setForm(clientReleaseToForm(release))
-  }
-
-  function update<K extends keyof ClientReleaseForm>(
-    key: K,
-    value: ClientReleaseForm[K]
-  ) {
-    setForm((current) => ({ ...current, [key]: value }))
-  }
-
-  function discardPendingUpload() {
-    const pending = pendingUploadRef.current
-    pendingUploadRef.current = null
-    if (pending?.ticket) {
-      void discardClientReleaseUpload(pending.ticket).catch(() => undefined)
+  function currentListQuery(): ReleaseListQuery {
+    return {
+      platform: activePlatform,
+      keyword,
+      arch: archFilter,
+      channel: channelFilter,
     }
   }
 
-  function replacePendingUpload(uploadTicket?: string, objectKey?: string) {
-    const previous = pendingUploadRef.current
-    pendingUploadRef.current =
+  function discardPendingUploads() {
+    const uploads = pendingUploadsRef.current
+    pendingUploadsRef.current = { installer: null, updater: null }
+    void Promise.all(
+      Object.values(uploads)
+        .filter((pending): pending is NonNullable<PendingUpload> =>
+          Boolean(pending?.ticket)
+        )
+        .map((pending) =>
+          discardClientReleaseUpload(pending.ticket).catch(() => undefined)
+        )
+    )
+  }
+
+  function replacePendingUpload(
+    kind: 'installer' | 'updater',
+    uploadTicket?: string,
+    objectKey?: string
+  ) {
+    const previous = pendingUploadsRef.current[kind]
+    pendingUploadsRef.current[kind] =
       uploadTicket && objectKey
         ? { ticket: uploadTicket, object: objectKey }
         : null
@@ -193,25 +230,133 @@ export function ClientReleases() {
     }
   }
 
-  function settlePendingUpload(savedObjectKey?: string) {
-    const pending = pendingUploadRef.current
-    pendingUploadRef.current = null
-    if (
-      pending?.ticket &&
-      pending.object &&
-      savedObjectKey &&
-      pending.object !== savedObjectKey
-    ) {
-      void discardClientReleaseUpload(pending.ticket).catch(() => undefined)
+  function confirmDiscardChanges() {
+    if (!isDirty) return true
+    return window.confirm(t('Discard unsaved changes?'))
+  }
+
+  function switchPlatform(platform: ClientReleasePlatform) {
+    if (platform === activePlatform) return
+    if (busy) {
+      toast.error(t('Wait for the current save or upload to finish.'))
+      return
+    }
+    if (!confirmDiscardChanges()) return
+    discardPendingUploads()
+    listAbortRef.current?.abort()
+    setActivePlatform(platform)
+    setReleases([])
+    setSelectedId(null)
+    setForm(clientReleaseToForm(undefined, platform))
+    setKeyword('')
+    setArchFilter('')
+    setChannelFilter('')
+  }
+
+  function createDraft() {
+    if (busy || !confirmDiscardChanges()) return
+    discardPendingUploads()
+    setSelectedId(null)
+    setForm(clientReleaseToForm(undefined, activePlatform))
+  }
+
+  function selectRelease(release: ClientRelease) {
+    if (release.platform !== activePlatform) {
+      toast.error(t('This release belongs to another platform workspace.'))
+      return
+    }
+    if (release.id === selectedId) return
+    if (busy || !confirmDiscardChanges()) return
+    discardPendingUploads()
+    setSelectedId(release.id)
+    setForm(clientReleaseToForm(release, activePlatform))
+  }
+
+  function update<K extends keyof ClientReleaseForm>(
+    key: K,
+    value: ClientReleaseForm[K]
+  ) {
+    const targetField = key === 'version' || key === 'arch' || key === 'channel'
+    if (targetField && form[key] !== value) {
+      discardPendingUploads()
+      setForm((current) => ({
+        ...clearClientReleaseAssets(current),
+        [key]: value,
+      }))
+      return
+    }
+    setForm((current) => ({ ...current, [key]: value }))
+  }
+
+  async function uploadPackage(
+    file: File | undefined,
+    kind: 'installer' | 'updater'
+  ) {
+    if (!file || uploadingRef.current) return
+    if (!isClientReleaseTargetReady(form)) {
+      toast.error(t('Complete the version, architecture, and channel first.'))
+      return
+    }
+    if (!isAllowedPackageFile(file, form.platform, kind)) {
+      toast.error(packageFileError(t, form.platform, kind))
+      return
+    }
+
+    const target = clientReleaseTargetKey(form)
+    uploadingRef.current = true
+    setUploading(kind)
+    try {
+      const payload = await uploadClientRelease(file, form)
+      if (!payload.success || !payload.data) {
+        throw new Error(payload.message || t('Failed to upload package'))
+      }
+      if (clientReleaseTargetKey(formRef.current) !== target) {
+        if (payload.data.uploadTicket) {
+          await discardClientReleaseUpload(payload.data.uploadTicket).catch(
+            () => undefined
+          )
+        }
+        toast.error(t('Release target changed during upload. Upload again.'))
+        return
+      }
+      replacePendingUpload(kind, payload.data.uploadTicket, payload.data.object)
+      setForm((current) => {
+        if (kind === 'updater') {
+          return {
+            ...current,
+            updaterFileName: payload.data?.fileName || '',
+            updaterObjectKey: payload.data?.object || '',
+            updaterSize: payload.data?.size || 0,
+            updaterSha256: payload.data?.sha256 || '',
+            updaterSha512: payload.data?.sha512 || '',
+          }
+        }
+        return {
+          ...current,
+          fileName: payload.data?.fileName || '',
+          objectKey: payload.data?.object || '',
+          size: payload.data?.size || 0,
+          sha256: payload.data?.sha256 || '',
+          sha512: payload.data?.sha512 || '',
+        }
+      })
+      toast.success(t('Package uploaded to OSS'))
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : t('Failed to upload package')
+      )
+    } finally {
+      uploadingRef.current = false
+      setUploading(null)
     }
   }
 
   async function findConflictingRelease(nextForm: ClientReleaseForm) {
     const payload = await listAdminClientReleases({
       keyword: nextForm.version,
-      platform: nextForm.platform,
-      arch: nextForm.arch,
-      channel: nextForm.channel,
+      platform: activePlatform,
+      arch: nextForm.arch || undefined,
+      channel: nextForm.channel || undefined,
       page_size: 100,
     })
     if (!payload.success) {
@@ -220,79 +365,23 @@ export function ClientReleases() {
     return (payload.data?.items || []).find(
       (release) =>
         release.id !== selected?.id &&
-        normalizeVersion(release.version) === nextForm.version &&
-        release.platform === nextForm.platform &&
+        release.version.trim() === nextForm.version &&
+        release.platform === activePlatform &&
         release.arch === nextForm.arch &&
-        (release.channel || 'stable') === nextForm.channel
+        release.channel === nextForm.channel
     )
   }
 
-  async function uploadPackage(file?: File) {
-    if (!file) return
-    if (!isAllowedPackageFile(file)) {
-      toast.error(t('Unsupported installer file type'))
-      return
-    }
-    const version = resolveVersionForFile(form.version, file)
-    if (!version) {
-      toast.error(t('Please enter a three-part numeric version, such as 1.2.3'))
-      return
-    }
-    if (version !== form.version) {
-      update('version', version)
-    }
-    setUploading(true)
-    try {
-      const payload = await uploadClientRelease(file, { ...form, version })
-      if (!payload.success || !payload.data) {
-        throw new Error(payload.message || t('Failed to upload package'))
-      }
-      replacePendingUpload(payload.data.uploadTicket, payload.data.object)
-      update('fileName', payload.data.fileName)
-      update('objectKey', payload.data.object)
-      update('size', payload.data.size)
-      update('sha256', payload.data.sha256)
-      update('sha512', payload.data.sha512)
-      toast.success(t('Package uploaded'))
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : t('Failed to upload package')
-      toast.error(
-        message === 'Failed to upload package'
-          ? t('Failed to upload package')
-          : message
-      )
-    } finally {
-      setUploading(false)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
-    }
-  }
-
   async function saveRelease() {
-    const version = normalizeVersion(form.version)
-    const minVersion = normalizeVersion(form.minVersion)
-    if (!isValidVersion(version)) {
-      toast.error(t('Please enter a three-part numeric version, such as 1.2.3'))
+    if (savingRef.current) return
+    const nextForm = { ...form, version: form.version.trim() }
+    const validationError = validateForm(t, nextForm)
+    if (validationError) {
+      toast.error(validationError)
       return
     }
-    if (minVersion && !isValidVersion(minVersion)) {
-      toast.error(
-        t('Please enter a valid three-part minimum version, such as 1.2.3')
-      )
-      return
-    }
-    if (form.forced && !minVersion) {
-      toast.error(t('Please enter minimum version for forced update'))
-      return
-    }
-    if (!form.fileName.trim() || !form.objectKey.trim() || form.size <= 0) {
-      toast.error(t('Please upload an installer package first'))
-      return
-    }
-    const nextForm = { ...form, version, minVersion }
-    setForm(nextForm)
+
+    savingRef.current = true
     setSaving(true)
     try {
       const conflict = await findConflictingRelease(nextForm)
@@ -306,71 +395,121 @@ export function ClientReleases() {
       ) {
         return
       }
-      const payload = conflict
-        ? await updateClientRelease(conflict.id, nextForm)
-        : selected
-          ? await updateClientRelease(selected.id, nextForm)
-          : await createClientRelease(nextForm)
-      if (!payload.success || !payload.data) {
-        throw new Error(payload.message || t('Failed to save release'))
-      }
-      toast.success(t('Client release saved'))
-      settlePendingUpload(payload.data.objectKey)
-      setSelectedId(payload.data.id)
-      setForm(clientReleaseToForm(payload.data))
-      await loadReleases()
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : t('Failed to save release')
-      )
-    } finally {
-      setSaving(false)
-    }
-  }
 
-  async function togglePublish(release: ClientRelease) {
-    setSaving(true)
-    try {
-      const next = !(release.published || release.status === 1)
-      const payload = await setClientReleasePublished(release.id, next)
-      if (!payload.success) {
-        throw new Error(payload.message || t('Failed to update publish state'))
+      let payload
+      if (conflict) {
+        payload = await updateClientRelease(conflict.id, activePlatform, {
+          ...nextForm,
+          revision: conflict.revision,
+        })
+      } else if (selected) {
+        payload = await updateClientRelease(
+          selected.id,
+          activePlatform,
+          nextForm
+        )
+      } else {
+        payload = await createClientRelease(nextForm)
       }
-      toast.success(next ? t('Release published') : t('Release unpublished'))
-      await loadReleases()
+      if (!payload.success || !payload.data) {
+        throw new Error(payload.message || t('Failed to save client release'))
+      }
+
+      pendingUploadsRef.current = { installer: null, updater: null }
+      setSelectedId(payload.data.id)
+      setForm(clientReleaseToForm(payload.data, activePlatform))
+      toast.success(t('Client release saved'))
+      await loadReleases(currentListQuery())
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : t('Failed to update publish state')
+          : t('Failed to save client release')
       )
+      await loadReleases(currentListQuery())
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
   }
 
-  async function removeRelease(release: ClientRelease) {
-    if (!window.confirm(t('Delete this client release?'))) return
+  async function togglePublish() {
+    if (!selected || savingRef.current) return
+    savingRef.current = true
     setSaving(true)
     try {
-      const payload = await deleteClientRelease(release.id)
-      if (!payload.success) {
-        throw new Error(payload.message || t('Failed to delete release'))
+      const payload = await setClientReleasePublished(
+        selected.id,
+        activePlatform,
+        !selectedPublished
+      )
+      if (!payload.success || !payload.data) {
+        throw new Error(payload.message || t('Failed to update publish status'))
       }
-      toast.success(t('Client release deleted'))
-      if (selectedId === release.id) {
-        discardPendingUpload()
-        setSelectedId(null)
-        setForm(clientReleaseToForm())
-      }
-      await loadReleases()
+      setForm(clientReleaseToForm(payload.data, activePlatform))
+      toast.success(
+        selectedPublished
+          ? t('Client release unpublished')
+          : t('Client release published')
+      )
+      await loadReleases(currentListQuery())
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : t('Failed to delete release')
+        error instanceof Error
+          ? error.message
+          : t('Failed to update publish status')
       )
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
+  }
+
+  async function removeRelease() {
+    if (!selected || savingRef.current) return
+    if (!window.confirm(t('Delete this client release?'))) return
+    savingRef.current = true
+    setSaving(true)
+    try {
+      const payload = await deleteClientRelease(selected.id, activePlatform)
+      if (!payload.success) {
+        throw new Error(payload.message || t('Failed to delete client release'))
+      }
+      discardPendingUploads()
+      setSelectedId(null)
+      setForm(clientReleaseToForm(undefined, activePlatform))
+      toast.success(t('Client release deleted'))
+      await loadReleases(currentListQuery())
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t('Failed to delete client release')
+      )
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
+  }
+
+  async function copyDownloadLink(value: string) {
+    const url = resolvePublicDownloadURL(value)
+    if (!url) {
+      toast.error(t('External download link is unavailable'))
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success(t('External download link copied'))
+    } catch {
+      toast.error(t('Failed to copy download link'))
+    }
+  }
+
+  function cancelEdit() {
+    if (busy || !confirmDiscardChanges()) return
+    discardPendingUploads()
+    setForm(clientReleaseToForm(selected, activePlatform))
   }
 
   return (
@@ -382,562 +521,163 @@ export function ClientReleases() {
         <Button
           variant='outline'
           disabled={loading}
-          onClick={() => void loadReleases()}
+          onClick={() => void loadReleases(currentListQuery())}
         >
-          <RefreshCw className='h-4 w-4' />
+          <HugeiconsIcon icon={RefreshIcon} data-icon='inline-start' />
           {loading ? t('Refreshing') : t('Refresh')}
         </Button>
-        {!canManage && canPublish && selected ? (
-          <Button
-            disabled={saving}
-            onClick={() => void togglePublish(selected)}
-          >
-            <Check className='h-4 w-4' />
-            {selected.published || selected.status === 1
-              ? t('Unpublish')
-              : t('Publish')}
-          </Button>
-        ) : null}
         {canManage ? (
-          <Button onClick={createDraft}>
-            <Plus className='h-4 w-4' />
-            {t('New version')}
+          <Button disabled={busy} onClick={createDraft}>
+            <HugeiconsIcon icon={Add01Icon} data-icon='inline-start' />
+            {t('New {{platform}} release', { platform: activePlatform })}
           </Button>
         ) : null}
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
-        <div className='grid items-start gap-4 lg:grid-cols-[minmax(300px,420px)_minmax(0,1fr)]'>
-          <Card className='min-h-[520px] lg:max-h-[calc(100vh-8rem)]'>
-            <CardHeader>
-              <CardTitle>{t('Release list')}</CardTitle>
-              <CardDescription>
-                {t('Desktop installer packages stored in OSS.')}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className='flex min-h-0 flex-1 flex-col gap-3'>
-              <div className='grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]'>
-                <Input
-                  value={keyword}
-                  placeholder={t('Search version or file')}
-                  onChange={(event) => setKeyword(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') void loadReleases()
-                  }}
-                />
-                <Button variant='outline' onClick={() => void loadReleases()}>
-                  {t('Search')}
-                </Button>
-              </div>
-              <div className='grid gap-2 sm:grid-cols-3'>
-                <NativeSelect
-                  className='w-full'
-                  value={platformFilter}
-                  onChange={(event) => setPlatformFilter(event.target.value)}
-                >
-                  <NativeSelectOption value=''>
-                    {t('All platforms')}
-                  </NativeSelectOption>
-                  {platformOptions.map((platform) => (
-                    <NativeSelectOption key={platform} value={platform}>
-                      {platform}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-                <NativeSelect
-                  className='w-full'
-                  value={archFilter}
-                  onChange={(event) => setArchFilter(event.target.value)}
-                >
-                  <NativeSelectOption value=''>
-                    {t('All arches')}
-                  </NativeSelectOption>
-                  {archOptions.map((arch) => (
-                    <NativeSelectOption key={arch} value={arch}>
-                      {arch}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-                <NativeSelect
-                  className='w-full'
-                  value={channelFilter}
-                  onChange={(event) => setChannelFilter(event.target.value)}
-                >
-                  <NativeSelectOption value=''>
-                    {t('All channels')}
-                  </NativeSelectOption>
-                  {channelOptions.map((channel) => (
-                    <NativeSelectOption key={channel} value={channel}>
-                      {channel}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </div>
-              <div className='flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1 pb-2'>
-                {releases.map((release) => {
-                  const published = release.published || release.status === 1
-                  const forcedLabel = release.minVersion
-                    ? `≥${release.minVersion}`
-                    : t('Forced')
-                  return (
-                    <button
-                      key={release.id}
-                      type='button'
-                      className={`w-full rounded-lg border p-3 text-left transition-colors ${
-                        selectedId === release.id
-                          ? 'border-primary bg-primary/5'
-                          : 'hover:bg-muted/50'
-                      }`}
-                      onClick={() => selectRelease(release)}
-                    >
-                      <div className='flex items-start justify-between gap-3'>
-                        <div className='min-w-0'>
-                          <div className='truncate font-medium'>
-                            {release.version}
-                          </div>
-                          <div className='text-muted-foreground truncate text-xs'>
-                            {release.platform}/{release.arch}/{release.channel}{' '}
-                            - {formatBytes(release.size)}
-                          </div>
-                          <div className='text-muted-foreground mt-1 truncate text-xs'>
-                            {release.fileName}
-                          </div>
-                        </div>
-                        <div className='flex shrink-0 flex-wrap justify-end gap-1'>
-                          {release.forced && (
-                            <Badge variant='destructive'>{forcedLabel}</Badge>
-                          )}
-                          <Badge variant={published ? 'default' : 'outline'}>
-                            {published ? t('Published') : t('Draft')}
-                          </Badge>
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })}
-                {!releases.length && (
-                  <div className='text-muted-foreground rounded-lg border p-4 text-sm'>
-                    {loading
-                      ? t('Loading...')
-                      : t('No client versions configured')}
-                  </div>
+        <div className='flex flex-col gap-4'>
+          <Tabs
+            value={activePlatform}
+            onValueChange={(value) =>
+              switchPlatform(value as ClientReleasePlatform)
+            }
+          >
+            <div className='flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between'>
+              <TabsList variant='line' className='w-full sm:w-auto'>
+                {platformOptions.map((platform) => (
+                  <TabsTrigger key={platform} value={platform} disabled={busy}>
+                    {platformLabel(platform)}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              <div className='text-muted-foreground flex items-center gap-2 text-xs'>
+                <HugeiconsIcon icon={Shield02Icon} />
+                {t(
+                  'Current workspace: {{platform}} · Other platform data is hidden',
+                  { platform: activePlatform }
                 )}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </Tabs>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                {selected ? t('Edit version') : t('Create version')}
-              </CardTitle>
-              <CardDescription>
-                {t('Upload installer assets and publish update metadata.')}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <fieldset disabled={!canEditSelected} className='contents'>
-                <div className='grid gap-4'>
-                  <FormSection
-                    title={t('Target')}
-                    description={t(
-                      'Choose the client version and update lane.'
-                    )}
-                  >
-                    <div className='grid gap-3 md:grid-cols-[minmax(220px,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]'>
-                      <Field label={t('Version')}>
-                        <VersionInput
-                          value={form.version}
-                          onChange={(value) => update('version', value)}
-                        />
-                      </Field>
-                      <Field label={t('Platform')}>
-                        <NativeSelect
-                          className='w-full'
-                          value={form.platform}
-                          onChange={(event) =>
-                            update(
-                              'platform',
-                              event.target.value as ClientReleasePlatform
-                            )
-                          }
-                        >
-                          {platformOptions.map((platform) => (
-                            <NativeSelectOption key={platform} value={platform}>
-                              {platform}
-                            </NativeSelectOption>
-                          ))}
-                        </NativeSelect>
-                      </Field>
-                      <Field label={t('Arch')}>
-                        <NativeSelect
-                          className='w-full'
-                          value={form.arch}
-                          onChange={(event) =>
-                            update(
-                              'arch',
-                              event.target.value as ClientReleaseArch
-                            )
-                          }
-                        >
-                          {archOptions.map((arch) => (
-                            <NativeSelectOption key={arch} value={arch}>
-                              {arch}
-                            </NativeSelectOption>
-                          ))}
-                        </NativeSelect>
-                      </Field>
-                      <Field label={t('Channel')}>
-                        <NativeSelect
-                          className='w-full'
-                          value={form.channel}
-                          onChange={(event) =>
-                            update(
-                              'channel',
-                              event.target.value as ClientReleaseChannel
-                            )
-                          }
-                        >
-                          {channelOptions.map((channel) => (
-                            <NativeSelectOption key={channel} value={channel}>
-                              {channel}
-                            </NativeSelectOption>
-                          ))}
-                        </NativeSelect>
-                      </Field>
-                    </div>
-                  </FormSection>
-
-                  <FormSection
-                    title={t('Installer package')}
-                    description={t(
-                      'Upload exe, msi, dmg, pkg, zip, AppImage, deb, rpm, yml, or yaml files.'
-                    )}
-                  >
-                    <div className='flex flex-wrap items-center gap-2'>
-                      <input
-                        ref={fileInputRef}
-                        type='file'
-                        accept='.exe,.msi,.dmg,.pkg,.zip,.AppImage,.deb,.rpm,.yml,.yaml'
-                        className='hidden'
-                        onChange={(event) =>
-                          void uploadPackage(event.target.files?.[0])
-                        }
-                      />
-                      <Button
-                        type='button'
-                        variant='outline'
-                        disabled={uploading}
-                        onClick={() => fileInputRef.current?.click()}
-                      >
-                        <UploadCloud className='h-4 w-4' />
-                        {uploading ? t('Uploading') : t('Upload to OSS')}
-                      </Button>
-                      {form.fileName && (
-                        <Badge variant='secondary'>
-                          {formatBytes(form.size)}
-                        </Badge>
-                      )}
-                    </div>
-                    <Field label={t('File name')}>
-                      <ReadonlyValue value={form.fileName} />
-                    </Field>
-                    <Field label={t('OSS object')}>
-                      <ReadonlyValue value={form.objectKey} />
-                    </Field>
-                    <div className='grid gap-3 md:grid-cols-2'>
-                      <Field label='SHA256'>
-                        <ReadonlyValue value={form.sha256} />
-                      </Field>
-                      <Field label='SHA512'>
-                        <ReadonlyValue value={form.sha512} />
-                      </Field>
-                    </div>
-                    {selected?.downloadUrl && (
-                      <div className='flex flex-wrap gap-2'>
-                        <Button
-                          variant='outline'
-                          render={
-                            <a
-                              href={selected.downloadUrl}
-                              target='_blank'
-                              rel='noreferrer'
-                            />
-                          }
-                        >
-                          <Download className='h-4 w-4' />
-                          {t('Download')}
-                        </Button>
-                        <Button
-                          variant='outline'
-                          render={
-                            <a
-                              href={`/api/client-releases/updates/${form.platform}/${form.arch}/${form.channel || 'stable'}/latest.yml`}
-                              target='_blank'
-                              rel='noreferrer'
-                            />
-                          }
-                        >
-                          <Package className='h-4 w-4' />
-                          latest.yml
-                        </Button>
-                      </div>
-                    )}
-                  </FormSection>
-
-                  <FormSection
-                    title={t('Release policy')}
-                    description={t(
-                      'Control visibility and forced update rules.'
-                    )}
-                  >
-                    <Field label={t('Minimum supported version')}>
-                      <VersionInput
-                        value={form.minVersion}
-                        onChange={(value) => update('minVersion', value)}
-                      />
-                    </Field>
-                    <Field label={t('Release notes')}>
-                      <Textarea
-                        value={form.releaseNotes}
-                        onChange={(event) =>
-                          update('releaseNotes', event.target.value)
-                        }
-                      />
-                    </Field>
-                    <div className='flex flex-wrap gap-4'>
-                      <SwitchField
-                        label={t('Published')}
-                        checked={form.published}
-                        onChange={(checked) => update('published', checked)}
-                        disabled
-                      />
-                      <SwitchField
-                        label={t('Force update below minimum version')}
-                        checked={form.forced}
-                        onChange={(checked) => update('forced', checked)}
-                      />
-                    </div>
-                  </FormSection>
-
-                  <div className='flex flex-wrap justify-between gap-2'>
-                    <div className='flex gap-2'>
-                      {selected && (canManage || canPublish) && (
-                        <>
-                          {canPublish ? (
-                            <Button
-                              variant='outline'
-                              disabled={saving}
-                              onClick={() => void togglePublish(selected)}
-                            >
-                              <Check className='h-4 w-4' />
-                              {selected.published || selected.status === 1
-                                ? t('Unpublish')
-                                : t('Publish')}
-                            </Button>
-                          ) : null}
-                          {canEditSelected ? (
-                            <Button
-                              variant='destructive'
-                              disabled={saving}
-                              onClick={() => void removeRelease(selected)}
-                            >
-                              <Trash2 className='h-4 w-4' />
-                              {t('Delete')}
-                            </Button>
-                          ) : null}
-                        </>
-                      )}
-                    </div>
-                    {canEditSelected ? (
-                      <Button
-                        disabled={saving || uploading}
-                        onClick={saveRelease}
-                      >
-                        <Save className='h-4 w-4' />
-                        {saving ? t('Saving') : t('Save version')}
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-              </fieldset>
-            </CardContent>
-          </Card>
+          <div className='grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(390px,520px)]'>
+            <ClientReleaseTable
+              platform={activePlatform}
+              releases={releases}
+              selectedId={selectedId}
+              keyword={keyword}
+              archFilter={archFilter}
+              channelFilter={channelFilter}
+              loading={loading}
+              onKeywordChange={setKeyword}
+              onArchFilterChange={setArchFilter}
+              onChannelFilterChange={setChannelFilter}
+              onSearch={() => void loadReleases(currentListQuery())}
+              onSelect={selectRelease}
+              onCopy={(url) => void copyDownloadLink(url)}
+            />
+            <ClientReleaseEditor
+              selected={selected}
+              form={form}
+              canEdit={canEdit}
+              canPublish={canPublish && Boolean(selected)}
+              saving={saving}
+              uploading={uploading}
+              onUpdate={update}
+              onUpload={(file, kind) => void uploadPackage(file, kind)}
+              onSave={() => void saveRelease()}
+              onDelete={() => void removeRelease()}
+              onTogglePublish={() => void togglePublish()}
+              onCancel={cancelEdit}
+              onCopy={(url) => void copyDownloadLink(url)}
+            />
+          </div>
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )
 }
 
-const versionPattern = /^\d+\.\d+\.\d+$/
-
-function normalizeVersion(value: string) {
-  return value.trim()
-}
-
-function isValidVersion(value: string) {
-  return versionPattern.test(normalizeVersion(value))
-}
-
-function extractVersionFromFileName(fileName: string) {
-  const match = fileName.match(/(?:^|[^0-9])v?(\d+\.\d+\.\d+)(?=[^0-9]|$)/i)
-  return match?.[1] || ''
-}
-
-function resolveVersionForFile(value: string, file: File) {
-  const normalized = normalizeVersion(value)
-  if (isValidVersion(normalized)) return normalized
-  return extractVersionFromFileName(file.name)
-}
-
-function isAllowedPackageFile(file: File) {
-  return /\.(exe|msi|dmg|pkg|zip|appimage|deb|rpm|ya?ml)$/i.test(file.name)
-}
-
-function formatBytes(bytes?: number) {
-  if (!bytes || Number.isNaN(bytes)) return '-'
-  const units = ['B', 'KB', 'MB', 'GB']
-  let value = bytes
-  let unit = 0
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024
-    unit += 1
+function clearClientReleaseAssets(form: ClientReleaseForm): ClientReleaseForm {
+  return {
+    ...form,
+    fileName: '',
+    objectKey: '',
+    size: 0,
+    sha256: '',
+    sha512: '',
+    updaterFileName: '',
+    updaterObjectKey: '',
+    updaterSize: 0,
+    updaterSha256: '',
+    updaterSha512: '',
   }
-  return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`
 }
 
-function Field(props: { label: ReactNode; children: ReactNode }) {
-  return (
-    <label className='grid gap-1.5 text-sm font-medium'>
-      <span>{props.label}</span>
-      {props.children}
-    </label>
-  )
+function clientReleaseTargetKey(form: ClientReleaseForm) {
+  return `${form.version.trim()}\u0000${form.platform}\u0000${form.arch}\u0000${form.channel}`
 }
 
-function VersionInput(props: {
-  value: string
-  onChange: (value: string) => void
-}) {
-  const parts = splitVersionParts(props.value)
+function isAllowedPackageFile(
+  file: File,
+  platform: ClientReleasePlatform,
+  kind: 'installer' | 'updater'
+) {
+  if (kind === 'updater') return /\.zip$/i.test(file.name)
+  if (platform === 'macos') return /\.dmg$/i.test(file.name)
+  if (platform === 'windows') return /\.(exe|msi|zip)$/i.test(file.name)
+  return /\.(appimage|deb|rpm|zip)$/i.test(file.name)
+}
 
-  function updatePart(index: number, value: string) {
-    const next = [...parts] as [string, string, string]
-    next[index] = digitsOnly(value)
-    props.onChange(formatVersionParts(next))
+function packageFileError(
+  t: ReturnType<typeof useTranslation>['t'],
+  platform: ClientReleasePlatform,
+  kind: 'installer' | 'updater'
+) {
+  if (kind === 'updater') {
+    return t('The macos automatic update package must be a ZIP file')
   }
+  if (platform === 'macos') {
+    return t('The macos manual download package must be a DMG file')
+  }
+  if (platform === 'windows') {
+    return t('Windows packages must be EXE, MSI, or ZIP files.')
+  }
+  return t('Linux packages must be AppImage, DEB, RPM, or ZIP files.')
+}
 
-  function handlePaste(event: ClipboardEvent<HTMLInputElement>) {
-    const version = extractVersionFromFileName(
-      event.clipboardData.getData('text')
+function validateForm(
+  t: ReturnType<typeof useTranslation>['t'],
+  form: ClientReleaseForm
+) {
+  if (!versionPattern.test(form.version)) {
+    return t('Version must use three numeric segments, such as 1.2.3')
+  }
+  if (!form.arch) return t('Select architecture before saving.')
+  if (!form.channel) return t('Select channel before saving.')
+  if (!form.fileName || !form.objectKey || form.size <= 0) {
+    return t('Upload an installer package first.')
+  }
+  if (!clientReleaseFileMatchesTarget(form, form.fileName)) {
+    return t(
+      'The file name must match the selected platform, architecture, and channel.'
     )
-    if (!version) return
-    event.preventDefault()
-    props.onChange(version)
   }
-
-  return (
-    <div className='grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2'>
-      <VersionSegmentInput
-        value={parts[0]}
-        placeholder='0'
-        onChange={(value) => updatePart(0, value)}
-        onPaste={handlePaste}
-      />
-      <span className='text-muted-foreground text-center'>.</span>
-      <VersionSegmentInput
-        value={parts[1]}
-        placeholder='1'
-        onChange={(value) => updatePart(1, value)}
-        onPaste={handlePaste}
-      />
-      <span className='text-muted-foreground text-center'>.</span>
-      <VersionSegmentInput
-        value={parts[2]}
-        placeholder='0'
-        onChange={(value) => updatePart(2, value)}
-        onPaste={handlePaste}
-      />
-    </div>
-  )
+  if (
+    form.updaterFileName &&
+    !clientReleaseFileMatchesTarget(form, form.updaterFileName)
+  ) {
+    return t(
+      'The file name must match the selected platform, architecture, and channel.'
+    )
+  }
+  if (form.minVersion && !versionPattern.test(form.minVersion.trim())) {
+    return t('Minimum version must use three numeric segments, such as 1.2.3')
+  }
+  return ''
 }
 
-function VersionSegmentInput(props: {
-  value: string
-  placeholder: string
-  onChange: (value: string) => void
-  onPaste: (event: ClipboardEvent<HTMLInputElement>) => void
-}) {
-  return (
-    <Input
-      value={props.value}
-      placeholder={props.placeholder}
-      inputMode='numeric'
-      pattern='[0-9]*'
-      className='text-center'
-      onChange={(event) => props.onChange(event.target.value)}
-      onPaste={props.onPaste}
-    />
-  )
-}
-
-function splitVersionParts(value: string): [string, string, string] {
-  const parts = normalizeVersion(value).split('.')
-  return [
-    digitsOnly(parts[0] || ''),
-    digitsOnly(parts[1] || ''),
-    digitsOnly(parts[2] || ''),
-  ]
-}
-
-function formatVersionParts(parts: [string, string, string]) {
-  if (parts.every((part) => part === '')) return ''
-  return parts.join('.')
-}
-
-function digitsOnly(value: string) {
-  return value.replace(/\D/g, '')
-}
-
-function FormSection(props: {
-  title: string
-  description: string
-  children: ReactNode
-}) {
-  return (
-    <section className='rounded-lg border p-4'>
-      <div className='mb-4'>
-        <h3 className='text-sm font-semibold'>{props.title}</h3>
-        <p className='text-muted-foreground mt-1 text-xs'>
-          {props.description}
-        </p>
-      </div>
-      <div className='grid gap-3'>{props.children}</div>
-    </section>
-  )
-}
-
-function ReadonlyValue(props: { value: string }) {
-  return (
-    <div className='bg-muted text-muted-foreground min-h-8 overflow-hidden rounded-md border px-3 py-2 text-xs break-all'>
-      {props.value || '-'}
-    </div>
-  )
-}
-
-function SwitchField(props: {
-  label: string
-  checked: boolean
-  onChange: (checked: boolean) => void
-  disabled?: boolean
-}) {
-  return (
-    <label className='flex items-center gap-2 text-sm font-medium'>
-      <Switch
-        checked={props.checked}
-        disabled={props.disabled}
-        onCheckedChange={props.onChange}
-      />
-      <span>{props.label}</span>
-    </label>
-  )
+function platformLabel(platform: ClientReleasePlatform) {
+  if (platform === 'windows') return 'Windows'
+  if (platform === 'macos') return 'macos'
+  return 'Linux'
 }

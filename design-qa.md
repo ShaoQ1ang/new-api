@@ -69,3 +69,30 @@ Corrections:
 Final comparison: no actionable P0, P1, or P2 visual or interaction issues remain within the approved scope.
 
 final result: passed
+
+---
+
+# Client Releases Design QA
+
+## Evidence
+
+- Approved reference: `C:/Users/Z-UP/.codex/generated_images/019ffa71-3246-7de3-9ba0-b52f6f6c4233/exec-50e54562-0ffe-4371-b46e-81c764712147.png` (1487×1058).
+- Desktop implementation: `C:/Users/Z-UP/.codex/visualizations/2026/08/13/019ffa71-3246-7de3-9ba0-b52f6f6c4233/client-releases-desktop.png` (1487×1058).
+- Narrow implementation: `C:/Users/Z-UP/.codex/visualizations/2026/08/13/019ffa71-3246-7de3-9ba0-b52f6f6c4233/client-releases-mobile.png` (390×844).
+
+The reference and desktop implementation were inspected at the same viewport. The implementation keeps the approved platform tabs, isolated-workspace indicator, release table, right-side editor, target validation, and external-link actions while using the Default theme's existing typography, controls, borders, spacing, and icon system.
+
+## Interaction and responsive checks
+
+- Windows, macos, and Linux are separate tabs; only the active platform's rows are rendered.
+- The macos table exposes both installer and updater Download/Copy actions.
+- The editor locks platform, requires version/architecture/channel before upload, shows the expected file-name pattern, and reports per-asset match state.
+- Published records expose Download and Copy Link actions for the DMG, updater ZIP, and update manifest; drafts expose no public links.
+- At 390 px the page itself has no horizontal overflow (`scrollWidth === clientWidth === 380`); the six-column data table uses its own horizontal scroll area and the editor stacks below it.
+- Controls remain keyboard-addressable and expose accessible names in the browser DOM.
+
+## Comparison result
+
+No actionable P0, P1, or P2 visual or interaction issues remain within the approved scope. The narrower editor column scrolls internally on desktop, matching the intended split-pane management workflow.
+
+final result: passed

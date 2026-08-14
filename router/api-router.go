@@ -56,6 +56,7 @@ func SetApiRouter(router *gin.Engine) {
 			clientReleaseRoute.GET("/latest", controller.GetLatestClientRelease)
 			clientReleaseRoute.GET("/download/:id", controller.DownloadClientRelease)
 			clientReleaseRoute.GET("/updates/:platform/:arch/:channel/latest.yml", controller.GetClientReleaseLatestYAML)
+			clientReleaseRoute.GET("/updates/:platform/:arch/:channel/latest-mac.yml", controller.GetClientReleaseLatestMacYAML)
 			clientReleaseRoute.GET("/updates/:platform/:arch/:channel/download/:id/:filename", controller.DownloadClientReleaseAsset)
 		}
 		perfMetricsRoute := apiRouter.Group("/perf-metrics")

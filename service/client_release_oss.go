@@ -33,12 +33,13 @@ type ClientReleaseUploadInput struct {
 }
 
 type ClientReleaseDirectUploadInput struct {
-	Version  string
-	Platform string
-	Arch     string
-	Channel  string
-	FileName string
-	Size     int64
+	ActorUserID int
+	Version     string
+	Platform    string
+	Arch        string
+	Channel     string
+	FileName    string
+	Size        int64
 }
 
 type ClientReleaseDirectUploadInitResult struct {
@@ -89,6 +90,7 @@ var clientReleaseContentTypes = map[string]string{
 }
 
 type clientReleaseUploadTicket struct {
+	ActorUserID int    `json:"actorUserId"`
 	FileName    string `json:"fileName"`
 	Object      string `json:"object"`
 	Size        int64  `json:"size"`
@@ -103,6 +105,9 @@ func InitClientReleaseDirectUpload(input ClientReleaseDirectUploadInput) (*Clien
 	}
 	if strings.TrimSpace(input.FileName) == "" {
 		return nil, errors.New("upload file name is required")
+	}
+	if input.ActorUserID <= 0 {
+		return nil, errors.New("client release upload actor is invalid")
 	}
 	if input.Size <= 0 {
 		return nil, errors.New("upload file is empty")
@@ -124,6 +129,9 @@ func InitClientReleaseDirectUpload(input ClientReleaseDirectUploadInput) (*Clien
 	if err := normalizeClientReleaseUploadInput(&uploadInput); err != nil {
 		return nil, err
 	}
+	if !model.IsAllowedClientReleaseUploadFile(uploadInput.Platform, input.FileName) {
+		return nil, fmt.Errorf("client release file type is not supported for %s", uploadInput.Platform)
+	}
 	filename := clientReleaseGeneratedFileName(uploadInput, input.FileName)
 	bucket, err := cfg.bucket()
 	if err != nil {
@@ -140,6 +148,7 @@ func InitClientReleaseDirectUpload(input ClientReleaseDirectUploadInput) (*Clien
 		return nil, err
 	}
 	ticket := clientReleaseUploadTicket{
+		ActorUserID: input.ActorUserID,
 		FileName:    filename,
 		Object:      objectKey,
 		Size:        input.Size,
@@ -166,7 +175,7 @@ func InitClientReleaseDirectUpload(input ClientReleaseDirectUploadInput) (*Clien
 	}, nil
 }
 
-func CompleteClientReleaseDirectUpload(uploadTicket string) (*ClientReleaseUploadResult, error) {
+func CompleteClientReleaseDirectUpload(uploadTicket string, actorUserID int) (*ClientReleaseUploadResult, error) {
 	cfg := loadClientReleaseOSSConfig()
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -177,6 +186,9 @@ func CompleteClientReleaseDirectUpload(uploadTicket string) (*ClientReleaseUploa
 	}
 	if ticket.ExpiresAt <= time.Now().Unix() {
 		return nil, errors.New("client release upload ticket has expired")
+	}
+	if actorUserID <= 0 || ticket.ActorUserID != actorUserID {
+		return nil, errors.New("client release upload ticket does not belong to the current user")
 	}
 	if ticket.Object == "" || ticket.FileName == "" || ticket.Size <= 0 {
 		return nil, errors.New("client release upload ticket is invalid")
@@ -222,7 +234,7 @@ func CompleteClientReleaseDirectUpload(uploadTicket string) (*ClientReleaseUploa
 	}, nil
 }
 
-func DiscardClientReleaseDirectUpload(uploadTicket string) error {
+func DiscardClientReleaseDirectUpload(uploadTicket string, actorUserID int) error {
 	cfg := loadClientReleaseOSSConfig()
 	if err := cfg.validate(); err != nil {
 		return err
@@ -230,6 +242,9 @@ func DiscardClientReleaseDirectUpload(uploadTicket string) error {
 	ticket, err := parseClientReleaseUploadTicket(uploadTicket, cfg)
 	if err != nil {
 		return err
+	}
+	if actorUserID <= 0 || ticket.ActorUserID != actorUserID {
+		return errors.New("client release upload ticket does not belong to the current user")
 	}
 	if !cfg.isTempObjectKey(ticket.Object) {
 		return errors.New("client release upload ticket object is not temporary")
@@ -254,12 +269,44 @@ func DeleteClientReleaseObject(objectKey string) error {
 }
 
 func PromoteClientReleaseObject(release *model.ClientRelease) (*ClientReleasePromoteResult, error) {
+	return promoteClientReleaseAsset(
+		release,
+		&release.ObjectKey,
+		release.FileName,
+		&release.Size,
+		&release.SHA256,
+		&release.SHA512,
+	)
+}
+
+func PromoteClientReleaseUpdaterObject(release *model.ClientRelease) (*ClientReleasePromoteResult, error) {
+	if strings.TrimSpace(release.UpdaterObjectKey) == "" && strings.TrimSpace(release.UpdaterFileName) == "" {
+		return &ClientReleasePromoteResult{}, nil
+	}
+	return promoteClientReleaseAsset(
+		release,
+		&release.UpdaterObjectKey,
+		release.UpdaterFileName,
+		&release.UpdaterSize,
+		&release.UpdaterSHA256,
+		&release.UpdaterSHA512,
+	)
+}
+
+func promoteClientReleaseAsset(
+	release *model.ClientRelease,
+	objectKeyValue *string,
+	fileName string,
+	sizeValue *int64,
+	sha256Value *string,
+	sha512Value *string,
+) (*ClientReleasePromoteResult, error) {
 	cfg := loadClientReleaseOSSConfig()
-	objectKey, ok := cfg.managedObjectKey(release.ObjectKey)
+	objectKey, ok := cfg.managedObjectKey(*objectKeyValue)
 	if !ok {
 		return nil, errors.New("client release OSS object is outside the managed prefix")
 	}
-	release.ObjectKey = objectKey
+	*objectKeyValue = objectKey
 	if !cfg.isTempObjectKey(objectKey) {
 		return &ClientReleasePromoteResult{}, nil
 	}
@@ -276,9 +323,15 @@ func PromoteClientReleaseObject(release *model.ClientRelease) (*ClientReleasePro
 	if err := normalizeClientReleaseUploadInput(&uploadInput); err != nil {
 		return nil, err
 	}
-	filename := cleanClientReleaseDownloadName(release.FileName)
+	filename := cleanClientReleaseDownloadName(fileName)
 	if filename == "" {
 		return nil, errors.New("client release file name is required")
+	}
+	if expected := model.ClientReleaseExpectedFileName(uploadInput.Version, uploadInput.Platform, uploadInput.Arch, uploadInput.Channel, filename); filename != expected {
+		return nil, errors.New("client release upload target does not match release metadata")
+	}
+	if cleanClientReleaseDownloadName(path.Base(objectKey)) != filename {
+		return nil, errors.New("client release temporary object does not match uploaded file name")
 	}
 	finalObject := cfg.objectKey(uploadInput, filename)
 	if cfg.isTempObjectKey(finalObject) || finalObject == objectKey {
@@ -289,10 +342,49 @@ func PromoteClientReleaseObject(release *model.ClientRelease) (*ClientReleasePro
 	if err != nil {
 		return nil, err
 	}
-	if _, err := bucket.CopyObject(objectKey, finalObject, oss.ForbidOverWrite(true)); err != nil {
+	meta, err := bucket.GetObjectDetailedMeta(objectKey)
+	if err != nil {
 		return nil, err
 	}
-	release.ObjectKey = finalObject
+	objectSize, err := strconv.ParseInt(meta.Get("Content-Length"), 10, 64)
+	if err != nil || objectSize <= 0 {
+		return nil, errors.New("client release temporary object size is invalid")
+	}
+	etag := strings.TrimSpace(meta.Get("ETag"))
+	if etag == "" {
+		return nil, errors.New("client release temporary object etag is missing")
+	}
+	reader, err := bucket.GetObject(objectKey, oss.IfMatch(etag))
+	if err != nil {
+		return nil, err
+	}
+	sha256Hasher := sha256.New()
+	sha512Hasher := sha512.New()
+	hashedSize, hashErr := io.Copy(io.MultiWriter(sha256Hasher, sha512Hasher), reader)
+	closeErr := reader.Close()
+	if hashErr != nil {
+		return nil, hashErr
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	if hashedSize != objectSize {
+		return nil, errors.New("client release temporary object changed while being verified")
+	}
+	verifiedSHA256 := "sha256:" + hex.EncodeToString(sha256Hasher.Sum(nil))
+	verifiedSHA512 := base64.StdEncoding.EncodeToString(sha512Hasher.Sum(nil))
+	if _, err := bucket.CopyObject(
+		objectKey,
+		finalObject,
+		oss.CopySourceIfMatch(etag),
+		oss.ForbidOverWrite(true),
+	); err != nil {
+		return nil, err
+	}
+	*objectKeyValue = finalObject
+	*sizeValue = objectSize
+	*sha256Value = verifiedSHA256
+	*sha512Value = verifiedSHA512
 	return &ClientReleasePromoteResult{
 		Promoted:    true,
 		TempObject:  objectKey,
@@ -328,6 +420,9 @@ func SignClientReleaseURL(objectKey string, filename string) (string, error) {
 }
 
 func normalizeClientReleaseUploadInput(input *ClientReleaseUploadInput) error {
+	if strings.TrimSpace(input.Channel) == "" {
+		return errors.New("client release channel is required")
+	}
 	input.Version = model.NormalizeClientReleaseVersion(input.Version)
 	if err := model.ValidateClientReleaseVersion(input.Version); err != nil {
 		return err
@@ -336,7 +431,7 @@ func normalizeClientReleaseUploadInput(input *ClientReleaseUploadInput) error {
 	input.Arch = model.NormalizeClientReleaseArch(input.Arch)
 	input.Channel = model.NormalizeClientReleaseChannel(input.Channel)
 	if !model.IsAllowedClientReleasePlatform(input.Platform) {
-		return errors.New("client release platform must be windows, darwin, or linux")
+		return errors.New("client release platform must be windows, macos, or linux")
 	}
 	if !model.IsAllowedClientReleaseArch(input.Arch) {
 		return errors.New("client release arch must be x64, arm64, ia32, or universal")
@@ -527,17 +622,12 @@ func clientReleaseContentType(filename string) (string, error) {
 }
 
 func clientReleaseGeneratedFileName(input ClientReleaseUploadInput, filename string) string {
-	ext := clientReleaseFileExt(filename)
-	if ext == ".appimage" {
-		ext = ".AppImage"
-	}
-	return fmt.Sprintf(
-		"Z-UP-Setup-%s-%s-%s-%s%s",
+	return model.ClientReleaseExpectedFileName(
 		input.Version,
 		input.Platform,
 		input.Arch,
 		input.Channel,
-		ext,
+		filename,
 	)
 }
 

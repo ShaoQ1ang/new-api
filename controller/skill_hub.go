@@ -1111,20 +1111,21 @@ func cleanupSkillHubIconObjectByKey(objectKey string) {
 
 func requestBaseURL(c *gin.Context) string {
 	if base := strings.TrimRight(strings.TrimSpace(system_setting.ServerAddress), "/"); base != "" {
-		if parsed, err := url.Parse(base); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		if parsed, err := url.Parse(base); err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != "" && parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == "" {
 			return base
 		}
 	}
-	proto := strings.TrimSpace(c.GetHeader("X-Forwarded-Proto"))
-	if proto == "" {
+	proto := "http"
+	if c.Request.TLS != nil {
 		proto = "https"
-		if c.Request.TLS == nil {
-			proto = "http"
-		}
 	}
-	host := strings.TrimSpace(c.GetHeader("X-Forwarded-Host"))
-	if host == "" {
-		host = c.Request.Host
+	if forwardedProto := strings.ToLower(strings.TrimSpace(strings.Split(c.GetHeader("X-Forwarded-Proto"), ",")[0])); forwardedProto == "http" || forwardedProto == "https" {
+		proto = forwardedProto
 	}
-	return strings.TrimRight(proto+"://"+host, "/")
+	hostURL, err := url.Parse("http://" + strings.TrimSpace(c.Request.Host))
+	if err != nil || hostURL.Host == "" || hostURL.Hostname() == "" || hostURL.User != nil || hostURL.Path != "" || hostURL.RawQuery != "" || hostURL.Fragment != "" {
+		return ""
+	}
+	base := &url.URL{Scheme: proto, Host: hostURL.Host}
+	return strings.TrimRight(base.String(), "/")
 }

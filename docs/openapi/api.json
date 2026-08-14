@@ -389,10 +389,10 @@
           },
           "platform": {
             "type": "string",
-            "description": "目标平台。Windows 使用 windows；后端兼容 win32 别名，但新数据建议统一使用 windows",
+            "description": "目标平台，统一使用 windows、macos 或 linux",
             "enum": [
               "windows",
-              "darwin",
+              "macos",
               "linux"
             ],
             "example": "windows"
@@ -430,8 +430,20 @@
           "downloadUrl": {
             "type": "string",
             "format": "uri",
-            "description": "New API 下载入口。调用后会 302 跳转到私有 OSS 的短时签名地址",
+            "description": "已发布主安装包的外部下载入口。调用后会 302 跳转到私有 OSS 的短时签名地址；草稿不返回",
             "example": "https://api.example.com/api/client-releases/download/1"
+          },
+          "updaterDownloadUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "已发布 macos updater ZIP 的外部下载入口；其他平台和草稿不返回",
+            "example": "https://api.example.com/api/client-releases/updates/macos/arm64/stable/download/1/Z-UP-Setup-1.2.3-macos-arm64-stable.zip"
+          },
+          "updateManifestUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "已发布版本的外部更新清单地址；macos 为 latest-mac.yml，其他平台为 latest.yml；草稿不返回",
+            "example": "https://api.example.com/api/client-releases/updates/macos/arm64/stable/latest-mac.yml"
           },
           "size": {
             "type": "integer",
@@ -446,8 +458,34 @@
           },
           "sha512": {
             "type": "string",
-            "description": "SHA512 base64 校验值，供 electron-updater latest.yml 使用；已发布版本必须存在",
+            "description": "主安装包 SHA512 base64 校验值；已发布版本必须存在",
             "example": "base64-sha512-value"
+          },
+          "updaterFileName": {
+            "type": "string",
+            "description": "macos 自动更新 ZIP 文件名；仅后台接口返回，公开接口不返回",
+            "example": "Z-UP-Setup-1.2.3-macos-arm64-stable.zip"
+          },
+          "updaterObjectKey": {
+            "type": "string",
+            "description": "macos 自动更新 ZIP 的私有 OSS Object Key；仅后台接口返回，公开接口不返回",
+            "example": "client-releases/stable/macos/arm64/1.2.3/20260702090000.000000000-Z-UP-Setup-1.2.3-macos-arm64-stable.zip"
+          },
+          "updaterSize": {
+            "type": "integer",
+            "format": "int64",
+            "description": "macos 自动更新 ZIP 大小，单位 byte；仅后台接口返回",
+            "example": 104857600
+          },
+          "updaterSha256": {
+            "type": "string",
+            "description": "macos 自动更新 ZIP 的 SHA256；仅后台接口返回",
+            "example": "sha256:0123456789abcdef"
+          },
+          "updaterSha512": {
+            "type": "string",
+            "description": "macos 自动更新 ZIP 的 SHA512 base64 校验值；发布 macos 版本时必须存在",
+            "example": "base64-updater-sha512-value"
           },
           "releaseNotes": {
             "type": "string",
@@ -479,6 +517,12 @@
             ],
             "example": 1
           },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "记录乐观并发版本号。创建成功后从 1 开始，每次保存、发布或取消发布后递增",
+            "example": 3
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time",
@@ -500,7 +544,7 @@
         "properties": {
           "uploadTicket": {
             "type": "string",
-            "description": "初始化接口返回的短时上传票据；后端用它确认 object、大小和过期时间",
+            "description": "初始化接口返回的短时上传票据；后端用它确认 object、大小、过期时间和发起管理员，不能由其他账号复用",
             "example": "base64url-payload.base64url-signature"
           }
         }
@@ -538,10 +582,10 @@
             "type": "string",
             "enum": [
               "windows",
-              "darwin",
+              "macos",
               "linux"
             ],
-            "description": "目标平台，Windows 使用 windows；初始化前会校验并归一化",
+            "description": "目标平台，统一使用 windows、macos 或 linux；初始化前会校验并归一化",
             "example": "windows"
           },
           "arch": {
@@ -602,7 +646,7 @@
           },
           "object": {
             "type": "string",
-            "description": "_tmp 临时私有 OSS Object Key。完成确认后保存版本记录时作为 objectKey 传入，保存成功后后端会转正为正式 Object Key",
+            "description": "_tmp 临时私有 OSS Object Key。完成确认后保存版本记录时作为 objectKey 传入；后端会校验目标文件名，按 ETag 重新计算哈希并条件复制到正式 Object Key",
             "example": "client-releases/_tmp/8f3c6e9d2a1b4c5d9e0f123456789abc/Z-UP-Setup-1.2.3-windows-x64-stable.exe"
           },
           "size": {
@@ -735,8 +779,9 @@
       },
       "ClientReleaseRequest": {
         "type": "object",
-        "description": "创建或更新客户端版本记录的请求体。草稿可先保存，已发布版本必须带 sha512。",
+        "description": "创建或更新客户端版本记录的请求体。发布状态不由此请求修改。创建时 revision 传 0；更新时必须回传最近响应中的 revision，冲突时刷新后重试。文件名必须精确匹配 version/platform/arch/channel。macos 主资产必须为 DMG；发布前还必须提供 updater ZIP 及 updaterSha512。",
         "required": [
+          "revision",
           "version",
           "platform",
           "arch",
@@ -746,6 +791,13 @@
           "size"
         ],
         "properties": {
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "description": "乐观并发版本号；创建传 0，更新时原样回传最近一次响应值",
+            "example": 3
+          },
           "version": {
             "type": "string",
             "description": "客户端版本号，必须是 x.y.z 三段数字，例如 1.2.3；不支持 v 前缀、预发布号或 build 后缀",
@@ -754,10 +806,10 @@
           },
           "platform": {
             "type": "string",
-            "description": "目标平台。Windows 使用 windows；后端兼容 win32 别名，但新数据建议统一使用 windows",
+            "description": "目标平台，统一使用 windows、macos 或 linux",
             "enum": [
               "windows",
-              "darwin",
+              "macos",
               "linux"
             ],
             "example": "windows"
@@ -775,7 +827,7 @@
           },
           "channel": {
             "type": "string",
-            "description": "发布通道，仅支持 stable 或 beta；为空时后端默认 stable",
+            "description": "发布通道，必须显式提供 stable 或 beta",
             "enum": [
               "stable",
               "beta"
@@ -789,7 +841,7 @@
           },
           "objectKey": {
             "type": "string",
-            "description": "直传完成确认接口返回的 _tmp 临时 object 字段，保存版本记录时作为 objectKey 传入；保存成功后响应会返回正式 objectKey",
+            "description": "直传完成确认接口返回的 _tmp object。保存时后端会校验它与目标版本一致，并按 ETag 重新计算大小/哈希后条件复制；成功响应返回正式 objectKey",
             "example": "client-releases/_tmp/8f3c6e9d2a1b4c5d9e0f123456789abc/Z-UP-Setup-1.2.3-windows-x64-stable.exe"
           },
           "size": {
@@ -805,8 +857,34 @@
           },
           "sha512": {
             "type": "string",
-            "description": "直传完成确认接口返回的 sha512；已发布版本必须存在",
+            "description": "DMG/主安装包直传完成确认接口返回的 sha512；已发布版本必须存在",
             "example": "base64-sha512-value"
+          },
+          "updaterFileName": {
+            "type": "string",
+            "description": "macos updater ZIP 完成确认接口返回的 fileName；其他平台应省略",
+            "example": "Z-UP-Setup-1.2.3-macos-arm64-stable.zip"
+          },
+          "updaterObjectKey": {
+            "type": "string",
+            "description": "macos updater ZIP 完成确认接口返回的 _tmp object；其他平台应省略",
+            "example": "client-releases/_tmp/8f3c6e9d2a1b4c5d9e0f123456789abc/Z-UP-Setup-1.2.3-macos-arm64-stable.zip"
+          },
+          "updaterSize": {
+            "type": "integer",
+            "format": "int64",
+            "description": "macos updater ZIP 完成确认接口返回的 size，单位 byte",
+            "example": 104857600
+          },
+          "updaterSha256": {
+            "type": "string",
+            "description": "macos updater ZIP 完成确认接口返回的 sha256",
+            "example": "sha256:0123456789abcdef"
+          },
+          "updaterSha512": {
+            "type": "string",
+            "description": "macos updater ZIP 完成确认接口返回的 sha512；发布 macos 版本时必须存在",
+            "example": "base64-updater-sha512-value"
           },
           "releaseNotes": {
             "type": "string",
@@ -823,20 +901,6 @@
             "type": "boolean",
             "description": "是否启用强制更新策略",
             "example": false
-          },
-          "published": {
-            "type": "boolean",
-            "description": "是否直接发布；status 为空时会按该值写入状态",
-            "example": false
-          },
-          "status": {
-            "type": "integer",
-            "description": "发布状态：0=草稿，1=已发布；传入时优先于 published",
-            "enum": [
-              0,
-              1
-            ],
-            "example": 0
           }
         }
       },
@@ -5098,7 +5162,7 @@
       "get": {
         "summary": "后台获取客户端版本列表",
         "deprecated": false,
-        "description": "需要管理员权限（Admin）；列表按 id 倒序返回。",
+        "description": "需要 client_releases.manage 或 client_releases.publish 权限；platform 必填，三个平台工作区互相隔离，列表按 id 倒序返回。",
         "tags": [
           "客户端管理"
         ],
@@ -5115,13 +5179,13 @@
           {
             "name": "platform",
             "in": "query",
-            "description": "目标平台，Windows 使用 windows；后端兼容 win32 别名",
-            "required": false,
+            "description": "必选平台工作区，只返回该平台数据；统一使用 windows、macos 或 linux",
+            "required": true,
             "schema": {
               "type": "string",
               "enum": [
                 "windows",
-                "darwin",
+                "macos",
                 "linux"
               ]
             }
@@ -5200,7 +5264,7 @@
       "post": {
         "summary": "后台创建客户端版本",
         "deprecated": false,
-        "description": "需要管理员权限（Admin）；同版本、平台、架构、通道存在冲突时后端会按唯一索引拒绝。已发布版本必须带 sha512。",
+        "description": "需要 client_releases.manage 权限；创建记录始终为草稿，同 version/platform/arch/channel 冲突时由唯一索引拒绝。macos 主资产必须为 DMG，发布前还必须提供 ZIP updater 及 updaterSha512。",
         "tags": [
           "客户端管理"
         ],
@@ -5243,7 +5307,7 @@
       "post": {
         "summary": "完成客户端安装包直传",
         "deprecated": false,
-        "description": "需要管理员权限（Admin）；浏览器完成 OSS PUT 后调用该接口。后端校验上传票据、检查 _tmp 临时 OSS 对象大小，并从 OSS 读取对象重新计算 sha256 和 sha512，返回保存版本记录所需的文件信息；保存版本记录时后端会将临时对象复制到正式目录。",
+        "description": "需要 client_releases.manage 权限；浏览器每完成一次 OSS PUT 后调用本接口。后端校验短时上传票据、发起管理员、对象大小并计算 sha256/sha512，票据不能跨账号复用。macos 的 DMG 和 ZIP 分别完成确认；保存转正时还会按 ETag 再次读取、计算哈希并条件复制。",
         "tags": [
           "客户端管理"
         ],
@@ -5287,7 +5351,7 @@
       "post": {
         "summary": "丢弃客户端安装包未保存上传",
         "deprecated": false,
-        "description": "需要管理员权限（Admin）；用于清理已经 PUT 到 OSS 但尚未保存到客户端版本记录的 _tmp 临时安装包对象。前端在替换上传、切换记录、新建草稿或离开页面时 best-effort 调用。",
+        "description": "需要 client_releases.manage 权限；清理已经 PUT 到 OSS 但尚未保存的 _tmp 临时对象。票据只允许原发起管理员使用；macos 的 DMG 与 ZIP 上传票据分别丢弃。",
         "tags": [
           "客户端管理"
         ],
@@ -5331,7 +5395,7 @@
       "post": {
         "summary": "初始化客户端安装包直传",
         "deprecated": false,
-        "description": "需要管理员权限（Admin）；根据安装包文件名、大小和目标版本信息生成 OSS PUT signed URL。后端会先校验 version/platform/arch/channel、文件扩展名和大小，再强制生成文件名 Z-UP-Setup-{version}-{platform}-{arch}-{channel}.{ext} 与 _tmp 临时 OSS Object Key。安装包文件本体由浏览器直接 PUT 到 OSS，不经过 New API。",
+        "description": "需要 client_releases.manage 权限；为单个文件生成 _tmp OSS PUT signed URL。后端要求显式提供 version/platform/arch/channel，按平台校验文件类型和大小，并强制生成文件名 Z-UP-Setup-{version}-{platform}-{arch}-{channel}.{ext}。Windows 支持 exe/msi/zip，macos 支持 DMG（人工下载）和 ZIP（自动更新），Linux 支持 AppImage/deb/rpm/zip。上传票据绑定当前管理员。",
         "tags": [
           "客户端管理"
         ],
@@ -5375,7 +5439,7 @@
       "get": {
         "summary": "后台获取客户端版本详情",
         "deprecated": false,
-        "description": "需要管理员权限（Admin）",
+        "description": "需要 client_releases.manage 或 client_releases.publish 权限；platform 必填，ID 必须属于所选平台工作区。",
         "tags": [
           "客户端管理"
         ],
@@ -5387,6 +5451,20 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "name": "platform",
+            "in": "query",
+            "description": "必选平台工作区，ID 必须属于该平台",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "windows",
+                "macos",
+                "linux"
+              ]
             }
           }
         ],
@@ -5417,7 +5495,7 @@
       "put": {
         "summary": "后台更新客户端版本",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；如果 objectKey 是 _tmp 临时上传对象，保存时会先 CopyObject 到正式目录。保存成功后会 best-effort 删除临时对象和被替换的旧安装包 OSS 对象。",
+        "description": "需要 client_releases.manage 权限；platform 必填且 ID 必须属于该平台，平台本身不可修改。修改已发布记录还需要 client_releases.publish。此接口不修改发布状态。必须回传最新 revision，行锁内发现冲突会拒绝旧请求。替换资产必须提交刚完成直传的 _tmp 对象；后端按 ETag 重算哈希并条件复制。",
         "tags": [
           "客户端管理"
         ],
@@ -5429,6 +5507,20 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "name": "platform",
+            "in": "query",
+            "description": "必选平台工作区，ID 必须属于该平台",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "windows",
+                "macos",
+                "linux"
+              ]
             }
           }
         ],
@@ -5469,7 +5561,7 @@
       "delete": {
         "summary": "后台删除客户端版本",
         "deprecated": false,
-        "description": "👨‍💼 需要管理员权限（Admin）；删除记录成功后会 best-effort 删除关联的安装包 OSS 对象。",
+        "description": "需要 client_releases.manage 权限；platform 必填且 ID 必须属于该平台。删除已发布记录还需要 client_releases.publish。删除成功后 best-effort 清理主安装包和 macos updater ZIP。",
         "tags": [
           "客户端管理"
         ],
@@ -5481,6 +5573,20 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "name": "platform",
+            "in": "query",
+            "description": "必选平台工作区，ID 必须属于该平台",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "windows",
+                "macos",
+                "linux"
+              ]
             }
           }
         ],
@@ -5513,7 +5619,7 @@
       "post": {
         "summary": "后台发布客户端版本",
         "deprecated": false,
-        "description": "需要管理员权限（Admin）；发布前必须已有 sha512，否则 latest.yml 无法供 electron-updater 校验。公开列表、latest 接口和 latest.yml 只会读取已发布版本。",
+        "description": "需要 client_releases.publish 权限；platform 必填且 ID 必须属于该平台。主资产必须有 sha512；macos 主资产必须为 DMG，且必须有 ZIP updater 及 updaterSha512。成功后 revision 递增，公开列表、latest 和更新 feed 只读取已发布版本。",
         "tags": [
           "客户端管理"
         ],
@@ -5525,6 +5631,20 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "name": "platform",
+            "in": "query",
+            "description": "必选平台工作区，ID 必须属于该平台",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "windows",
+                "macos",
+                "linux"
+              ]
             }
           }
         ],
@@ -5557,7 +5677,7 @@
       "post": {
         "summary": "后台取消发布客户端版本",
         "deprecated": false,
-        "description": "需要管理员权限（Admin）；取消发布后公开列表、latest 和 latest.yml 不再返回该版本。",
+        "description": "需要 client_releases.publish 权限；platform 必填且 ID 必须属于该平台。成功后 revision 递增；取消发布后公开列表、latest、下载/复制链接和更新 feed 不再返回该版本。",
         "tags": [
           "客户端管理"
         ],
@@ -5569,6 +5689,20 @@
             "required": true,
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "name": "platform",
+            "in": "query",
+            "description": "必选平台工作区，ID 必须属于该平台",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "windows",
+                "macos",
+                "linux"
+              ]
             }
           }
         ],
@@ -7748,7 +7882,7 @@
               "type": "string",
               "enum": [
                 "windows",
-                "darwin",
+                "macos",
                 "linux"
               ]
             }
@@ -7870,7 +8004,7 @@
               "type": "string",
               "enum": [
                 "windows",
-                "darwin",
+                "macos",
                 "linux"
               ]
             }
@@ -7942,9 +8076,9 @@
     },
     "/api/client-releases/updates/{platform}/{arch}/{channel}/download/{id}/{filename}": {
       "get": {
-        "summary": "下载 latest.yml 中的安装包资源",
+        "summary": "下载更新 feed 中的安装包资源",
         "deprecated": false,
-        "description": "Electron updater 使用的安装包下载路径；后端按 id 查找发布记录，成功时 302 跳转到私有 OSS 短时签名地址。",
+        "description": "Electron updater 使用的安装包下载路径。后端会校验 platform/arch/channel/id 与发布记录一致，且 filename 必须精确等于该记录的主安装包名或 macos updater ZIP 名；成功时 302 跳转到私有 OSS 短时签名地址。",
         "tags": [
           "客户端更新"
         ],
@@ -7958,7 +8092,7 @@
               "type": "string",
               "enum": [
                 "windows",
-                "darwin",
+                "macos",
                 "linux"
               ]
             }
@@ -8003,7 +8137,7 @@
           {
             "name": "filename",
             "in": "path",
-            "description": "latest.yml 中的文件名；用于 electron-updater 下载路径兼容",
+            "description": "latest.yml 或 latest-mac.yml 中的文件名，必须与发布记录中的资产文件名完全一致",
             "required": true,
             "schema": {
               "type": "string"
@@ -8031,7 +8165,7 @@
       "get": {
         "summary": "获取客户端 latest.yml",
         "deprecated": false,
-        "description": "Electron updater 在“下载更新”阶段读取的 latest.yml；按 platform/arch/channel/status=published 返回 id 最大且带 sha512 的发布记录。客户端下载完成后会等待用户点击“更新并重启程序”，再静默安装并重启。",
+        "description": "Windows/Linux electron-updater 在“下载更新”阶段读取的 latest.yml；按 platform/arch/channel/status=published 返回 id 最大且带 sha512 的发布记录。macos 客户端应读取 latest-mac.yml。",
         "tags": [
           "客户端更新"
         ],
@@ -8045,7 +8179,7 @@
               "type": "string",
               "enum": [
                 "windows",
-                "darwin",
+                "macos",
                 "linux"
               ]
             }
@@ -8090,6 +8224,77 @@
                 "example": "version: 1.2.3\nfiles:\n  - url: download/1/Z-UP-Setup-1.2.3-windows-x64-stable.exe\n    sha512: base64-sha512-value\n    size: 104857600\npath: download/1/Z-UP-Setup-1.2.3-windows-x64-stable.exe\nsha512: base64-sha512-value\nreleaseDate: 2026-07-02T01:00:00Z\n"
               }
             }
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/client-releases/updates/{platform}/{arch}/{channel}/latest-mac.yml": {
+      "get": {
+        "summary": "获取 macos 客户端 latest-mac.yml",
+        "deprecated": false,
+        "description": "macos electron-updater 更新 feed。仅接受 platform=macos，按 arch/channel/status=published 返回 id 最大的发布记录；path、sha512 和 size 均来自 updater ZIP，而不是供人工下载的 DMG。",
+        "tags": [
+          "客户端更新"
+        ],
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "path",
+            "description": "固定为 macos",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "macos"
+              ]
+            }
+          },
+          {
+            "name": "arch",
+            "in": "path",
+            "description": "目标 CPU 架构",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "x64",
+                "arm64",
+                "universal"
+              ]
+            }
+          },
+          {
+            "name": "channel",
+            "in": "path",
+            "description": "目标通道，仅 stable 或 beta",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "stable",
+                "beta"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功返回 electron-updater latest-mac.yml",
+            "content": {
+              "text/yaml": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "version: 1.2.3\nfiles:\n  - url: download/1/Z-UP-Setup-1.2.3-macos-arm64-stable.zip\n    sha512: base64-updater-sha512-value\n    size: 104857600\npath: download/1/Z-UP-Setup-1.2.3-macos-arm64-stable.zip\nsha512: base64-updater-sha512-value\nreleaseDate: 2026-07-02T01:00:00Z\n"
+              }
+            }
+          },
+          "400": {
+            "description": "platform 不是 macos，或目标参数非法"
+          },
+          "404": {
+            "description": "没有匹配的已发布版本"
           }
         },
         "security": []
