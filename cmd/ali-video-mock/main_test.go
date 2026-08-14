@@ -145,6 +145,75 @@ func TestMockVideoIsPlayableMP4AndSupportsRanges(t *testing.T) {
 	assert.Equal(t, strconv.Itoa(fullResp.Body.Len()), headResp.Header().Get("Content-Length"))
 }
 
+func TestRequestHistoryCapturesCompleteUpstreamInput(t *testing.T) {
+	server := newMockServerWithConfig(mockConfig{CompleteAfterPoll: 1})
+	handler := server.routes()
+	body := `{"model":"google/veo-3.1-lite","prompt":"ocean waves","duration":4}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/videos?trace=converted&trace=second", strings.NewReader(body))
+	req.Host = "video-mock:8080"
+	req.Header.Set("Authorization", "Bearer mock-debug-key")
+	req.Header.Set("X-Newapi-Request-Id", "req-123")
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+
+	historyResp := performRequest(t, handler, http.MethodGet, "/api/mock/history", "")
+	require.Equal(t, http.StatusOK, historyResp.Code, historyResp.Body.String())
+	var history mockHistoryResponse
+	require.NoError(t, common.Unmarshal(historyResp.Body.Bytes(), &history))
+	require.Equal(t, 1, history.Count)
+	require.Len(t, history.Records, 1)
+	record := history.Records[0]
+	assert.Equal(t, int64(1), record.ID)
+	assert.Equal(t, http.MethodPost, record.Method)
+	assert.Equal(t, "/v1/videos", record.Path)
+	assert.Equal(t, "trace=converted&trace=second", record.RawQuery)
+	assert.Equal(t, []string{"converted", "second"}, record.Query["trace"])
+	assert.Equal(t, "Bearer mock-debug-key", record.Headers.Get("Authorization"))
+	assert.Equal(t, "req-123", record.Headers.Get("X-Newapi-Request-Id"))
+	assert.Equal(t, body, record.Body)
+	assert.Equal(t, int64(len(body)), record.ContentLength)
+	assert.Equal(t, "video-mock:8080", record.Host)
+	assert.Equal(t, "OpenRouter", record.Protocol)
+	assert.Equal(t, http.StatusOK, record.Status)
+}
+
+func TestRequestHistoryCapturesErrorsAndExcludesInspectorTraffic(t *testing.T) {
+	server := newMockServer()
+	handler := server.routes()
+
+	invalid := performRequest(t, handler, http.MethodPost, "/v1/videos", `{"model":"unsupported","prompt":"test"}`)
+	require.Equal(t, http.StatusBadRequest, invalid.Code)
+	assert.Equal(t, http.StatusOK, performRequest(t, handler, http.MethodGet, "/healthz", "").Code)
+	assert.Equal(t, http.StatusOK, performRequest(t, handler, http.MethodGet, "/history", "").Code)
+	assert.Equal(t, http.StatusOK, performRequest(t, handler, http.MethodGet, "/api/mock/history", "").Code)
+	assert.Equal(t, http.StatusNotFound, performRequest(t, handler, http.MethodGet, "/favicon.ico", "").Code)
+	assert.Equal(t, http.StatusOK, performRequest(t, handler, http.MethodGet, "/mock-assets/videos/sample.mp4", "").Code)
+
+	historyResp := performRequest(t, handler, http.MethodGet, "/api/mock/history", "")
+	var history mockHistoryResponse
+	require.NoError(t, common.Unmarshal(historyResp.Body.Bytes(), &history))
+	require.Len(t, history.Records, 1)
+	assert.Equal(t, http.StatusBadRequest, history.Records[0].Status)
+
+	clearResp := performRequest(t, handler, http.MethodDelete, "/api/mock/history", "")
+	require.Equal(t, http.StatusOK, clearResp.Code)
+	emptyResp := performRequest(t, handler, http.MethodGet, "/api/mock/history", "")
+	require.NoError(t, common.Unmarshal(emptyResp.Body.Bytes(), &history))
+	assert.Empty(t, history.Records)
+}
+
+func TestRequestHistoryKeepsNewestRecordsWithinCapacity(t *testing.T) {
+	server := newMockServer()
+	for index := 0; index < mockHistoryLimit+2; index++ {
+		server.storeRequestRecord(mockRequestRecord{Path: "/request/" + strconv.Itoa(index)})
+	}
+
+	require.Len(t, server.history, mockHistoryLimit)
+	assert.Equal(t, "/request/2", server.history[0].Path)
+	assert.Equal(t, int64(mockHistoryLimit+2), server.history[mockHistoryLimit-1].ID)
+}
+
 func TestInvalidModelRequestsAreRejected(t *testing.T) {
 	tests := []struct {
 		name string
