@@ -225,7 +225,7 @@ func TestClientReleasePublishedMutationsRequirePublishPermission(t *testing.T) {
 		Platform:  "windows",
 		Arch:      "x64",
 		Channel:   "stable",
-		FileName:  "client.exe",
+		FileName:  "Z-UP-Setup-1.2.3-windows-x64-stable.exe",
 		ObjectKey: "client-releases/client.exe",
 		Size:      1024,
 		SHA512:    "sha512",
@@ -279,4 +279,134 @@ func TestClientReleasePublishedMutationsRequirePublishPermission(t *testing.T) {
 	objectKey, err := DeleteClientRelease(release.Id, root.Id)
 	require.NoError(t, err)
 	require.Equal(t, release.ObjectKey, objectKey)
+}
+
+func TestClientReleaseRevisionRejectsStaleConcurrentUpdate(t *testing.T) {
+	setupManagementPermissionTestDB(t)
+	manager := createManagementPermissionTestUser(t, "revision-manager", common.RoleCommonUser)
+	root := createManagementPermissionTestRoot(t, "revision-root")
+	_, _, err := ReplaceUserManagementPermissions(manager.Id, []string{
+		constant.PermissionClientReleasesManage,
+	}, root.Id)
+	require.NoError(t, err)
+
+	release := &ClientRelease{
+		Version:   "1.2.3",
+		Platform:  "windows",
+		Arch:      "x64",
+		Channel:   "stable",
+		FileName:  "Z-UP-Setup-1.2.3-windows-x64-stable.exe",
+		ObjectKey: "client-releases/revision.exe",
+		Size:      1024,
+		Status:    ClientReleaseStatusDraft,
+	}
+	require.NoError(t, release.Insert())
+	require.EqualValues(t, 1, release.Revision)
+
+	first := *release
+	first.ReleaseNotes = "first update"
+	_, err = first.UpdateReturningPreviousObjectKeysFromRevision(
+		manager.Id,
+		ClientReleaseObjectKeys{Installer: release.ObjectKey},
+		release.Revision,
+	)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, first.Revision)
+
+	stale := *release
+	stale.ReleaseNotes = "stale update"
+	_, err = stale.UpdateReturningPreviousObjectKeysFromRevision(
+		manager.Id,
+		ClientReleaseObjectKeys{Installer: release.ObjectKey},
+		release.Revision,
+	)
+	require.ErrorIs(t, err, ErrClientReleaseRevisionConflict)
+
+	current, err := GetClientReleaseByID(release.Id)
+	require.NoError(t, err)
+	require.Equal(t, "first update", current.ReleaseNotes)
+	require.EqualValues(t, 2, current.Revision)
+}
+
+func TestClientReleasePlatformScopedMutationsDoNotCrossWorkspaces(t *testing.T) {
+	setupManagementPermissionTestDB(t)
+	publisher := createManagementPermissionTestUser(t, "platform-publisher", common.RoleCommonUser)
+	root := createManagementPermissionTestRoot(t, "platform-root")
+	_, _, err := ReplaceUserManagementPermissions(publisher.Id, []string{
+		constant.PermissionClientReleasesManage,
+		constant.PermissionClientReleasesPublish,
+	}, root.Id)
+	require.NoError(t, err)
+
+	release := &ClientRelease{
+		Version:   "1.2.3",
+		Platform:  "windows",
+		Arch:      "x64",
+		Channel:   "stable",
+		FileName:  "Z-UP-Setup-1.2.3-windows-x64-stable.exe",
+		ObjectKey: "client-releases/platform.exe",
+		Size:      1024,
+		SHA512:    "sha512",
+		Status:    ClientReleaseStatusDraft,
+	}
+	require.NoError(t, release.Insert())
+
+	_, err = UpdateClientReleaseStatusForPlatform(release.Id, "macos", ClientReleaseStatusPublished, publisher.Id)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	_, err = DeleteClientReleaseReturningObjectKeysForPlatform(release.Id, "linux", publisher.Id)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+
+	current, err := GetClientReleaseByID(release.Id)
+	require.NoError(t, err)
+	require.Equal(t, ClientReleaseStatusDraft, current.Status)
+}
+
+func TestClientReleaseMetadataUpdatePreservesConcurrentlyReplacedAssets(t *testing.T) {
+	setupManagementPermissionTestDB(t)
+	root := createManagementPermissionTestRoot(t, "release-concurrency-root")
+	release := &ClientRelease{
+		Version:          "1.2.3",
+		Platform:         "macos",
+		Arch:             "arm64",
+		Channel:          "stable",
+		FileName:         "Z-UP-Setup-1.2.3-macos-arm64-stable.dmg",
+		ObjectKey:        "client-releases/old.dmg",
+		Size:             1024,
+		SHA512:           "old-installer-sha512",
+		UpdaterFileName:  "Z-UP-Setup-1.2.3-macos-arm64-stable.zip",
+		UpdaterObjectKey: "client-releases/old.zip",
+		UpdaterSize:      900,
+		UpdaterSHA512:    "old-updater-sha512",
+		Status:           ClientReleaseStatusDraft,
+	}
+	require.NoError(t, release.Insert())
+
+	firstUpdate := *release
+	firstUpdate.ObjectKey = "client-releases/new.dmg"
+	firstUpdate.SHA512 = "new-installer-sha512"
+	firstUpdate.UpdaterObjectKey = "client-releases/new.zip"
+	firstUpdate.UpdaterSHA512 = "new-updater-sha512"
+	_, err := firstUpdate.UpdateReturningPreviousObjectKeysFrom(root.Id, ClientReleaseObjectKeys{
+		Installer: release.ObjectKey,
+		Updater:   release.UpdaterObjectKey,
+	})
+	require.NoError(t, err)
+
+	staleMetadataUpdate := *release
+	staleMetadataUpdate.ReleaseNotes = "metadata from a stale editor"
+	previousKeys, err := staleMetadataUpdate.UpdateReturningPreviousObjectKeysFrom(root.Id, ClientReleaseObjectKeys{
+		Installer: release.ObjectKey,
+		Updater:   release.UpdaterObjectKey,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "client-releases/new.dmg", previousKeys.Installer)
+	require.Equal(t, "client-releases/new.zip", previousKeys.Updater)
+
+	current, err := GetClientReleaseByID(release.Id)
+	require.NoError(t, err)
+	require.Equal(t, "client-releases/new.dmg", current.ObjectKey)
+	require.Equal(t, "new-installer-sha512", current.SHA512)
+	require.Equal(t, "client-releases/new.zip", current.UpdaterObjectKey)
+	require.Equal(t, "new-updater-sha512", current.UpdaterSHA512)
+	require.Equal(t, "metadata from a stale editor", current.ReleaseNotes)
 }

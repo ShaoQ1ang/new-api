@@ -59,7 +59,7 @@ services:
         BUN_REGISTRY: ${BUN_REGISTRY:-https://registry.npmmirror.com}
         GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
         GOSUMDB: ${GOSUMDB:-sum.golang.google.cn}
-    image: new-api:local
+    image: new-api:192-e9e0dd6951ae-amd64
     container_name: new-api-local
     restart: unless-stopped
     command: --log-dir /app/logs

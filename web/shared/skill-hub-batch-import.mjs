@@ -20,6 +20,8 @@ For commercial licensing, please contact support@quantumnous.com
 export const SKILL_HUB_BATCH_LIMITS = Object.freeze({
   maxEntries: 1000,
   transferBatchSize: 100,
+  commitBatchSize: 10,
+  commitBodyBytes: 8 * 1024 * 1024,
   maxFiles: 5000,
   manifestBytes: 10 * 1024 * 1024,
   zipBytes: 50 * 1024 * 1024,
@@ -39,6 +41,38 @@ export function splitSkillHubBatchItems(
   for (let start = 0; start < items.length; start += batchSize) {
     batches.push(items.slice(start, start + batchSize))
   }
+  return batches
+}
+
+export function splitSkillHubCommitItems(
+  items,
+  batchSize = SKILL_HUB_BATCH_LIMITS.commitBatchSize,
+  maxBytes = SKILL_HUB_BATCH_LIMITS.commitBodyBytes,
+) {
+  if (!Number.isInteger(batchSize) || batchSize <= 0) {
+    throw new TypeError('batchSize must be a positive integer')
+  }
+  if (!Number.isInteger(maxBytes) || maxBytes <= 0) {
+    throw new TypeError('maxBytes must be a positive integer')
+  }
+
+  const batches = []
+  let current = []
+  let currentBytes = 0
+  for (const item of items) {
+    const bytes = new TextEncoder().encode(JSON.stringify(item)).byteLength
+    if (
+      current.length > 0 &&
+      (current.length >= batchSize || currentBytes + bytes > maxBytes)
+    ) {
+      batches.push(current)
+      current = []
+      currentBytes = 0
+    }
+    current.push(item)
+    currentBytes += bytes
+  }
+  if (current.length > 0) batches.push(current)
   return batches
 }
 

@@ -20,7 +20,7 @@ const (
 	skillHubBatchImportMaxTotalItems  = 1000
 	skillHubBatchImportMaxTickets     = skillHubBatchImportMaxItems * 2
 	skillHubBatchImportMaxBodyBytes   = 32 << 20
-	skillHubBatchValidationWorkers    = 2
+	skillHubBatchValidationWorkers    = 8
 	skillHubBatchItemStatusReady      = "ready"
 	skillHubBatchItemStatusSuccess    = "success"
 	skillHubBatchItemStatusSkipped    = "skipped"
@@ -354,7 +354,7 @@ func AdminCommitSkillHubBatchUpload(c *gin.Context) {
 			skillRequest.Icon = ""
 		}
 
-		response, action, saveErr := saveSkillHubBatchItem(skillRequest, current)
+		response, action, saveErr := saveSkillHubBatchItem(skillRequest, current, state.Zip.SkillMarkdown)
 		if saveErr != nil {
 			results[index].Status = skillHubBatchItemStatusFailed
 			results[index].Action = action
@@ -709,7 +709,7 @@ func completeSkillHubBatchUploads(ctx context.Context, items []skillHubBatchImpo
 	return results
 }
 
-func saveSkillHubBatchItem(request skillHubSkillRequest, existing *model.SkillHubSkill) (*model.SkillHubSkillResponse, string, error) {
+func saveSkillHubBatchItem(request skillHubSkillRequest, existing *model.SkillHubSkill, skillMarkdown string) (*model.SkillHubSkillResponse, string, error) {
 	action := "create"
 	if existing != nil {
 		action = "update"
@@ -718,6 +718,7 @@ func saveSkillHubBatchItem(request skillHubSkillRequest, existing *model.SkillHu
 	if err != nil {
 		return nil, action, err
 	}
+	skill.SkillMarkdown = skillMarkdown
 	if err := model.ValidateSkillHubSkill(skill); err != nil {
 		return nil, action, err
 	}

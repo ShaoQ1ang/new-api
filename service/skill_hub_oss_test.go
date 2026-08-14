@@ -2,12 +2,16 @@ package service
 
 import (
 	"archive/zip"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/model"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestReadSkillHubMarkdownFromZipPath(t *testing.T) {
@@ -49,6 +53,23 @@ func TestReadSkillHubMarkdownFromZipPathEnforcesUncompressedLimit(t *testing.T) 
 	if _, err := readSkillHubMarkdownFromZipPath(zipPath); err == nil {
 		t.Fatal("readSkillHubMarkdownFromZipPath() returned nil error for oversized SKILL.md")
 	}
+}
+
+func TestInspectSkillHubZipReturnsChecksumAndMarkdownFromOneRead(t *testing.T) {
+	zipPath := writeSkillHubTestZip(t, map[string]string{"SKILL.md": "# Demo\n"})
+	data, err := os.ReadFile(zipPath)
+	require.NoError(t, err)
+	file, err := os.Open(zipPath)
+	require.NoError(t, err)
+	defer file.Close()
+
+	inspection, err := inspectSkillHubZip(file, SkillHubZipMaxBytes)
+	require.NoError(t, err)
+	wantHash := sha256.Sum256(data)
+	assert.Equal(t, int64(len(data)), inspection.Size)
+	assert.Equal(t, "sha256:"+hex.EncodeToString(wantHash[:]), inspection.Checksum)
+	assert.Equal(t, "# Demo\n", inspection.SkillMarkdown)
+	assert.True(t, isZipHeader(inspection.Header))
 }
 
 func writeSkillHubTestZip(t *testing.T, entries map[string]string) string {

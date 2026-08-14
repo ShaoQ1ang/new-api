@@ -95,7 +95,9 @@ type skillHubExportManifestItem struct {
 
 func ListSkillHubSkills(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	skills, total, err := model.SearchSkillHubSkills(c.Query("keyword"), false, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), parseSkillHubRecommendedOnly(c))
+	skills, total, err := model.SearchSkillHubSkills(c.Query("keyword"), false, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), model.SkillHubSkillSearchFilter{
+		RecommendedOnly: parseSkillHubRecommendedOnly(c),
+	})
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -398,7 +400,12 @@ func DownloadSkillHubSkill(c *gin.Context) {
 
 func AdminListSkillHubSkills(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	skills, total, err := model.SearchSkillHubSkills(c.Query("keyword"), true, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), parseSkillHubRecommendedOnly(c))
+	filter, err := parseSkillHubSkillSearchFilter(c, true)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	skills, total, err := model.SearchSkillHubSkills(c.Query("keyword"), true, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), filter)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -807,8 +814,13 @@ func listSkillHubSkillsByTags(c *gin.Context, admin bool) {
 		return
 	}
 	pageInfo := common.GetPageQuery(c)
+	filter, err := parseSkillHubSkillSearchFilter(c, admin)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	if len(tagIDs) == 0 {
-		skills, total, err := model.SearchSkillHubSkills(c.Query("keyword"), admin, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), parseSkillHubRecommendedOnly(c))
+		skills, total, err := model.SearchSkillHubSkills(c.Query("keyword"), admin, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), filter)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -824,7 +836,7 @@ func listSkillHubSkillsByTags(c *gin.Context, admin bool) {
 		})
 		return
 	}
-	skills, total, err := model.SearchSkillHubSkillsByTagIDs(tagIDs, c.Query("keyword"), admin, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), parseSkillHubRecommendedOnly(c))
+	skills, total, err := model.SearchSkillHubSkillsByTagIDs(tagIDs, c.Query("keyword"), admin, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), filter)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -901,6 +913,39 @@ func parseRecommendedSkillHubPageSize(c *gin.Context) int {
 func parseSkillHubRecommendedOnly(c *gin.Context) bool {
 	value := strings.ToLower(strings.TrimSpace(c.Query("recommended")))
 	return value == "true" || value == "1" || value == "yes"
+}
+
+func parseSkillHubSkillSearchFilter(c *gin.Context, admin bool) (model.SkillHubSkillSearchFilter, error) {
+	filter := model.SkillHubSkillSearchFilter{
+		RecommendedOnly: parseSkillHubRecommendedOnly(c),
+	}
+	if !admin {
+		return filter, nil
+	}
+
+	values := append(c.QueryArray("status"), c.QueryArray("status[]")...)
+	if len(values) == 0 {
+		return filter, nil
+	}
+	seen := make(map[int]struct{}, 2)
+	for _, value := range values {
+		for _, part := range strings.Split(value, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			status, err := strconv.Atoi(part)
+			if err != nil || (status != model.SkillHubStatusDraft && status != model.SkillHubStatusPublished) {
+				return filter, fmt.Errorf("invalid skill status: %s", part)
+			}
+			if _, exists := seen[status]; exists {
+				continue
+			}
+			seen[status] = struct{}{}
+			filter.Statuses = append(filter.Statuses, status)
+		}
+	}
+	return filter, nil
 }
 
 func AdminCreateSkillHubTag(c *gin.Context) {
@@ -1066,20 +1111,21 @@ func cleanupSkillHubIconObjectByKey(objectKey string) {
 
 func requestBaseURL(c *gin.Context) string {
 	if base := strings.TrimRight(strings.TrimSpace(system_setting.ServerAddress), "/"); base != "" {
-		if parsed, err := url.Parse(base); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		if parsed, err := url.Parse(base); err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != "" && parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == "" {
 			return base
 		}
 	}
-	proto := strings.TrimSpace(c.GetHeader("X-Forwarded-Proto"))
-	if proto == "" {
+	proto := "http"
+	if c.Request.TLS != nil {
 		proto = "https"
-		if c.Request.TLS == nil {
-			proto = "http"
-		}
 	}
-	host := strings.TrimSpace(c.GetHeader("X-Forwarded-Host"))
-	if host == "" {
-		host = c.Request.Host
+	if forwardedProto := strings.ToLower(strings.TrimSpace(strings.Split(c.GetHeader("X-Forwarded-Proto"), ",")[0])); forwardedProto == "http" || forwardedProto == "https" {
+		proto = forwardedProto
 	}
-	return strings.TrimRight(proto+"://"+host, "/")
+	hostURL, err := url.Parse("http://" + strings.TrimSpace(c.Request.Host))
+	if err != nil || hostURL.Host == "" || hostURL.Hostname() == "" || hostURL.User != nil || hostURL.Path != "" || hostURL.RawQuery != "" || hostURL.Fragment != "" {
+		return ""
+	}
+	base := &url.URL{Scheme: proto, Host: hostURL.Host}
+	return strings.TrimRight(base.String(), "/")
 }

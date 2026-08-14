@@ -25,34 +25,48 @@ export type ClientRelease = {
   fileName: string
   objectKey?: string
   downloadUrl?: string
+  updaterDownloadUrl?: string
+  updateManifestUrl?: string
   size: number
   sha256?: string
   sha512?: string
+  updaterFileName?: string
+  updaterObjectKey?: string
+  updaterSize?: number
+  updaterSha256?: string
+  updaterSha512?: string
   releaseNotes?: string
   minVersion?: string
   forced: boolean
   published?: boolean
   status?: number
+  revision: number
   createdAt?: string
   updatedAt?: string
 }
 
-export type ClientReleasePlatform = 'windows' | 'darwin' | 'linux'
+export type ClientReleasePlatform = 'windows' | 'macos' | 'linux'
 
 export type ClientReleaseArch = 'x64' | 'arm64' | 'ia32' | 'universal'
 
 export type ClientReleaseChannel = 'stable' | 'beta'
 
 export type ClientReleaseForm = {
+  revision: number
   version: string
   platform: ClientReleasePlatform
-  arch: ClientReleaseArch
-  channel: ClientReleaseChannel
+  arch: ClientReleaseArch | ''
+  channel: ClientReleaseChannel | ''
   fileName: string
   objectKey: string
   size: number
   sha256: string
   sha512: string
+  updaterFileName: string
+  updaterObjectKey: string
+  updaterSize: number
+  updaterSha256: string
+  updaterSha512: string
   releaseNotes: string
   minVersion: string
   forced: boolean

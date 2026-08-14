@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
+  Copy,
   Download,
   FileText,
   Package,
@@ -50,20 +51,26 @@ import {
   hasManagementPermission,
 } from '../../helpers';
 
-const platformOptions = ['windows', 'darwin', 'linux'];
+const platformOptions = ['windows', 'macos', 'linux'];
 const archOptions = ['x64', 'arm64', 'ia32', 'universal'];
 const channelOptions = ['stable', 'beta'];
 
-const createDefaultForm = () => ({
+const createDefaultForm = (platform = 'windows') => ({
+  revision: 0,
   version: '',
-  platform: 'windows',
-  arch: 'x64',
-  channel: 'stable',
+  platform,
+  arch: '',
+  channel: '',
   fileName: '',
   objectKey: '',
   size: 0,
   sha256: '',
   sha512: '',
+  updaterFileName: '',
+  updaterObjectKey: '',
+  updaterSize: 0,
+  updaterSha256: '',
+  updaterSha512: '',
   releaseNotes: '',
   minVersion: '',
   forced: false,
@@ -71,7 +78,8 @@ const createDefaultForm = () => ({
 });
 
 const releaseToForm = (release) => ({
-  ...createDefaultForm(),
+  ...createDefaultForm(release?.platform || 'windows'),
+  revision: Number(release?.revision || 0),
   version: release?.version || '',
   platform: release?.platform || 'windows',
   arch: release?.arch || 'x64',
@@ -81,6 +89,11 @@ const releaseToForm = (release) => ({
   size: Number(release?.size || 0),
   sha256: release?.sha256 || '',
   sha512: release?.sha512 || '',
+  updaterFileName: release?.updaterFileName || '',
+  updaterObjectKey: release?.updaterObjectKey || '',
+  updaterSize: Number(release?.updaterSize || 0),
+  updaterSha256: release?.updaterSha256 || '',
+  updaterSha512: release?.updaterSha512 || '',
   releaseNotes: release?.releaseNotes || '',
   minVersion: release?.minVersion || '',
   forced: Boolean(release?.forced),
@@ -88,15 +101,21 @@ const releaseToForm = (release) => ({
 });
 
 const formToPayload = (form) => ({
+  revision: Number(form.revision || 0),
   version: normalizeVersion(form.version),
   platform: form.platform,
   arch: form.arch,
-  channel: form.channel.trim() || 'stable',
+  channel: form.channel.trim(),
   fileName: form.fileName.trim(),
   objectKey: form.objectKey.trim(),
   size: Number(form.size) || 0,
   sha256: form.sha256.trim(),
   sha512: form.sha512.trim(),
+  updaterFileName: form.updaterFileName.trim(),
+  updaterObjectKey: form.updaterObjectKey.trim(),
+  updaterSize: Number(form.updaterSize) || 0,
+  updaterSha256: form.updaterSha256.trim(),
+  updaterSha512: form.updaterSha512.trim(),
   releaseNotes: form.releaseNotes.trim(),
   minVersion: normalizeVersion(form.minVersion),
   forced: form.forced,
@@ -124,8 +143,42 @@ const resolveVersionForFile = (value, file) => {
   return extractVersionFromFileName(file?.name);
 };
 
-const isAllowedPackageFile = (file) =>
-  /\.(exe|msi|dmg|pkg|zip|appimage|deb|rpm|ya?ml)$/i.test(file?.name || '');
+const isAllowedPackageFile = (file, platform) => {
+  const patterns = {
+    windows: /\.(exe|msi|zip)$/i,
+    macos: /\.dmg$/i,
+    linux: /\.(appimage|deb|rpm|zip)$/i,
+  };
+  return Boolean(patterns[platform]?.test(file?.name || ''));
+};
+
+const publicDownloadUrl = (value) => {
+  try {
+    const parsed = new URL(String(value || ''));
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : '';
+  } catch {
+    return '';
+  }
+};
+
+const expectedFileName = (form, fileName) => {
+  const name = String(fileName || '').trim();
+  const extension = name.match(/\.AppImage$/i)
+    ? '.AppImage'
+    : name.match(/(\.[^.]+)$/)?.[1]?.toLowerCase() || '';
+  if (
+    !extension ||
+    !isValidVersion(form.version) ||
+    !form.arch ||
+    !form.channel
+  ) {
+    return '';
+  }
+  return `Z-UP-Setup-${normalizeVersion(form.version)}-${form.platform}-${form.arch}-${form.channel}${extension}`;
+};
+
+const fileMatchesTarget = (form, fileName) =>
+  Boolean(fileName) && expectedFileName(form, fileName) === fileName;
 
 const formatBytes = (bytes) => {
   const size = Number(bytes || 0);
@@ -202,9 +255,6 @@ const putClientReleaseObject = (upload, file) =>
     xhr.onabort = () => reject(new Error('OSS 上传已取消'));
     xhr.send(file);
   });
-
-const buildLatestYmlUrl = (form) =>
-  `/api/client-releases/updates/${encodeURIComponent(form.platform)}/${encodeURIComponent(form.arch)}/${encodeURIComponent(form.channel || 'stable')}/latest.yml`;
 
 const Field = ({ label, children }) => (
   <label className='flex flex-col gap-1 text-sm text-semi-color-text-1'>
@@ -309,18 +359,23 @@ const ClientReleases = () => {
   const canPublish = hasManagementPermission(
     MANAGEMENT_PERMISSION.CLIENT_RELEASES_PUBLISH,
   );
+  const [activePlatform, setActivePlatform] = useState('windows');
   const [releases, setReleases] = useState([]);
   const [selectedId, setSelectedId] = useState('');
-  const [form, setForm] = useState(createDefaultForm);
+  const [form, setForm] = useState(() => createDefaultForm('windows'));
   const [keyword, setKeyword] = useState('');
-  const [platformFilter, setPlatformFilter] = useState('');
   const [archFilter, setArchFilter] = useState('');
   const [channelFilter, setChannelFilter] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef(null);
-  const pendingUploadRef = useRef(null);
+  const [uploadingAsset, setUploadingAsset] = useState(null);
+  const installerInputRef = useRef(null);
+  const updaterInputRef = useRef(null);
+  const pendingUploadsRef = useRef({ installer: null, updater: null });
+  const loadSequenceRef = useRef(0);
+  const uploading = uploadingAsset !== null;
+  const uploadTargetReady =
+    isValidVersion(form.version) && Boolean(form.arch) && Boolean(form.channel);
 
   const selectedRelease = useMemo(
     () => releases.find((release) => release.id === selectedId),
@@ -331,6 +386,47 @@ const ClientReleases = () => {
 
   const updateForm = (key, value) => {
     setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const openDownload = (value) => {
+    const url = publicDownloadUrl(value);
+    if (!url) {
+      showError('下载链接无效');
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const copyDownload = async (value) => {
+    const url = publicDownloadUrl(value);
+    if (!url) {
+      showError('下载链接无效');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      showSuccess('下载链接已复制');
+    } catch {
+      showError('复制下载链接失败');
+    }
+  };
+
+  const updateTarget = (key, value) => {
+    discardPendingUpload();
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+      fileName: '',
+      objectKey: '',
+      size: 0,
+      sha256: '',
+      sha512: '',
+      updaterFileName: '',
+      updaterObjectKey: '',
+      updaterSize: 0,
+      updaterSha256: '',
+      updaterSha512: '',
+    }));
   };
 
   const findConflictingRelease = async (nextForm) => {
@@ -357,32 +453,37 @@ const ClientReleases = () => {
     );
   };
 
-  const loadReleases = async () => {
+  const loadReleases = async (platform = activePlatform) => {
+    const sequence = ++loadSequenceRef.current;
     setLoading(true);
     try {
       const res = await API.get('/api/admin/client-releases/', {
         params: {
           keyword: keyword.trim(),
-          platform: platformFilter || undefined,
+          platform,
           arch: archFilter || undefined,
           channel: channelFilter.trim() || undefined,
           page_size: 100,
         },
       });
       const { success, data, message } = res.data;
+      if (sequence !== loadSequenceRef.current) return;
       if (!success) {
         showError(message || '客户端管理数据加载失败');
         return;
       }
-      const items = data?.items || [];
+      const items = (data?.items || []).filter(
+        (release) => release.platform === platform,
+      );
       setReleases(items);
       if (selectedId && !items.some((item) => item.id === selectedId)) {
         setSelectedId('');
       }
     } catch (error) {
+      if (sequence !== loadSequenceRef.current) return;
       showError(error.message || '客户端管理数据加载失败');
     } finally {
-      setLoading(false);
+      if (sequence === loadSequenceRef.current) setLoading(false);
     }
   };
 
@@ -392,9 +493,10 @@ const ClientReleases = () => {
 
   useEffect(() => {
     return () => {
-      const pending = pendingUploadRef.current;
-      if (pending?.ticket) {
-        discardClientReleaseUpload(pending.ticket).catch(() => undefined);
+      for (const pending of Object.values(pendingUploadsRef.current)) {
+        if (pending?.ticket) {
+          discardClientReleaseUpload(pending.ticket).catch(() => undefined);
+        }
       }
     };
   }, []);
@@ -406,16 +508,18 @@ const ClientReleases = () => {
   }, [selectedRelease]);
 
   const discardPendingUpload = () => {
-    const pending = pendingUploadRef.current;
-    pendingUploadRef.current = null;
-    if (pending?.ticket) {
-      discardClientReleaseUpload(pending.ticket).catch(() => undefined);
+    const pendingUploads = pendingUploadsRef.current;
+    pendingUploadsRef.current = { installer: null, updater: null };
+    for (const pending of Object.values(pendingUploads)) {
+      if (pending?.ticket) {
+        discardClientReleaseUpload(pending.ticket).catch(() => undefined);
+      }
     }
   };
 
-  const replacePendingUpload = (uploadTicket, objectKey) => {
-    const previous = pendingUploadRef.current;
-    pendingUploadRef.current =
+  const replacePendingUpload = (kind, uploadTicket, objectKey) => {
+    const previous = pendingUploadsRef.current[kind];
+    pendingUploadsRef.current[kind] =
       uploadTicket && objectKey
         ? { ticket: uploadTicket, object: objectKey }
         : null;
@@ -424,23 +528,28 @@ const ClientReleases = () => {
     }
   };
 
-  const settlePendingUpload = (savedObjectKey) => {
-    const pending = pendingUploadRef.current;
-    pendingUploadRef.current = null;
-    if (
-      pending?.ticket &&
-      pending.object &&
-      savedObjectKey &&
-      pending.object !== savedObjectKey
-    ) {
-      discardClientReleaseUpload(pending.ticket).catch(() => undefined);
-    }
+  const settlePendingUploads = () => {
+    pendingUploadsRef.current = { installer: null, updater: null };
   };
 
   const handleNew = () => {
     discardPendingUpload();
     setSelectedId('');
-    setForm(createDefaultForm());
+    setForm(createDefaultForm(activePlatform));
+  };
+
+  const changeWorkspace = (platform) => {
+    if (platform === activePlatform || saving || uploading) return;
+    discardPendingUpload();
+    loadSequenceRef.current += 1;
+    setActivePlatform(platform);
+    setReleases([]);
+    setSelectedId('');
+    setKeyword('');
+    setArchFilter('');
+    setChannelFilter('');
+    setForm(createDefaultForm(platform));
+    loadReleases(platform);
   };
 
   const selectRelease = (release) => {
@@ -449,9 +558,25 @@ const ClientReleases = () => {
     setForm(releaseToForm(release));
   };
 
-  const uploadPackage = async (file) => {
+  const uploadPackage = async (file, kind) => {
     if (!file) return;
-    if (!isAllowedPackageFile(file)) {
+    if (!uploadTargetReady) {
+      showError('请先填写版本号，并选择架构和通道');
+      return;
+    }
+    if (kind === 'updater' && !/\.zip$/i.test(file.name)) {
+      showError('macos 自动更新包必须是 ZIP 文件');
+      return;
+    }
+    if (
+      kind === 'installer' &&
+      form.platform === 'macos' &&
+      !/\.dmg$/i.test(file.name)
+    ) {
+      showError('macos 人工下载安装包必须是 DMG 文件');
+      return;
+    }
+    if (kind === 'installer' && !isAllowedPackageFile(file, activePlatform)) {
       showError('不支持的安装包文件类型');
       return;
     }
@@ -463,7 +588,7 @@ const ClientReleases = () => {
     if (version !== form.version) {
       updateForm('version', version);
     }
-    setUploading(true);
+    setUploadingAsset(kind);
     try {
       const { success, data, message } = await uploadClientReleasePackage(
         file,
@@ -476,19 +601,32 @@ const ClientReleases = () => {
         showError(message || '安装包上传失败');
         return;
       }
-      replacePendingUpload(data.uploadTicket, data.object);
-      updateForm('fileName', data.fileName);
-      updateForm('objectKey', data.object);
-      updateForm('size', data.size);
-      updateForm('sha256', data.sha256);
-      updateForm('sha512', data.sha512);
-      showSuccess('安装包已上传');
+      replacePendingUpload(kind, data.uploadTicket, data.object);
+      if (kind === 'updater') {
+        updateForm('updaterFileName', data.fileName);
+        updateForm('updaterObjectKey', data.object);
+        updateForm('updaterSize', data.size);
+        updateForm('updaterSha256', data.sha256);
+        updateForm('updaterSha512', data.sha512);
+        showSuccess('自动更新包已上传');
+      } else {
+        updateForm('fileName', data.fileName);
+        updateForm('objectKey', data.object);
+        updateForm('size', data.size);
+        updateForm('sha256', data.sha256);
+        updateForm('sha512', data.sha512);
+        showSuccess('安装包已上传');
+      }
     } catch (error) {
       showError(error.message || '安装包上传失败');
     } finally {
-      setUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+      setUploadingAsset(null);
+      const input =
+        kind === 'updater'
+          ? updaterInputRef.current
+          : installerInputRef.current;
+      if (input) {
+        input.value = '';
       }
     }
   };
@@ -508,12 +646,32 @@ const ClientReleases = () => {
       showError('开启强制更新时请填写最低版本');
       return;
     }
+    if (!form.arch || !form.channel) {
+      showError('请选择架构和通道');
+      return;
+    }
     if (
       !form.fileName.trim() ||
       !form.objectKey.trim() ||
       Number(form.size) <= 0
     ) {
       showError('请先上传安装包');
+      return;
+    }
+    if (!fileMatchesTarget({ ...form, version }, form.fileName)) {
+      showError(
+        `安装包文件名必须为 ${expectedFileName({ ...form, version }, form.fileName) || '目标命名格式'}`,
+      );
+      return;
+    }
+    if (
+      form.platform === 'macos' &&
+      form.updaterFileName &&
+      !fileMatchesTarget({ ...form, version }, form.updaterFileName)
+    ) {
+      showError(
+        `自动更新包文件名必须为 ${expectedFileName({ ...form, version }, form.updaterFileName) || '目标命名格式'}`,
+      );
       return;
     }
     const nextForm = { ...form, version, minVersion };
@@ -529,16 +687,21 @@ const ClientReleases = () => {
       ) {
         return;
       }
-      const payload = formToPayload(nextForm);
+      const payload = formToPayload({
+        ...nextForm,
+        revision: conflict?.revision ?? nextForm.revision,
+      });
       const request = conflict
         ? API.put(
             `/api/admin/client-releases/${encodeURIComponent(conflict.id)}`,
             payload,
+            { params: { platform: activePlatform } },
           )
         : selectedRelease
           ? API.put(
               `/api/admin/client-releases/${encodeURIComponent(selectedRelease.id)}`,
               payload,
+              { params: { platform: activePlatform } },
             )
           : API.post('/api/admin/client-releases/', payload);
       const res = await request;
@@ -548,7 +711,7 @@ const ClientReleases = () => {
         return;
       }
       showSuccess('保存成功');
-      settlePendingUpload(data.objectKey);
+      settlePendingUploads();
       setSelectedId(data.id);
       setForm(releaseToForm(data));
       await loadReleases();
@@ -561,11 +724,23 @@ const ClientReleases = () => {
 
   const setPublished = async (published) => {
     if (!selectedRelease) return;
+    if (
+      published &&
+      selectedRelease.platform === 'macos' &&
+      (!selectedRelease.updaterFileName ||
+        !selectedRelease.updaterObjectKey ||
+        !selectedRelease.updaterSha512)
+    ) {
+      showError('请先上传 macos 自动更新 ZIP');
+      return;
+    }
     setSaving(true);
     try {
       const action = published ? 'publish' : 'unpublish';
       const res = await API.post(
         `/api/admin/client-releases/${encodeURIComponent(selectedRelease.id)}/${action}`,
+        undefined,
+        { params: { platform: activePlatform } },
       );
       const { success, data, message } = res.data;
       if (!success) {
@@ -597,6 +772,7 @@ const ClientReleases = () => {
         try {
           const res = await API.delete(
             `/api/admin/client-releases/${encodeURIComponent(selectedRelease.id)}`,
+            { params: { platform: activePlatform } },
           );
           const { success, message } = res.data;
           if (!success) {
@@ -644,6 +820,19 @@ const ClientReleases = () => {
           </Space>
         </div>
 
+        <div className='flex flex-wrap gap-2 rounded border border-semi-color-border bg-semi-color-bg-1 p-2'>
+          {platformOptions.map((platform) => (
+            <Button
+              key={platform}
+              type={activePlatform === platform ? 'primary' : 'tertiary'}
+              disabled={saving || uploading}
+              onClick={() => changeWorkspace(platform)}
+            >
+              {platform}
+            </Button>
+          ))}
+        </div>
+
         <div className='grid grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]'>
           <Card>
             <div className='mb-3 grid grid-cols-[1fr_auto] gap-2'>
@@ -655,19 +844,7 @@ const ClientReleases = () => {
               />
               <Button onClick={loadReleases}>搜索</Button>
             </div>
-            <div className='mb-3 grid grid-cols-1 gap-2 md:grid-cols-3'>
-              <Select
-                value={platformFilter}
-                placeholder='平台'
-                onChange={setPlatformFilter}
-              >
-                <Select.Option value=''>全部平台</Select.Option>
-                {platformOptions.map((platform) => (
-                  <Select.Option key={platform} value={platform}>
-                    {platform}
-                  </Select.Option>
-                ))}
-              </Select>
+            <div className='mb-3 grid grid-cols-1 gap-2 md:grid-cols-2'>
               <Select
                 value={archFilter}
                 placeholder='架构'
@@ -761,14 +938,11 @@ const ClientReleases = () => {
                       <Field label='版本号'>
                         <VersionInput
                           value={form.version}
-                          onChange={(value) => updateForm('version', value)}
+                          onChange={(value) => updateTarget('version', value)}
                         />
                       </Field>
                       <Field label='平台'>
-                        <Select
-                          value={form.platform}
-                          onChange={(value) => updateForm('platform', value)}
-                        >
+                        <Select value={form.platform} disabled>
                           {platformOptions.map((platform) => (
                             <Select.Option key={platform} value={platform}>
                               {platform}
@@ -779,7 +953,8 @@ const ClientReleases = () => {
                       <Field label='架构'>
                         <Select
                           value={form.arch}
-                          onChange={(value) => updateForm('arch', value)}
+                          placeholder='请选择架构'
+                          onChange={(value) => updateTarget('arch', value)}
                         >
                           {archOptions.map((arch) => (
                             <Select.Option key={arch} value={arch}>
@@ -791,7 +966,8 @@ const ClientReleases = () => {
                       <Field label='通道'>
                         <Select
                           value={form.channel}
-                          onChange={(value) => updateForm('channel', value)}
+                          placeholder='请选择通道'
+                          onChange={(value) => updateTarget('channel', value)}
                         >
                           {channelOptions.map((channel) => (
                             <Select.Option key={channel} value={channel}>
@@ -805,22 +981,33 @@ const ClientReleases = () => {
 
                   <Section
                     title='安装包'
-                    description='上传到私有 OSS 后，客户端通过 New API 签名跳转下载。'
+                    description={
+                      form.platform === 'macos'
+                        ? 'macos 用户手动下载的 DMG，上传后通过 New API 签名跳转下载。'
+                        : '上传到私有 OSS 后，客户端通过 New API 签名跳转下载。'
+                    }
                   >
                     <div className='flex flex-wrap items-center gap-2'>
                       <input
-                        ref={fileInputRef}
+                        ref={installerInputRef}
                         type='file'
-                        accept='.exe,.msi,.dmg,.pkg,.zip,.AppImage,.deb,.rpm,.yml,.yaml'
+                        accept={
+                          form.platform === 'macos'
+                            ? '.dmg'
+                            : form.platform === 'windows'
+                              ? '.exe,.msi,.zip'
+                              : '.AppImage,.deb,.rpm,.zip'
+                        }
                         className='hidden'
                         onChange={(event) =>
-                          uploadPackage(event.target.files?.[0])
+                          uploadPackage(event.target.files?.[0], 'installer')
                         }
                       />
                       <Button
                         icon={<UploadCloud size={16} />}
-                        loading={uploading}
-                        onClick={() => fileInputRef.current?.click()}
+                        loading={uploadingAsset === 'installer'}
+                        disabled={uploading || !uploadTargetReady}
+                        onClick={() => installerInputRef.current?.click()}
                       >
                         上传到 OSS
                       </Button>
@@ -831,6 +1018,23 @@ const ClientReleases = () => {
                     <Field label='文件名'>
                       <ReadonlyValue value={form.fileName} />
                     </Field>
+                    {form.fileName ? (
+                      <Typography.Text
+                        type={
+                          fileMatchesTarget(form, form.fileName)
+                            ? 'success'
+                            : 'danger'
+                        }
+                      >
+                        {fileMatchesTarget(form, form.fileName)
+                          ? '文件名与平台、架构和通道匹配'
+                          : `应为 ${expectedFileName(form, form.fileName)}`}
+                      </Typography.Text>
+                    ) : (
+                      <Typography.Text type='tertiary'>
+                        请先填写版本号，并选择架构和通道后再上传。
+                      </Typography.Text>
+                    )}
                     <Field label='OSS Object'>
                       <ReadonlyValue value={form.objectKey} />
                     </Field>
@@ -848,23 +1052,101 @@ const ClientReleases = () => {
                           <Button
                             icon={<Download size={16} />}
                             onClick={() =>
-                              window.open(selectedRelease.downloadUrl, '_blank')
+                              openDownload(selectedRelease.downloadUrl)
                             }
                           >
                             下载
                           </Button>
                         ) : null}
-                        <Button
-                          icon={<FileText size={16} />}
-                          onClick={() =>
-                            window.open(buildLatestYmlUrl(form), '_blank')
-                          }
-                        >
-                          latest.yml
-                        </Button>
+                        {selectedRelease.downloadUrl ? (
+                          <Button
+                            icon={<Copy size={16} />}
+                            onClick={() =>
+                              copyDownload(selectedRelease.downloadUrl)
+                            }
+                          >
+                            复制下载链接
+                          </Button>
+                        ) : null}
+                        {selectedRelease.updateManifestUrl ? (
+                          <Button
+                            icon={<FileText size={16} />}
+                            onClick={() =>
+                              openDownload(selectedRelease.updateManifestUrl)
+                            }
+                          >
+                            {form.platform === 'macos'
+                              ? 'latest-mac.yml'
+                              : 'latest.yml'}
+                          </Button>
+                        ) : null}
                       </Space>
                     ) : null}
                   </Section>
+
+                  {form.platform === 'macos' ? (
+                    <Section
+                      title='macos 自动更新包'
+                      description='上传 electron-updater 使用的 ZIP。发布后 latest-mac.yml 只引用此 ZIP，DMG 继续用于用户手动下载。'
+                    >
+                      <div className='flex flex-wrap items-center gap-2'>
+                        <input
+                          ref={updaterInputRef}
+                          type='file'
+                          accept='.zip'
+                          className='hidden'
+                          onChange={(event) =>
+                            uploadPackage(event.target.files?.[0], 'updater')
+                          }
+                        />
+                        <Button
+                          icon={<UploadCloud size={16} />}
+                          loading={uploadingAsset === 'updater'}
+                          disabled={uploading || !uploadTargetReady}
+                          onClick={() => updaterInputRef.current?.click()}
+                        >
+                          上传 ZIP 到 OSS
+                        </Button>
+                        {form.updaterFileName ? (
+                          <Tag>{formatBytes(form.updaterSize)}</Tag>
+                        ) : null}
+                      </div>
+                      <Field label='文件名'>
+                        <ReadonlyValue value={form.updaterFileName} />
+                      </Field>
+                      {selectedRelease?.updaterDownloadUrl ? (
+                        <Space wrap>
+                          <Button
+                            icon={<Download size={16} />}
+                            onClick={() =>
+                              openDownload(selectedRelease.updaterDownloadUrl)
+                            }
+                          >
+                            下载自动更新包
+                          </Button>
+                          <Button
+                            icon={<Copy size={16} />}
+                            onClick={() =>
+                              copyDownload(selectedRelease.updaterDownloadUrl)
+                            }
+                          >
+                            复制自动更新包链接
+                          </Button>
+                        </Space>
+                      ) : null}
+                      <Field label='OSS Object'>
+                        <ReadonlyValue value={form.updaterObjectKey} />
+                      </Field>
+                      <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+                        <Field label='SHA256'>
+                          <ReadonlyValue value={form.updaterSha256} />
+                        </Field>
+                        <Field label='SHA512'>
+                          <ReadonlyValue value={form.updaterSha512} />
+                        </Field>
+                      </div>
+                    </Section>
+                  ) : null}
 
                   <Section
                     title='发布策略'

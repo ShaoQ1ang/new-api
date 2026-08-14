@@ -17,25 +17,31 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
+
 import type {
   ClientRelease,
-  ClientReleaseChannel,
   ClientReleaseDirectUploadInitResponse,
   ClientReleaseForm,
   ClientReleaseListResponse,
+  ClientReleasePlatform,
   ClientReleaseResponse,
   ClientReleaseUploadResponse,
 } from './types'
 
-export async function listAdminClientReleases(params?: {
+export async function listAdminClientReleases(params: {
   keyword?: string
-  platform?: string
+  platform: ClientReleasePlatform
   arch?: string
   channel?: string
   p?: number
   page_size?: number
+  signal?: AbortSignal
 }): Promise<ClientReleaseListResponse> {
-  const res = await api.get('/api/admin/client-releases/', { params })
+  const { signal, ...query } = params
+  const res = await api.get('/api/admin/client-releases/', {
+    params: query,
+    signal,
+  })
   return res.data
 }
 
@@ -48,31 +54,38 @@ export async function createClientRelease(
 
 export async function updateClientRelease(
   id: number,
+  platform: ClientReleasePlatform,
   form: ClientReleaseForm
 ): Promise<ClientReleaseResponse> {
   const res = await api.put(
     `/api/admin/client-releases/${encodeURIComponent(id)}`,
-    formToPayload(form)
+    formToPayload(form),
+    { params: { platform } }
   )
   return res.data
 }
 
 export async function deleteClientRelease(
-  id: number
+  id: number,
+  platform: ClientReleasePlatform
 ): Promise<{ success: boolean; message?: string }> {
   const res = await api.delete(
-    `/api/admin/client-releases/${encodeURIComponent(id)}`
+    `/api/admin/client-releases/${encodeURIComponent(id)}`,
+    { params: { platform } }
   )
   return res.data
 }
 
 export async function setClientReleasePublished(
   id: number,
+  platform: ClientReleasePlatform,
   published: boolean
 ): Promise<ClientReleaseResponse> {
   const action = published ? 'publish' : 'unpublish'
   const res = await api.post(
-    `/api/admin/client-releases/${encodeURIComponent(id)}/${action}`
+    `/api/admin/client-releases/${encodeURIComponent(id)}/${action}`,
+    undefined,
+    { params: { platform } }
   )
   return res.data
 }
@@ -141,32 +154,43 @@ function putClientReleaseObject(
     Object.entries(upload.uploadHeaders || {}).forEach(([key, value]) => {
       if (value) xhr.setRequestHeader(key, value)
     })
-    xhr.onload = () => {
+    xhr.addEventListener('load', () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve()
         return
       }
       reject(new Error('Failed to upload package'))
-    }
-    xhr.onerror = () => reject(new Error('Failed to upload package'))
-    xhr.onabort = () => reject(new Error('Failed to upload package'))
+    })
+    xhr.addEventListener('error', () =>
+      reject(new Error('Failed to upload package'))
+    )
+    xhr.addEventListener('abort', () =>
+      reject(new Error('Failed to upload package'))
+    )
     xhr.send(file)
   })
 }
 
 export function clientReleaseToForm(
-  release?: ClientRelease
+  release?: ClientRelease,
+  platform: ClientReleasePlatform = 'windows'
 ): ClientReleaseForm {
   return {
+    revision: release?.revision || 0,
     version: release?.version || '',
-    platform: release?.platform || 'windows',
-    arch: release?.arch || 'x64',
-    channel: normalizeClientReleaseChannel(release?.channel),
+    platform: release?.platform || platform,
+    arch: release?.arch || '',
+    channel: release?.channel || '',
     fileName: release?.fileName || '',
     objectKey: release?.objectKey || '',
     size: release?.size || 0,
     sha256: release?.sha256 || '',
     sha512: release?.sha512 || '',
+    updaterFileName: release?.updaterFileName || '',
+    updaterObjectKey: release?.updaterObjectKey || '',
+    updaterSize: release?.updaterSize || 0,
+    updaterSha256: release?.updaterSha256 || '',
+    updaterSha512: release?.updaterSha512 || '',
     releaseNotes: release?.releaseNotes || '',
     minVersion: release?.minVersion || '',
     forced: Boolean(release?.forced),
@@ -174,21 +198,23 @@ export function clientReleaseToForm(
   }
 }
 
-function normalizeClientReleaseChannel(channel?: string): ClientReleaseChannel {
-  return channel === 'beta' ? 'beta' : 'stable'
-}
-
 function formToPayload(form: ClientReleaseForm) {
   return {
+    revision: form.revision,
     version: form.version.trim(),
     platform: form.platform,
     arch: form.arch,
-    channel: form.channel.trim() || 'stable',
+    channel: form.channel.trim(),
     fileName: form.fileName.trim(),
     objectKey: form.objectKey.trim(),
     size: Number(form.size) || 0,
     sha256: form.sha256.trim(),
     sha512: form.sha512.trim(),
+    updaterFileName: form.updaterFileName.trim(),
+    updaterObjectKey: form.updaterObjectKey.trim(),
+    updaterSize: Number(form.updaterSize) || 0,
+    updaterSha256: form.updaterSha256.trim(),
+    updaterSha512: form.updaterSha512.trim(),
     releaseNotes: form.releaseNotes.trim(),
     minVersion: form.minVersion.trim(),
     forced: form.forced,

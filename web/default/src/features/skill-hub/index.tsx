@@ -17,6 +17,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react'
+import {
+  ArrowLeft,
   Check,
   Download,
   FileArchive,
@@ -29,18 +38,8 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactNode,
-} from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-
-import { SectionPageLayout } from '@/components/layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -54,7 +53,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-
+import { SectionPageLayout } from '@/components/layout'
 import {
   issueMessage,
   readSkillHubTestcasesFile,
@@ -87,7 +86,21 @@ import type {
   SkillHubTestcases,
 } from './types'
 
-export function SkillHub() {
+type SkillHubProps = {
+  editorOnly?: boolean
+  initialSkillId?: string
+  onBack?: () => void
+  onSaved?: (skillId: string) => void
+  onDeleted?: () => void
+}
+
+export function SkillHub({
+  editorOnly = false,
+  initialSkillId,
+  onBack,
+  onSaved,
+  onDeleted,
+}: SkillHubProps = {}) {
   const { t } = useTranslation()
   const [skills, setSkills] = useState<SkillHubSkill[]>([])
   const [tagOptions, setTagOptions] = useState<SkillHubTag[]>([])
@@ -207,13 +220,21 @@ export function SkillHub() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void loadSkills()
       void loadTags()
+      if (editorOnly) {
+        if (initialSkillId) {
+          void selectSkill({ id: initialSkillId } as SkillHubSkill)
+        } else {
+          createDraft()
+        }
+      } else {
+        void loadSkills()
+      }
     }, 0)
 
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [editorOnly, initialSkillId])
 
   useEffect(() => {
     return () => {
@@ -244,6 +265,7 @@ export function SkillHub() {
       if (!payload.success || !payload.data) {
         throw new Error(payload.message || t('Failed to load skill details'))
       }
+      setSkills([payload.data])
       setForm(skillToForm(payload.data))
     } catch (error) {
       if (detailRequestIdRef.current !== requestId) return
@@ -331,11 +353,16 @@ export function SkillHub() {
       toast.success(t('Skill saved'))
       settlePendingUploads(payload.data)
       setSelectedId(payload.data.id)
+      setSkills([payload.data])
       setForm(skillToForm(payload.data))
       setTestcasesOverride({ active: false, value: null })
       setTestcasesFileName('')
       setTestcasesDirty(false)
-      await loadSkills()
+      if (editorOnly) {
+        onSaved?.(payload.data.id)
+      } else {
+        await loadSkills()
+      }
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : t('Failed to save skill')
@@ -459,7 +486,12 @@ export function SkillHub() {
       }
       toast.success(t('Skill deleted'))
       if (selectedId === skill.id) createDraft()
-      await loadSkills()
+      if (editorOnly) {
+        onDeleted?.()
+        if (!onDeleted) onBack?.()
+      } else {
+        await loadSkills()
+      }
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : t('Failed to delete skill')
@@ -599,7 +631,12 @@ export function SkillHub() {
         throw new Error(payload.message || t('Failed to update publish state'))
       }
       toast.success(next ? t('Skill published') : t('Skill unpublished'))
-      await loadSkills()
+      if (payload.data) {
+        setSkills([payload.data])
+        setForm(skillToForm(payload.data))
+      } else if (!editorOnly) {
+        await loadSkills()
+      }
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -705,210 +742,238 @@ export function SkillHub() {
     }
   }
 
+  let pageTitle = t('Skill management')
+  if (editorOnly) {
+    pageTitle = selected ? t('Edit skill') : t('Create skill')
+  }
+
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>技能管理</SectionPageLayout.Title>
+      <SectionPageLayout.Title>{pageTitle}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
-        <SkillHubBatchUploadDialog
-          tags={tagOptions}
-          onComplete={() => loadSkills()}
-        />
-        <Button
-          variant='outline'
-          disabled={loading}
-          onClick={() => void loadSkills()}
-        >
-          <RefreshCw className='h-4 w-4' />
-          {loading ? t('Refreshing') : t('Refresh')}
-        </Button>
-        <Button onClick={createDraft}>
-          <Plus className='h-4 w-4' />
-          {t('New skill')}
-        </Button>
+        {editorOnly ? (
+          <Button variant='outline' onClick={onBack}>
+            <ArrowLeft className='h-4 w-4' />
+            {t('Back to skill list')}
+          </Button>
+        ) : (
+          <>
+            <SkillHubBatchUploadDialog
+              tags={tagOptions}
+              onComplete={() => loadSkills()}
+            />
+            <Button
+              variant='outline'
+              disabled={loading}
+              onClick={() => void loadSkills()}
+            >
+              <RefreshCw className='h-4 w-4' />
+              {loading ? t('Refreshing') : t('Refresh')}
+            </Button>
+            <Button onClick={createDraft}>
+              <Plus className='h-4 w-4' />
+              {t('New skill')}
+            </Button>
+          </>
+        )}
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
-        <div className='grid items-start gap-4 lg:grid-cols-[minmax(280px,380px)_minmax(0,1fr)]'>
-          <Card className='min-h-[520px] lg:max-h-[calc(100vh-8rem)]'>
-            <CardHeader>
-              <CardTitle>{t('Catalog')}</CardTitle>
-              <CardDescription>
-                {t('Skills returned to local connectors.')}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className='flex min-h-0 flex-1 flex-col gap-3'>
-              <div className='flex gap-2'>
-                <Input
-                  value={keyword}
-                  onChange={(event) => setKeyword(event.target.value)}
-                  placeholder={t('Search skills')}
-                />
-                <Button variant='outline' onClick={() => void loadSkills()}>
-                  {t('Search')}
-                </Button>
-              </div>
-              <div className='flex flex-wrap gap-1.5'>
-                <Button
-                  type='button'
-                  size='sm'
-                  variant={recommendedOnly ? 'outline' : 'secondary'}
-                  onClick={() => applyRecommendedFilter(false)}
-                >
-                  {t('All')}
-                </Button>
-                <Button
-                  type='button'
-                  size='sm'
-                  variant={recommendedOnly ? 'default' : 'outline'}
-                  onClick={() => applyRecommendedFilter(true)}
-                >
-                  {t('Recommended')}
-                </Button>
-              </div>
-              {tagOptions.length > 0 && (
+        <div
+          className={
+            editorOnly
+              ? 'grid items-start gap-4'
+              : 'grid items-start gap-4 lg:grid-cols-[minmax(280px,380px)_minmax(0,1fr)]'
+          }
+        >
+          {!editorOnly && (
+            <Card className='min-h-[520px] lg:max-h-[calc(100vh-8rem)]'>
+              <CardHeader>
+                <CardTitle>{t('Catalog')}</CardTitle>
+                <CardDescription>
+                  {t('Skills returned to local connectors.')}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className='flex min-h-0 flex-1 flex-col gap-3'>
+                <div className='flex gap-2'>
+                  <Input
+                    value={keyword}
+                    onChange={(event) => setKeyword(event.target.value)}
+                    placeholder={t('Search skills')}
+                  />
+                  <Button variant='outline' onClick={() => void loadSkills()}>
+                    {t('Search')}
+                  </Button>
+                </div>
                 <div className='flex flex-wrap gap-1.5'>
                   <Button
                     type='button'
                     size='sm'
-                    variant={selectedTagIds.length ? 'outline' : 'secondary'}
-                    onClick={clearTagFilter}
+                    variant={recommendedOnly ? 'outline' : 'secondary'}
+                    onClick={() => applyRecommendedFilter(false)}
                   >
-                    {t('All Tags')}
+                    {t('All')}
                   </Button>
-                  {tagOptions.map((tag) => {
-                    const selectedTag = selectedTagIds.includes(tag.id)
-                    return (
-                      <Button
-                        key={tag.id || tag.name}
-                        type='button'
-                        size='sm'
-                        variant={selectedTag ? 'default' : 'outline'}
-                        onClick={() => applyTagFilter(tag.id)}
-                      >
-                        {tag.name}
-                      </Button>
-                    )
-                  })}
+                  <Button
+                    type='button'
+                    size='sm'
+                    variant={recommendedOnly ? 'default' : 'outline'}
+                    onClick={() => applyRecommendedFilter(true)}
+                  >
+                    {t('Recommended')}
+                  </Button>
                 </div>
-              )}
-              <div className='flex flex-wrap items-center gap-2 border-y py-2'>
-                <span className='text-muted-foreground text-sm'>
-                  {t('{{count}} selected', { count: checkedIds.length })}
-                </span>
-                <Button
-                  size='sm'
-                  variant='outline'
-                  disabled={!checkedIds.length || batchWorking}
-                  onClick={() => void batchExport()}
-                >
-                  <Download data-icon='inline-start' />
-                  {exportState?.mode === 'selected' && exportState.total
-                    ? t('Exporting batch {{current}} of {{total}}', exportState)
-                    : t('Export selected')}
-                </Button>
-                <Button
-                  size='sm'
-                  variant='outline'
-                  disabled={batchWorking || loading}
-                  onClick={() => void exportAll()}
-                >
-                  <Download data-icon='inline-start' />
-                  {exportState?.mode === 'all' && exportState.total
-                    ? t('Exporting batch {{current}} of {{total}}', exportState)
-                    : t('Export all')}
-                </Button>
-                <Button
-                  size='sm'
-                  variant='destructive'
-                  disabled={!checkedIds.length || batchWorking}
-                  onClick={() => void batchDelete()}
-                >
-                  <Trash2 data-icon='inline-start' />
-                  {t('Delete selected')}
-                </Button>
-              </div>
-              <div className='flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1 pb-2'>
-                {skills.map((skill) => {
-                  const published = skill.published || skill.status === 1
-                  const tags = normalizeSkillTags(skill.tags)
-                  return (
-                    <div
-                      key={skill.id}
-                      className={`w-full rounded-lg border p-3 text-left transition-colors ${
-                        selectedId === skill.id
-                          ? 'border-primary bg-primary/5'
-                          : 'hover:bg-muted/50'
-                      }`}
+                {tagOptions.length > 0 && (
+                  <div className='flex flex-wrap gap-1.5'>
+                    <Button
+                      type='button'
+                      size='sm'
+                      variant={selectedTagIds.length ? 'outline' : 'secondary'}
+                      onClick={clearTagFilter}
                     >
-                      <div className='mb-2 flex items-center gap-2'>
-                        <Checkbox
-                          aria-label={t('Select {{name}}', {
-                            name: skill.name,
-                          })}
-                          checked={checkedIds.includes(skill.id)}
-                          onCheckedChange={(checked) =>
-                            setCheckedIds((current) =>
-                              checked
-                                ? [...new Set([...current, skill.id])]
-                                : current.filter((id) => id !== skill.id)
-                            )
-                          }
-                        />
-                        <button
+                      {t('All Tags')}
+                    </Button>
+                    {tagOptions.map((tag) => {
+                      const selectedTag = selectedTagIds.includes(tag.id)
+                      return (
+                        <Button
+                          key={tag.id || tag.name}
                           type='button'
-                          className='min-w-0 flex-1 text-left'
-                          onClick={() => void selectSkill(skill)}
+                          size='sm'
+                          variant={selectedTag ? 'default' : 'outline'}
+                          onClick={() => applyTagFilter(tag.id)}
                         >
-                          <div className='flex items-start justify-between gap-3'>
-                            <div className='min-w-0'>
-                              <div className='truncate font-medium'>
-                                {skill.name}
-                              </div>
-                              <div className='text-muted-foreground truncate text-xs'>
-                                {skill.id} · {skill.version}
-                                {skill.author ? ` · ${skill.author}` : ''}
-                                {skill.origin ? ` · ${skill.origin}` : ''}
-                              </div>
-                            </div>
-                            <div className='flex shrink-0 flex-wrap justify-end gap-1'>
-                              {skill.recommended && (
-                                <Badge variant='secondary'>
-                                  {t('Recommended')}
-                                </Badge>
-                              )}
-                              <Badge
-                                variant={published ? 'default' : 'outline'}
-                              >
-                                {published ? t('Published') : t('Draft')}
-                              </Badge>
-                            </div>
-                          </div>
-                          <div className='text-foreground/90 mt-2 line-clamp-2 min-h-10 text-sm'>
-                            {skill.description?.trim() ||
-                              t('No description available.')}
-                          </div>
-                          <div className='mt-2 flex max-h-7 min-h-7 flex-wrap gap-1 overflow-hidden'>
-                            {tags.slice(0, 4).map((tag) => (
-                              <span
-                                key={tag}
-                                className='bg-muted text-muted-foreground rounded-md px-2 py-0.5 text-xs'
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-                {!skills.length && (
-                  <div className='text-muted-foreground rounded-lg border p-4 text-sm'>
-                    {loading ? t('Loading...') : t('No skills configured')}
+                          {tag.name}
+                        </Button>
+                      )
+                    })}
                   </div>
                 )}
-              </div>
-            </CardContent>
-          </Card>
+                <div className='flex flex-wrap items-center gap-2 border-y py-2'>
+                  <span className='text-muted-foreground text-sm'>
+                    {t('{{count}} selected', { count: checkedIds.length })}
+                  </span>
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    disabled={!checkedIds.length || batchWorking}
+                    onClick={() => void batchExport()}
+                  >
+                    <Download data-icon='inline-start' />
+                    {exportState?.mode === 'selected' && exportState.total
+                      ? t(
+                          'Exporting batch {{current}} of {{total}}',
+                          exportState
+                        )
+                      : t('Export selected')}
+                  </Button>
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    disabled={batchWorking || loading}
+                    onClick={() => void exportAll()}
+                  >
+                    <Download data-icon='inline-start' />
+                    {exportState?.mode === 'all' && exportState.total
+                      ? t(
+                          'Exporting batch {{current}} of {{total}}',
+                          exportState
+                        )
+                      : t('Export all')}
+                  </Button>
+                  <Button
+                    size='sm'
+                    variant='destructive'
+                    disabled={!checkedIds.length || batchWorking}
+                    onClick={() => void batchDelete()}
+                  >
+                    <Trash2 data-icon='inline-start' />
+                    {t('Delete selected')}
+                  </Button>
+                </div>
+                <div className='flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1 pb-2'>
+                  {skills.map((skill) => {
+                    const published = skill.published || skill.status === 1
+                    const tags = normalizeSkillTags(skill.tags)
+                    return (
+                      <div
+                        key={skill.id}
+                        className={`w-full rounded-lg border p-3 text-left transition-colors ${
+                          selectedId === skill.id
+                            ? 'border-primary bg-primary/5'
+                            : 'hover:bg-muted/50'
+                        }`}
+                      >
+                        <div className='mb-2 flex items-center gap-2'>
+                          <Checkbox
+                            aria-label={t('Select {{name}}', {
+                              name: skill.name,
+                            })}
+                            checked={checkedIds.includes(skill.id)}
+                            onCheckedChange={(checked) =>
+                              setCheckedIds((current) =>
+                                checked
+                                  ? [...new Set([...current, skill.id])]
+                                  : current.filter((id) => id !== skill.id)
+                              )
+                            }
+                          />
+                          <button
+                            type='button'
+                            className='min-w-0 flex-1 text-left'
+                            onClick={() => void selectSkill(skill)}
+                          >
+                            <div className='flex items-start justify-between gap-3'>
+                              <div className='min-w-0'>
+                                <div className='truncate font-medium'>
+                                  {skill.name}
+                                </div>
+                                <div className='text-muted-foreground truncate text-xs'>
+                                  {skill.id} · {skill.version}
+                                  {skill.author ? ` · ${skill.author}` : ''}
+                                  {skill.origin ? ` · ${skill.origin}` : ''}
+                                </div>
+                              </div>
+                              <div className='flex shrink-0 flex-wrap justify-end gap-1'>
+                                {skill.recommended && (
+                                  <Badge variant='secondary'>
+                                    {t('Recommended')}
+                                  </Badge>
+                                )}
+                                <Badge
+                                  variant={published ? 'default' : 'outline'}
+                                >
+                                  {published ? t('Published') : t('Draft')}
+                                </Badge>
+                              </div>
+                            </div>
+                            <div className='text-foreground/90 mt-2 line-clamp-2 min-h-10 text-sm'>
+                              {skill.description?.trim() ||
+                                t('No description available.')}
+                            </div>
+                            <div className='mt-2 flex max-h-7 min-h-7 flex-wrap gap-1 overflow-hidden'>
+                              {tags.slice(0, 4).map((tag) => (
+                                <span
+                                  key={tag}
+                                  className='bg-muted text-muted-foreground rounded-md px-2 py-0.5 text-xs'
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {!skills.length && (
+                    <div className='text-muted-foreground rounded-lg border p-4 text-sm'>
+                      {loading ? t('Loading...') : t('No skills configured')}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader className='flex-row items-start justify-between gap-4'>

@@ -66,6 +66,7 @@ export async function updateAdminSkillHubReport(
 export async function listAdminSkillHubSkills(params?: {
   keyword?: string
   recommended?: boolean
+  status?: string
   p?: number
   page_size?: number
 }): Promise<SkillHubListResponse> {
@@ -76,6 +77,7 @@ export async function listAdminSkillHubSkills(params?: {
 export async function listSkillHubSkills(params?: {
   keyword?: string
   recommended?: boolean
+  status?: string
   p?: number
   page_size?: number
 }): Promise<SkillHubListResponse> {
@@ -104,6 +106,7 @@ export async function listSkillHubSkillsByTags(
   params?: {
     keyword?: string
     recommended?: boolean
+    status?: string
     p?: number
     page_size?: number
   }
@@ -119,6 +122,7 @@ export async function listAdminSkillHubSkillsByTags(
   params?: {
     keyword?: string
     recommended?: boolean
+    status?: string
     p?: number
     page_size?: number
   }
@@ -512,6 +516,7 @@ function withTagIds(
   params?: {
     keyword?: string
     recommended?: boolean
+    status?: string
     p?: number
     page_size?: number
   }

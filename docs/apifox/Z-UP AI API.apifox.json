@@ -35459,7 +35459,7 @@
                         "type": "string",
                         "enum": [
                           "windows",
-                          "darwin",
+                          "macos",
                           "linux"
                         ],
                         "description": "按平台过滤"
@@ -35707,17 +35707,17 @@
                       "name": "platform",
                       "required": true,
                       "enable": true,
-                      "description": "目标平台，Windows 使用 windows",
+                      "description": "目标平台，统一使用 windows、macos 或 linux",
                       "example": "windows",
                       "type": "string",
                       "schema": {
                         "type": "string",
                         "enum": [
                           "windows",
-                          "darwin",
+                          "macos",
                           "linux"
                         ],
-                        "description": "目标平台，Windows 使用 windows"
+                        "description": "目标平台，统一使用 windows、macos 或 linux"
                       },
                       "omitGeneratedExample": false
                     },
@@ -35844,7 +35844,7 @@
                           "type": "string",
                           "value": "windows",
                           "enable": true,
-                          "description": "目标平台，Windows 使用 windows",
+                          "description": "目标平台，统一使用 windows、macos 或 linux",
                           "isDelete": false
                         },
                         {
@@ -36091,17 +36091,17 @@
                       "name": "platform",
                       "required": true,
                       "enable": true,
-                      "description": "目标平台，Windows 使用 windows",
+                      "description": "目标平台，统一使用 windows、macos 或 linux",
                       "example": "windows",
                       "type": "string",
                       "schema": {
                         "type": "string",
                         "enum": [
                           "windows",
-                          "darwin",
+                          "macos",
                           "linux"
                         ],
-                        "description": "目标平台，Windows 使用 windows"
+                        "description": "目标平台，统一使用 windows、macos 或 linux"
                       },
                       "omitGeneratedExample": false
                     },
@@ -36193,7 +36193,7 @@
                   "required": false,
                   "additionalContentTypes": []
                 },
-                "description": "Electron updater 读取的 latest.yml；按 platform/arch/channel/status=published 返回 id 最大的发布记录，Content-Type 为 text/yaml。",
+                "description": "Windows/Linux electron-updater 读取的 latest.yml；按 platform/arch/channel/status=published 返回 id 最大的发布记录。macos 客户端使用 latest-mac.yml。",
                 "tags": [
                   "客户端更新"
                 ],
@@ -36219,7 +36219,7 @@
                           "type": "string",
                           "value": "windows",
                           "enable": true,
-                          "description": "目标平台，Windows 使用 windows",
+                          "description": "目标平台，统一使用 windows、macos 或 linux",
                           "isDelete": false
                         },
                         {
@@ -36292,7 +36292,164 @@
               }
             },
             {
-              "name": "下载 latest.yml 中的安装包资源",
+              "name": "获取 macos 客户端 latest-mac.yml",
+              "api": {
+                "id": "490100301",
+                "method": "get",
+                "path": "/api/client-releases/updates/{platform}/{arch}/{channel}/latest-mac.yml",
+                "parameters": {
+                  "path": [
+                    {
+                      "id": "clientReleaseMacYml_platform",
+                      "name": "platform",
+                      "required": true,
+                      "enable": true,
+                      "description": "固定为 macos",
+                      "example": "macos",
+                      "type": "string",
+                      "schema": {
+                        "type": "string",
+                        "enum": [
+                          "macos"
+                        ],
+                        "description": "固定为 macos"
+                      },
+                      "omitGeneratedExample": false
+                    },
+                    {
+                      "id": "clientReleaseMacYml_arch",
+                      "name": "arch",
+                      "required": true,
+                      "enable": true,
+                      "description": "目标架构",
+                      "example": "arm64",
+                      "type": "string",
+                      "schema": {
+                        "type": "string",
+                        "enum": [
+                          "x64",
+                          "arm64",
+                          "universal"
+                        ],
+                        "description": "目标架构"
+                      },
+                      "omitGeneratedExample": false
+                    },
+                    {
+                      "id": "clientReleaseMacYml_channel",
+                      "name": "channel",
+                      "required": true,
+                      "enable": true,
+                      "description": "目标通道，仅 stable 或 beta",
+                      "example": "stable",
+                      "type": "string",
+                      "schema": {
+                        "type": "string",
+                        "enum": [
+                          "stable",
+                          "beta"
+                        ],
+                        "description": "目标通道，仅 stable 或 beta"
+                      },
+                      "omitGeneratedExample": false
+                    }
+                  ],
+                  "query": [],
+                  "cookie": [],
+                  "header": []
+                },
+                "auth": {},
+                "securityScheme": {},
+                "commonParameters": {},
+                "responses": [
+                  {
+                    "id": "490100401",
+                    "code": "200",
+                    "headers": [],
+                    "jsonSchema": {
+                      "type": "string",
+                      "examples": [
+                        "version: 1.2.3\nfiles:\n  - url: download/1/Z-UP-Setup-1.2.3-macos-arm64-stable.zip\n    sha512: base64-updater-sha512-value\n    size: 104857600\npath: download/1/Z-UP-Setup-1.2.3-macos-arm64-stable.zip\nsha512: base64-updater-sha512-value\nreleaseDate: 2026-07-02T01:00:00Z\n"
+                      ]
+                    },
+                    "itemSchema": {},
+                    "description": "成功返回 electron-updater latest-mac.yml",
+                    "contentType": "raw",
+                    "mediaType": "text/yaml",
+                    "oasExtensions": ""
+                  },
+                  {
+                    "id": "490100402",
+                    "code": "400",
+                    "headers": [],
+                    "jsonSchema": {
+                      "type": "string",
+                      "examples": [
+                        "latest-mac.yml is only available for macos"
+                      ]
+                    },
+                    "itemSchema": {},
+                    "description": "platform 不是 macos，或目标参数非法",
+                    "contentType": "raw",
+                    "mediaType": "text/plain",
+                    "oasExtensions": ""
+                  },
+                  {
+                    "id": "490100403",
+                    "code": "404",
+                    "headers": [],
+                    "jsonSchema": {
+                      "type": "string",
+                      "examples": [
+                        "client release not found"
+                      ]
+                    },
+                    "itemSchema": {},
+                    "description": "没有匹配的已发布版本",
+                    "contentType": "raw",
+                    "mediaType": "text/plain",
+                    "oasExtensions": ""
+                  }
+                ],
+                "responseExamples": [],
+                "requestBody": {
+                  "type": "none",
+                  "parameters": [],
+                  "oasExtensions": "",
+                  "required": false,
+                  "additionalContentTypes": []
+                },
+                "description": "macos electron-updater 更新 feed。仅接受 platform=macos，path、sha512 和 size 均来自 updater ZIP，而不是供人工下载的 DMG。",
+                "tags": [
+                  "客户端更新"
+                ],
+                "status": "released",
+                "serverId": "",
+                "operationId": "",
+                "sourceUrl": "",
+                "ordering": 4,
+                "cases": [],
+                "mocks": [],
+                "customApiFields": "{}",
+                "advancedSettings": {
+                  "disabledSystemHeaders": {}
+                },
+                "mockScript": {},
+                "codeSamples": [],
+                "commonResponseStatus": {},
+                "responseChildren": [],
+                "visibility": "INHERITED",
+                "moduleId": 8068398,
+                "oasExtensions": "",
+                "type": "http",
+                "preProcessors": [],
+                "postProcessors": [],
+                "inheritPostProcessors": {},
+                "inheritPreProcessors": {}
+              }
+            },
+            {
+              "name": "下载更新 feed 中的安装包资源",
               "api": {
                 "id": "480639305",
                 "method": "get",
@@ -36304,17 +36461,17 @@
                       "name": "platform",
                       "required": true,
                       "enable": true,
-                      "description": "目标平台，Windows 使用 windows",
+                      "description": "目标平台，统一使用 windows、macos 或 linux",
                       "example": "windows",
                       "type": "string",
                       "schema": {
                         "type": "string",
                         "enum": [
                           "windows",
-                          "darwin",
+                          "macos",
                           "linux"
                         ],
-                        "description": "目标平台，Windows 使用 windows"
+                        "description": "目标平台，统一使用 windows、macos 或 linux"
                       },
                       "omitGeneratedExample": false
                     },
@@ -36375,12 +36532,12 @@
                       "name": "filename",
                       "required": true,
                       "enable": true,
-                      "description": "latest.yml 中的文件名；用于 electron-updater 下载路径兼容",
+                      "description": "latest.yml 或 latest-mac.yml 中的文件名，必须与发布记录中的资产文件名完全一致",
                       "example": "Z-UP-Setup-1.2.3-windows-x64-stable.exe",
                       "type": "string",
                       "schema": {
                         "type": "string",
-                        "description": "latest.yml 中的文件名；用于 electron-updater 下载路径兼容"
+                        "description": "latest.yml 或 latest-mac.yml 中的文件名，必须与发布记录中的资产文件名完全一致"
                       },
                       "omitGeneratedExample": false
                     }
@@ -36427,7 +36584,7 @@
                   "required": false,
                   "additionalContentTypes": []
                 },
-                "description": "Electron updater 使用的安装包下载路径；后端按 id 查找发布记录，成功时 302 跳转到私有 OSS 短时签名 URL。",
+                "description": "Electron updater 使用的安装包下载路径。后端会校验 platform/arch/channel/id 与发布记录一致，且 filename 必须精确匹配主安装包或 macos updater ZIP；成功时 302 跳转到私有 OSS 短时签名 URL。",
                 "tags": [
                   "客户端更新"
                 ],
@@ -36435,7 +36592,7 @@
                 "serverId": "",
                 "operationId": "",
                 "sourceUrl": "",
-                "ordering": 4,
+                "ordering": 5,
                 "cases": [
                   {
                     "id": 480639505,
@@ -36453,7 +36610,7 @@
                           "type": "string",
                           "value": "windows",
                           "enable": true,
-                          "description": "目标平台，Windows 使用 windows",
+                          "description": "目标平台，统一使用 windows、macos 或 linux",
                           "isDelete": false
                         },
                         {
@@ -36497,7 +36654,7 @@
                           "type": "string",
                           "value": "Z-UP-Setup-1.2.3-windows-x64-stable.exe",
                           "enable": true,
-                          "description": "latest.yml 中的文件名；用于 electron-updater 下载路径兼容",
+                          "description": "latest.yml 或 latest-mac.yml 中的文件名，必须与发布记录中的资产文件名完全一致",
                           "isDelete": false
                         }
                       ],
@@ -36556,7 +36713,7 @@
           "securityScheme": {},
           "parentId": 0,
           "serverId": "",
-          "description": "客户端安装包与版本后台管理接口。上传后文件名由后端固定生成，OSS Object 由后台保存，前端不允许编辑上传名。列表按 id 倒序返回；公开 latest/latest.yml 也按目标范围内 id 最大的已发布记录作为最新记录。",
+          "description": "客户端安装包与版本后台管理接口。平台统一使用 windows/macos/linux。macos 每条记录包含供人工下载的 DMG 和 electron-updater 使用的 ZIP；两个文件分别执行直传，再把两组完成确认结果一起保存。公开 latest 与更新 feed 按目标范围内 id 最大的已发布记录作为最新记录；latest-mac.yml 只引用 ZIP。",
           "identityPattern": {
             "httpApi": {
               "type": "inherit",
@@ -36610,19 +36767,19 @@
                     {
                       "id": "clientReleaseAdminList_platform",
                       "name": "platform",
-                      "required": false,
+                      "required": true,
                       "enable": true,
-                      "description": "按平台过滤",
+                      "description": "必选平台工作区，只返回该平台数据",
                       "example": "windows",
                       "type": "string",
                       "schema": {
                         "type": "string",
                         "enum": [
                           "windows",
-                          "darwin",
+                          "macos",
                           "linux"
                         ],
-                        "description": "按平台过滤"
+                        "description": "必选平台工作区，只返回该平台数据"
                       },
                       "omitGeneratedExample": false
                     },
@@ -36749,7 +36906,7 @@
                   "required": false,
                   "additionalContentTypes": []
                 },
-                "description": "需要管理员权限；返回草稿和已发布版本，并包含 objectKey/status/published 等后台字段。",
+                "description": "需要 client_releases.manage 或 client_releases.publish 权限；platform 必填，Windows/macos/Linux 工作区互相隔离，只返回所选平台的草稿和已发布版本。已发布记录包含可供下载和复制的外部 downloadUrl，macos 还可能包含 updaterDownloadUrl；草稿不返回公开链接。",
                 "tags": [
                   "客户端管理"
                 ],
@@ -36787,7 +36944,7 @@
                           "type": "string",
                           "value": "windows",
                           "enable": true,
-                          "description": "按平台过滤",
+                          "description": "必选平台工作区，只返回该平台数据",
                           "isDelete": false
                         },
                         {
@@ -36972,10 +37129,10 @@
                         "type": "string",
                         "enum": [
                           "windows",
-                          "darwin",
+                          "macos",
                           "linux"
                         ],
-                        "description": "目标平台，Windows 使用 windows；初始化前会校验并归一化",
+                        "description": "目标平台，统一使用 windows、macos 或 linux；初始化前会校验并归一化",
                         "example": "windows"
                       },
                       "arch": {
@@ -37005,7 +37162,7 @@
                   "required": true,
                   "additionalContentTypes": []
                 },
-                "description": "需要管理员权限；根据安装包文件名、大小和目标版本信息生成 _tmp 临时 OSS PUT signed URL。后端会先校验 version/platform/arch/channel、文件扩展名和大小，再强制生成文件名 Z-UP-Setup-{version}-{platform}-{arch}-{channel}.{ext} 与临时 OSS Object Key。安装包文件本体由浏览器直接 PUT 到 OSS，不经过 New API。",
+                "description": "需要 client_releases.manage 权限；必须先提供 version/platform/arch/channel。后端按平台校验类型：Windows 支持 exe/msi/zip，macos 支持 DMG（人工下载）与 ZIP（自动更新），Linux 支持 AppImage/deb/rpm/zip；然后生成单个 _tmp OSS PUT signed URL 和规范文件名 Z-UP-Setup-{version}-{platform}-{arch}-{channel}.{ext}。上传票据绑定当前管理员，文件本体由浏览器直接 PUT 到 OSS。",
                 "tags": [
                   "客户端管理"
                 ],
@@ -37177,7 +37334,7 @@
                   "required": true,
                   "additionalContentTypes": []
                 },
-                "description": "需要管理员权限；浏览器完成 OSS PUT 后调用该接口。后端校验上传票据、检查 _tmp 临时 OSS 对象大小，并从 OSS 读取对象重新计算 sha256 和 sha512，返回保存版本记录所需的文件信息；保存版本记录时后端会将临时对象复制到正式目录。",
+                "description": "需要 client_releases.manage 权限；浏览器每完成一次 OSS PUT 后调用本接口。后端校验短时上传票据、原发起管理员、对象大小，并重新计算 sha256/sha512，票据不能跨账号复用。macos DMG 的结果映射到 fileName/objectKey/size/sha*，ZIP 的结果映射到 updaterFileName/updaterObjectKey/updaterSize/updaterSha*；保存转正时会再次按 ETag 读取并计算哈希，再用同一 ETag 条件复制。",
                 "tags": [
                   "客户端管理"
                 ],
@@ -37329,7 +37486,7 @@
                   "required": true,
                   "additionalContentTypes": []
                 },
-                "description": "需要管理员权限（Admin）；用于清理已经 PUT 到 OSS 但尚未保存到客户端版本记录的 _tmp 临时安装包对象。",
+                "description": "需要 client_releases.manage 权限；清理已经 PUT 到 OSS 但尚未保存的 _tmp 临时对象。票据只允许原发起管理员使用；切换平台/记录或离开页面时管理端会 best-effort 调用，macos 的 DMG 与 ZIP 上传票据分别丢弃。",
                 "tags": [
                   "客户端管理"
                 ],
@@ -37427,7 +37584,7 @@
                   "required": true,
                   "additionalContentTypes": []
                 },
-                "description": "需要管理员权限；创建版本记录。version 必须是 x.y.z；channel 仅 stable/beta；platform 建议使用 windows/darwin/linux。同 version/platform/arch/channel 存在唯一约束。",
+                "description": "需要 client_releases.manage 权限；创建草稿版本记录。version 必须是 x.y.z；channel 仅 stable/beta；platform 使用 windows/macos/linux。同 version/platform/arch/channel 存在唯一约束。macos 需要分别提交 DMG 主资产和 ZIP updater 资产后才能发布。",
                 "tags": [
                   "客户端管理"
                 ],
@@ -37515,7 +37672,23 @@
                       "omitGeneratedExample": false
                     }
                   ],
-                  "query": [],
+                  "query": [
+                    {
+                      "id": "clientReleaseAdminGet_platform",
+                      "name": "platform",
+                      "required": true,
+                      "enable": true,
+                      "description": "必选平台工作区，ID 必须属于该平台",
+                      "example": "windows",
+                      "type": "string",
+                      "schema": {
+                        "type": "string",
+                        "enum": ["windows", "macos", "linux"],
+                        "description": "必选平台工作区，ID 必须属于该平台"
+                      },
+                      "omitGeneratedExample": false
+                    }
+                  ],
                   "cookie": [],
                   "header": []
                 },
@@ -37572,7 +37745,7 @@
                   "required": false,
                   "additionalContentTypes": []
                 },
-                "description": "需要管理员权限；按 ID 获取客户端版本详情。",
+                "description": "需要 client_releases.manage 或 client_releases.publish 权限；platform 必填，ID 必须属于所选平台工作区。",
                 "tags": [
                   "客户端管理"
                 ],
@@ -37602,7 +37775,19 @@
                           "isDelete": false
                         }
                       ],
-                      "query": [],
+                      "query": [
+                        {
+                          "id": "case_480639314_query_clientReleaseAdminGet_platform",
+                          "relatedId": "clientReleaseAdminGet_platform",
+                          "relatedName": "platform",
+                          "name": "platform",
+                          "type": "string",
+                          "value": "windows",
+                          "enable": true,
+                          "description": "必选平台工作区，ID 必须属于该平台",
+                          "isDelete": false
+                        }
+                      ],
                       "cookie": [],
                       "header": []
                     },
@@ -37671,7 +37856,23 @@
                       "omitGeneratedExample": false
                     }
                   ],
-                  "query": [],
+                  "query": [
+                    {
+                      "id": "clientReleaseAdminUpdate_platform",
+                      "name": "platform",
+                      "required": true,
+                      "enable": true,
+                      "description": "必选平台工作区，ID 必须属于该平台",
+                      "example": "windows",
+                      "type": "string",
+                      "schema": {
+                        "type": "string",
+                        "enum": ["windows", "macos", "linux"],
+                        "description": "必选平台工作区，ID 必须属于该平台"
+                      },
+                      "omitGeneratedExample": false
+                    }
+                  ],
                   "cookie": [],
                   "header": []
                 },
@@ -37732,7 +37933,7 @@
                   "required": true,
                   "additionalContentTypes": []
                 },
-                "description": "需要管理员权限；更新版本记录。用于同版本冲突时覆盖既有记录，也可修改发布说明、强制更新策略和发布状态。",
+                "description": "需要 client_releases.manage 权限；platform 必填且 ID 必须属于该平台，平台不可修改。必须回传最近响应中的 revision，后端在行锁内发现旧 revision 时拒绝覆盖。修改资产、发布说明或强制更新策略不改变发布状态；替换资产必须提交刚完成直传的 _tmp 对象。修改已发布记录还需要 client_releases.publish 权限。",
                 "tags": [
                   "客户端管理"
                 ],
@@ -37762,7 +37963,19 @@
                           "isDelete": false
                         }
                       ],
-                      "query": [],
+                      "query": [
+                        {
+                          "id": "case_480639315_query_clientReleaseAdminUpdate_platform",
+                          "relatedId": "clientReleaseAdminUpdate_platform",
+                          "relatedName": "platform",
+                          "name": "platform",
+                          "type": "string",
+                          "value": "windows",
+                          "enable": true,
+                          "description": "必选平台工作区，ID 必须属于该平台",
+                          "isDelete": false
+                        }
+                      ],
                       "cookie": [],
                       "header": []
                     },
@@ -37832,7 +38045,23 @@
                       "omitGeneratedExample": false
                     }
                   ],
-                  "query": [],
+                  "query": [
+                    {
+                      "id": "clientReleaseAdminDelete_platform",
+                      "name": "platform",
+                      "required": true,
+                      "enable": true,
+                      "description": "必选平台工作区，ID 必须属于该平台",
+                      "example": "windows",
+                      "type": "string",
+                      "schema": {
+                        "type": "string",
+                        "enum": ["windows", "macos", "linux"],
+                        "description": "必选平台工作区，ID 必须属于该平台"
+                      },
+                      "omitGeneratedExample": false
+                    }
+                  ],
                   "cookie": [],
                   "header": []
                 },
@@ -37889,7 +38118,7 @@
                   "required": false,
                   "additionalContentTypes": []
                 },
-                "description": "需要管理员权限；删除客户端版本记录。",
+                "description": "需要 client_releases.manage 权限；platform 必填且 ID 必须属于该平台。删除已发布记录还需要 client_releases.publish。删除成功后 best-effort 清理主安装包和 macos updater ZIP。",
                 "tags": [
                   "客户端管理"
                 ],
@@ -37919,7 +38148,19 @@
                           "isDelete": false
                         }
                       ],
-                      "query": [],
+                      "query": [
+                        {
+                          "id": "case_480639316_query_clientReleaseAdminDelete_platform",
+                          "relatedId": "clientReleaseAdminDelete_platform",
+                          "relatedName": "platform",
+                          "name": "platform",
+                          "type": "string",
+                          "value": "windows",
+                          "enable": true,
+                          "description": "必选平台工作区，ID 必须属于该平台",
+                          "isDelete": false
+                        }
+                      ],
                       "cookie": [],
                       "header": []
                     },
@@ -37988,7 +38229,23 @@
                       "omitGeneratedExample": false
                     }
                   ],
-                  "query": [],
+                  "query": [
+                    {
+                      "id": "clientReleaseAdminPublish_platform",
+                      "name": "platform",
+                      "required": true,
+                      "enable": true,
+                      "description": "必选平台工作区，ID 必须属于该平台",
+                      "example": "windows",
+                      "type": "string",
+                      "schema": {
+                        "type": "string",
+                        "enum": ["windows", "macos", "linux"],
+                        "description": "必选平台工作区，ID 必须属于该平台"
+                      },
+                      "omitGeneratedExample": false
+                    }
+                  ],
                   "cookie": [],
                   "header": []
                 },
@@ -38045,7 +38302,7 @@
                   "required": false,
                   "additionalContentTypes": []
                 },
-                "description": "需要管理员权限；将版本状态改为已发布。发布前必须已有 sha512，否则 latest.yml 无法供 electron-updater 校验。公开列表、latest 接口和 latest.yml 只会读取已发布版本。",
+                "description": "需要 client_releases.publish 权限；platform 必填且 ID 必须属于该平台。将版本状态改为已发布并递增 revision。主资产必须有 sha512；macos 还必须有 ZIP updater 及 updaterSha512。发布后响应包含可供管理端下载和复制的公开链接。",
                 "tags": [
                   "客户端管理"
                 ],
@@ -38075,7 +38332,19 @@
                           "isDelete": false
                         }
                       ],
-                      "query": [],
+                      "query": [
+                        {
+                          "id": "case_480639317_query_clientReleaseAdminPublish_platform",
+                          "relatedId": "clientReleaseAdminPublish_platform",
+                          "relatedName": "platform",
+                          "name": "platform",
+                          "type": "string",
+                          "value": "windows",
+                          "enable": true,
+                          "description": "必选平台工作区，ID 必须属于该平台",
+                          "isDelete": false
+                        }
+                      ],
                       "cookie": [],
                       "header": []
                     },
@@ -38144,7 +38413,23 @@
                       "omitGeneratedExample": false
                     }
                   ],
-                  "query": [],
+                  "query": [
+                    {
+                      "id": "clientReleaseAdminUnpublish_platform",
+                      "name": "platform",
+                      "required": true,
+                      "enable": true,
+                      "description": "必选平台工作区，ID 必须属于该平台",
+                      "example": "windows",
+                      "type": "string",
+                      "schema": {
+                        "type": "string",
+                        "enum": ["windows", "macos", "linux"],
+                        "description": "必选平台工作区，ID 必须属于该平台"
+                      },
+                      "omitGeneratedExample": false
+                    }
+                  ],
                   "cookie": [],
                   "header": []
                 },
@@ -38201,7 +38486,7 @@
                   "required": false,
                   "additionalContentTypes": []
                 },
-                "description": "需要管理员权限；将版本状态改为草稿。取消发布后公开更新接口不再返回该版本。",
+                "description": "需要 client_releases.publish 权限；platform 必填且 ID 必须属于该平台。将版本状态改为草稿并递增 revision。取消发布后公开列表、latest、下载/复制链接和更新 feed 不再返回该版本。",
                 "tags": [
                   "客户端管理"
                 ],
@@ -38231,7 +38516,19 @@
                           "isDelete": false
                         }
                       ],
-                      "query": [],
+                      "query": [
+                        {
+                          "id": "case_480639318_query_clientReleaseAdminUnpublish_platform",
+                          "relatedId": "clientReleaseAdminUnpublish_platform",
+                          "relatedName": "platform",
+                          "name": "platform",
+                          "type": "string",
+                          "value": "windows",
+                          "enable": true,
+                          "description": "必选平台工作区，ID 必须属于该平台",
+                          "isDelete": false
+                        }
+                      ],
                       "cookie": [],
                       "header": []
                     },
@@ -52550,7 +52847,7 @@
           "name": "ClientRelease",
           "displayName": "",
           "id": "#/definitions/289952101",
-          "description": "客户端版本记录。公开接口不会返回 objectKey/status/published 等后台字段",
+          "description": "客户端版本记录。公开接口不会返回 objectKey、updater*、status、published 等后台字段",
           "schema": {
             "jsonSchema": {
               "type": "object",
@@ -52573,10 +52870,10 @@
                 },
                 "platform": {
                   "type": "string",
-                  "description": "目标平台。Windows 使用 windows；后端兼容 win32 别名，但新数据建议统一使用 windows",
+                  "description": "目标平台，统一使用 windows、macos 或 linux",
                   "enum": [
                     "windows",
-                    "darwin",
+                    "macos",
                     "linux"
                   ],
                   "examples": [
@@ -52624,9 +52921,25 @@
                 "downloadUrl": {
                   "type": "string",
                   "format": "uri",
-                  "description": "New API 下载入口。调用后会 302 跳转到私有 OSS 的短时签名地址",
+                  "description": "已发布主安装包的外部下载入口。调用后会 302 跳转到私有 OSS 的短时签名地址；草稿不返回",
                   "examples": [
                     "https://api.example.com/api/client-releases/download/1"
+                  ]
+                },
+                "updaterDownloadUrl": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "已发布 macos updater ZIP 的外部下载入口；其他平台和草稿不返回",
+                  "examples": [
+                    "https://api.example.com/api/client-releases/updates/macos/arm64/stable/download/1/Z-UP-Setup-1.2.3-macos-arm64-stable.zip"
+                  ]
+                },
+                "updateManifestUrl": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "已发布版本的外部更新清单地址；macos 为 latest-mac.yml，其他平台为 latest.yml；草稿不返回",
+                  "examples": [
+                    "https://api.example.com/api/client-releases/updates/macos/arm64/stable/latest-mac.yml"
                   ]
                 },
                 "size": {
@@ -52645,9 +52958,44 @@
                 },
                 "sha512": {
                   "type": "string",
-                  "description": "SHA512 base64 校验值，供 electron-updater latest.yml 使用；已发布版本必须存在",
+                  "description": "DMG/主安装包 SHA512 base64 校验值；已发布版本必须存在",
                   "examples": [
                     "base64-sha512-value"
+                  ]
+                },
+                "updaterFileName": {
+                  "type": "string",
+                  "description": "macos 自动更新 ZIP 文件名；仅后台接口返回",
+                  "examples": [
+                    "Z-UP-Setup-1.2.3-macos-arm64-stable.zip"
+                  ]
+                },
+                "updaterObjectKey": {
+                  "type": "string",
+                  "description": "macos 自动更新 ZIP 私有 OSS Object Key；仅后台接口返回",
+                  "examples": [
+                    "client-releases/stable/macos/arm64/1.2.3/20260702090000.000000000-Z-UP-Setup-1.2.3-macos-arm64-stable.zip"
+                  ]
+                },
+                "updaterSize": {
+                  "type": "integer",
+                  "description": "macos 自动更新 ZIP 大小，单位 byte；仅后台接口返回",
+                  "examples": [
+                    104857600
+                  ]
+                },
+                "updaterSha256": {
+                  "type": "string",
+                  "description": "macos 自动更新 ZIP 的 SHA256；仅后台接口返回",
+                  "examples": [
+                    "sha256:0123456789abcdef"
+                  ]
+                },
+                "updaterSha512": {
+                  "type": "string",
+                  "description": "macos 自动更新 ZIP 的 SHA512 base64 校验值；发布 macos 版本时必须存在",
+                  "examples": [
+                    "base64-updater-sha512-value"
                   ]
                 },
                 "releaseNotes": {
@@ -52690,6 +53038,13 @@
                     1
                   ]
                 },
+                "revision": {
+                  "type": "integer",
+                  "description": "记录乐观并发版本号。创建成功后从 1 开始，每次保存、发布或取消发布后递增",
+                  "examples": [
+                    3
+                  ]
+                },
                 "createdAt": {
                   "type": "string",
                   "format": "date-time",
@@ -52715,7 +53070,8 @@
                 "channel",
                 "fileName",
                 "size",
-                "forced"
+                "forced",
+                "revision"
               ],
               "x-apifox-orders": [
                 "id",
@@ -52726,14 +53082,22 @@
                 "fileName",
                 "objectKey",
                 "downloadUrl",
+                "updaterDownloadUrl",
+                "updateManifestUrl",
                 "size",
                 "sha256",
                 "sha512",
+                "updaterFileName",
+                "updaterObjectKey",
+                "updaterSize",
+                "updaterSha256",
+                "updaterSha512",
                 "releaseNotes",
                 "minVersion",
                 "forced",
                 "published",
                 "status",
+                "revision",
                 "createdAt",
                 "updatedAt"
               ]
@@ -52835,12 +53199,20 @@
           "name": "ClientReleaseRequest",
           "displayName": "",
           "id": "#/definitions/289952104",
-          "description": "创建或更新客户端版本记录的请求体。草稿可先保存，已发布版本必须带 sha512。",
+          "description": "创建或更新客户端版本记录的请求体。发布状态不由此请求修改。创建时 revision 传 0；更新时回传最近响应中的 revision，冲突时刷新后重试。文件名必须精确匹配 version/platform/arch/channel。macos 主资产必须为 DMG；发布前还必须提供 updater ZIP 及 updaterSha512。",
           "schema": {
             "jsonSchema": {
               "type": "object",
               "description": "",
               "properties": {
+                "revision": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "乐观并发版本号；创建传 0，更新时原样回传最近一次响应值",
+                  "examples": [
+                    3
+                  ]
+                },
                 "version": {
                   "type": "string",
                   "description": "客户端版本号，必须是 x.y.z 三段数字，例如 1.2.3；不支持 v 前缀、预发布号或 build 后缀",
@@ -52851,10 +53223,10 @@
                 },
                 "platform": {
                   "type": "string",
-                  "description": "目标平台。Windows 使用 windows；后端兼容 win32 别名，但新数据建议统一使用 windows",
+                  "description": "目标平台，统一使用 windows、macos 或 linux",
                   "enum": [
                     "windows",
-                    "darwin",
+                    "macos",
                     "linux"
                   ],
                   "examples": [
@@ -52876,7 +53248,7 @@
                 },
                 "channel": {
                   "type": "string",
-                  "description": "发布通道，仅支持 stable 或 beta；为空时后端默认 stable",
+                  "description": "发布通道，必须显式提供 stable 或 beta",
                   "enum": [
                     "stable",
                     "beta"
@@ -52894,7 +53266,7 @@
                 },
                 "objectKey": {
                   "type": "string",
-                  "description": "直传完成确认接口返回的 _tmp 临时 object 字段，保存版本记录时传入 objectKey；保存成功后响应会返回正式 objectKey",
+                  "description": "直传完成确认接口返回的 _tmp object。保存时后端校验目标文件名，并按 ETag 重新计算大小/哈希后条件复制；成功响应返回正式 objectKey",
                   "examples": [
                     "client-releases/_tmp/8f3c6e9d2a1b4c5d9e0f123456789abc/Z-UP-Setup-1.2.3-windows-x64-stable.exe"
                   ]
@@ -52915,9 +53287,44 @@
                 },
                 "sha512": {
                   "type": "string",
-                  "description": "直传完成确认接口返回的 sha512；已发布版本必须存在",
+                  "description": "DMG/主安装包直传完成确认接口返回的 sha512；已发布版本必须存在",
                   "examples": [
                     "base64-sha512-value"
+                  ]
+                },
+                "updaterFileName": {
+                  "type": "string",
+                  "description": "macos updater ZIP 完成确认接口返回的 fileName；其他平台应省略",
+                  "examples": [
+                    "Z-UP-Setup-1.2.3-macos-arm64-stable.zip"
+                  ]
+                },
+                "updaterObjectKey": {
+                  "type": "string",
+                  "description": "macos updater ZIP 完成确认接口返回的 _tmp object；其他平台应省略",
+                  "examples": [
+                    "client-releases/_tmp/8f3c6e9d2a1b4c5d9e0f123456789abc/Z-UP-Setup-1.2.3-macos-arm64-stable.zip"
+                  ]
+                },
+                "updaterSize": {
+                  "type": "integer",
+                  "description": "macos updater ZIP 完成确认接口返回的 size，单位 byte",
+                  "examples": [
+                    104857600
+                  ]
+                },
+                "updaterSha256": {
+                  "type": "string",
+                  "description": "macos updater ZIP 完成确认接口返回的 sha256",
+                  "examples": [
+                    "sha256:0123456789abcdef"
+                  ]
+                },
+                "updaterSha512": {
+                  "type": "string",
+                  "description": "macos updater ZIP 完成确认接口返回的 sha512；发布 macos 版本时必须存在",
+                  "examples": [
+                    "base64-updater-sha512-value"
                   ]
                 },
                 "releaseNotes": {
@@ -52941,27 +53348,10 @@
                   "examples": [
                     false
                   ]
-                },
-                "published": {
-                  "type": "boolean",
-                  "description": "是否直接发布；status 为空时会按该值写入状态",
-                  "examples": [
-                    false
-                  ]
-                },
-                "status": {
-                  "type": "integer",
-                  "description": "发布状态：0=草稿，1=已发布；传入时优先于 published",
-                  "enum": [
-                    0,
-                    1
-                  ],
-                  "examples": [
-                    0
-                  ]
                 }
               },
               "required": [
+                "revision",
                 "version",
                 "platform",
                 "arch",
@@ -52971,6 +53361,7 @@
                 "size"
               ],
               "x-apifox-orders": [
+                "revision",
                 "version",
                 "platform",
                 "arch",
@@ -52980,11 +53371,14 @@
                 "size",
                 "sha256",
                 "sha512",
+                "updaterFileName",
+                "updaterObjectKey",
+                "updaterSize",
+                "updaterSha256",
+                "updaterSha512",
                 "releaseNotes",
                 "minVersion",
-                "forced",
-                "published",
-                "status"
+                "forced"
               ]
             }
           },

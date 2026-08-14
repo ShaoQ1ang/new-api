@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -11,7 +12,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 const (
@@ -24,46 +24,72 @@ const (
 var clientReleaseVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
 var ErrClientReleasePublishPermissionRequired = errors.New("client release publish permission is required")
+var ErrClientReleaseRevisionConflict = errors.New("client release was changed by another request")
 
 type ClientRelease struct {
-	Id           int            `json:"id" gorm:"primaryKey"`
-	Version      string         `json:"version" gorm:"size:64;not null;uniqueIndex:uk_client_release_version_target_delete_at,priority:1"`
-	Platform     string         `json:"platform" gorm:"size:32;not null;index;uniqueIndex:uk_client_release_version_target_delete_at,priority:2"`
-	Arch         string         `json:"arch" gorm:"size:32;not null;index;uniqueIndex:uk_client_release_version_target_delete_at,priority:3"`
-	Channel      string         `json:"channel" gorm:"size:32;not null;default:stable;index;uniqueIndex:uk_client_release_version_target_delete_at,priority:4"`
-	FileName     string         `json:"fileName" gorm:"size:255;not null"`
-	ObjectKey    string         `json:"-" gorm:"column:object_key;type:text;not null"`
-	Size         int64          `json:"size" gorm:"bigint;not null;default:0"`
-	SHA256       string         `json:"sha256,omitempty" gorm:"size:128"`
-	SHA512       string         `json:"sha512,omitempty" gorm:"type:text"`
-	ReleaseNotes string         `json:"releaseNotes,omitempty" gorm:"type:text"`
-	MinVersion   string         `json:"minVersion,omitempty" gorm:"size:64"`
-	Forced       bool           `json:"forced" gorm:"default:false"`
-	Status       int            `json:"status" gorm:"default:0;index"`
-	CreatedTime  int64          `json:"createdTime" gorm:"bigint"`
-	UpdatedTime  int64          `json:"updatedTime" gorm:"bigint"`
-	DeletedAt    gorm.DeletedAt `json:"-" gorm:"index;uniqueIndex:uk_client_release_version_target_delete_at,priority:5"`
+	Id               int            `json:"id" gorm:"primaryKey"`
+	Version          string         `json:"version" gorm:"size:64;not null;uniqueIndex:uk_client_release_version_target_delete_at,priority:1"`
+	Platform         string         `json:"platform" gorm:"size:32;not null;index;uniqueIndex:uk_client_release_version_target_delete_at,priority:2"`
+	Arch             string         `json:"arch" gorm:"size:32;not null;index;uniqueIndex:uk_client_release_version_target_delete_at,priority:3"`
+	Channel          string         `json:"channel" gorm:"size:32;not null;default:stable;index;uniqueIndex:uk_client_release_version_target_delete_at,priority:4"`
+	FileName         string         `json:"fileName" gorm:"size:255;not null"`
+	ObjectKey        string         `json:"-" gorm:"column:object_key;type:text;not null"`
+	Size             int64          `json:"size" gorm:"bigint;not null;default:0"`
+	SHA256           string         `json:"sha256,omitempty" gorm:"size:128"`
+	SHA512           string         `json:"sha512,omitempty" gorm:"type:text"`
+	UpdaterFileName  string         `json:"updaterFileName,omitempty" gorm:"size:255"`
+	UpdaterObjectKey string         `json:"-" gorm:"column:updater_object_key;type:text"`
+	UpdaterSize      int64          `json:"updaterSize,omitempty" gorm:"bigint;not null;default:0"`
+	UpdaterSHA256    string         `json:"updaterSha256,omitempty" gorm:"size:128"`
+	UpdaterSHA512    string         `json:"updaterSha512,omitempty" gorm:"type:text"`
+	ReleaseNotes     string         `json:"releaseNotes,omitempty" gorm:"type:text"`
+	MinVersion       string         `json:"minVersion,omitempty" gorm:"size:64"`
+	Forced           bool           `json:"forced" gorm:"default:false"`
+	Status           int            `json:"status" gorm:"default:0;index"`
+	Revision         int64          `json:"revision" gorm:"not null;default:0"`
+	CreatedTime      int64          `json:"createdTime" gorm:"bigint"`
+	UpdatedTime      int64          `json:"updatedTime" gorm:"bigint"`
+	DeletedAt        gorm.DeletedAt `json:"-" gorm:"index;uniqueIndex:uk_client_release_version_target_delete_at,priority:5"`
 }
 
 type ClientReleaseResponse struct {
-	ID           int    `json:"id"`
-	Version      string `json:"version"`
-	Platform     string `json:"platform"`
-	Arch         string `json:"arch"`
-	Channel      string `json:"channel"`
-	FileName     string `json:"fileName"`
-	ObjectKey    string `json:"objectKey,omitempty"`
-	DownloadURL  string `json:"downloadUrl,omitempty"`
-	Size         int64  `json:"size"`
-	SHA256       string `json:"sha256,omitempty"`
-	SHA512       string `json:"sha512,omitempty"`
-	ReleaseNotes string `json:"releaseNotes,omitempty"`
-	MinVersion   string `json:"minVersion,omitempty"`
-	Forced       bool   `json:"forced"`
-	Published    bool   `json:"published,omitempty"`
-	Status       int    `json:"status,omitempty"`
-	CreatedAt    string `json:"createdAt,omitempty"`
-	UpdatedAt    string `json:"updatedAt,omitempty"`
+	ID                 int    `json:"id"`
+	Version            string `json:"version"`
+	Platform           string `json:"platform"`
+	Arch               string `json:"arch"`
+	Channel            string `json:"channel"`
+	FileName           string `json:"fileName"`
+	ObjectKey          string `json:"objectKey,omitempty"`
+	DownloadURL        string `json:"downloadUrl,omitempty"`
+	UpdaterDownloadURL string `json:"updaterDownloadUrl,omitempty"`
+	UpdateManifestURL  string `json:"updateManifestUrl,omitempty"`
+	Size               int64  `json:"size"`
+	SHA256             string `json:"sha256,omitempty"`
+	SHA512             string `json:"sha512,omitempty"`
+	UpdaterFileName    string `json:"updaterFileName,omitempty"`
+	UpdaterObjectKey   string `json:"updaterObjectKey,omitempty"`
+	UpdaterSize        int64  `json:"updaterSize,omitempty"`
+	UpdaterSHA256      string `json:"updaterSha256,omitempty"`
+	UpdaterSHA512      string `json:"updaterSha512,omitempty"`
+	ReleaseNotes       string `json:"releaseNotes,omitempty"`
+	MinVersion         string `json:"minVersion,omitempty"`
+	Forced             bool   `json:"forced"`
+	Published          bool   `json:"published,omitempty"`
+	Status             int    `json:"status,omitempty"`
+	Revision           int64  `json:"revision"`
+	CreatedAt          string `json:"createdAt,omitempty"`
+	UpdatedAt          string `json:"updatedAt,omitempty"`
+}
+
+type ClientReleaseObjectKeys struct {
+	Installer string
+	Updater   string
+}
+
+type ClientReleaseURLs struct {
+	DownloadURL        string
+	UpdaterDownloadURL string
+	UpdateManifestURL  string
 }
 
 type ClientReleaseListResponse struct {
@@ -72,6 +98,9 @@ type ClientReleaseListResponse struct {
 }
 
 func (r *ClientRelease) BeforeSave(tx *gorm.DB) error {
+	if strings.TrimSpace(r.Channel) == "" {
+		return errors.New("client release channel is required")
+	}
 	r.Version = NormalizeClientReleaseVersion(r.Version)
 	r.Platform = NormalizeClientReleasePlatform(r.Platform)
 	r.Arch = NormalizeClientReleaseArch(r.Arch)
@@ -80,10 +109,17 @@ func (r *ClientRelease) BeforeSave(tx *gorm.DB) error {
 	r.ObjectKey = strings.TrimLeft(strings.TrimSpace(r.ObjectKey), "/")
 	r.SHA256 = strings.TrimSpace(r.SHA256)
 	r.SHA512 = strings.TrimSpace(r.SHA512)
+	r.UpdaterFileName = cleanClientReleaseFileName(r.UpdaterFileName)
+	r.UpdaterObjectKey = strings.TrimLeft(strings.TrimSpace(r.UpdaterObjectKey), "/")
+	r.UpdaterSHA256 = strings.TrimSpace(r.UpdaterSHA256)
+	r.UpdaterSHA512 = strings.TrimSpace(r.UpdaterSHA512)
 	r.MinVersion = NormalizeClientReleaseVersion(r.MinVersion)
 	r.ReleaseNotes = strings.TrimSpace(r.ReleaseNotes)
 	if err := ValidateClientRelease(r); err != nil {
 		return err
+	}
+	if r.Revision <= 0 {
+		r.Revision = 1
 	}
 	now := common.GetTimestamp()
 	if r.CreatedTime == 0 {
@@ -101,7 +137,7 @@ func ValidateClientRelease(r *ClientRelease) error {
 		return err
 	}
 	if !IsAllowedClientReleasePlatform(r.Platform) {
-		return errors.New("client release platform must be windows, darwin, or linux")
+		return errors.New("client release platform must be windows, macos, or linux")
 	}
 	if !IsAllowedClientReleaseArch(r.Arch) {
 		return errors.New("client release arch must be x64, arm64, ia32, or universal")
@@ -117,6 +153,12 @@ func ValidateClientRelease(r *ClientRelease) error {
 	if r.FileName == "" {
 		return errors.New("client release file name is required")
 	}
+	if expected := ClientReleaseExpectedFileName(r.Version, r.Platform, r.Arch, r.Channel, r.FileName); r.FileName != expected {
+		return fmt.Errorf("client release installer file name does not match target; expected %s", expected)
+	}
+	if !IsAllowedClientReleaseInstallerFile(r.Platform, r.FileName) {
+		return fmt.Errorf("client release installer file type is not supported for %s", NormalizeClientReleasePlatform(r.Platform))
+	}
 	if r.ObjectKey == "" {
 		return errors.New("client release OSS object is required")
 	}
@@ -130,6 +172,29 @@ func ValidateClientRelease(r *ClientRelease) error {
 	}
 	if r.Status == ClientReleaseStatusPublished && r.SHA512 == "" {
 		return errors.New("client release sha512 is required before publishing")
+	}
+	updaterAssetPresent := r.UpdaterFileName != "" || r.UpdaterObjectKey != "" || r.UpdaterSize != 0 || r.UpdaterSHA256 != "" || r.UpdaterSHA512 != ""
+	if updaterAssetPresent {
+		if NormalizeClientReleasePlatform(r.Platform) != "macos" {
+			return errors.New("client release updater asset is only supported for macos")
+		}
+		if !strings.HasSuffix(strings.ToLower(r.UpdaterFileName), ".zip") {
+			return errors.New("macos client release updater package must be a zip file")
+		}
+		if r.UpdaterObjectKey == "" || r.UpdaterSize <= 0 || r.UpdaterSHA512 == "" {
+			return errors.New("macos client release updater package metadata is incomplete")
+		}
+		if expected := ClientReleaseExpectedFileName(r.Version, r.Platform, r.Arch, r.Channel, r.UpdaterFileName); r.UpdaterFileName != expected {
+			return fmt.Errorf("client release updater file name does not match target; expected %s", expected)
+		}
+	}
+	if NormalizeClientReleasePlatform(r.Platform) == "macos" {
+		if !strings.HasSuffix(strings.ToLower(r.FileName), ".dmg") {
+			return errors.New("macos client release installer must be a dmg file")
+		}
+		if r.Status == ClientReleaseStatusPublished && !updaterAssetPresent {
+			return errors.New("macos client release updater zip is required before publishing")
+		}
 	}
 	return nil
 }
@@ -154,8 +219,8 @@ func NormalizeClientReleasePlatform(value string) string {
 	switch value {
 	case "win", "win32", "windows":
 		return "windows"
-	case "mac", "macos", "osx":
-		return "darwin"
+	case "darwin", "mac", "macos", "osx":
+		return "macos"
 	default:
 		return value
 	}
@@ -192,7 +257,7 @@ func IsAllowedClientReleaseChannel(value string) bool {
 
 func IsAllowedClientReleasePlatform(value string) bool {
 	switch NormalizeClientReleasePlatform(value) {
-	case "windows", "darwin", "linux":
+	case "windows", "macos", "linux":
 		return true
 	default:
 		return false
@@ -206,6 +271,9 @@ func clientReleasePlatformAliases(platform string) []string {
 	}
 	if platform == "windows" {
 		return []string{"windows", "win32"}
+	}
+	if platform == "macos" {
+		return []string{"macos", "darwin"}
 	}
 	return []string{platform}
 }
@@ -227,8 +295,20 @@ func (r *ClientRelease) Update() error {
 	return DB.Save(r).Error
 }
 
-func (r *ClientRelease) UpdateReturningPreviousObjectKey(actorUserId int) (string, error) {
-	var previousObjectKey string
+func (r *ClientRelease) UpdateReturningPreviousObjectKeys(actorUserId int) (ClientReleaseObjectKeys, error) {
+	return r.updateReturningPreviousObjectKeys(actorUserId, nil, nil)
+}
+
+func (r *ClientRelease) UpdateReturningPreviousObjectKeysFrom(actorUserId int, expected ClientReleaseObjectKeys) (ClientReleaseObjectKeys, error) {
+	return r.updateReturningPreviousObjectKeys(actorUserId, &expected, nil)
+}
+
+func (r *ClientRelease) UpdateReturningPreviousObjectKeysFromRevision(actorUserId int, expected ClientReleaseObjectKeys, expectedRevision int64) (ClientReleaseObjectKeys, error) {
+	return r.updateReturningPreviousObjectKeys(actorUserId, &expected, &expectedRevision)
+}
+
+func (r *ClientRelease) updateReturningPreviousObjectKeys(actorUserId int, expected *ClientReleaseObjectKeys, expectedRevision *int64) (ClientReleaseObjectKeys, error) {
+	var previousObjectKeys ClientReleaseObjectKeys
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		allowPublished, err := hasAnyManagementPermissionTx(
 			tx,
@@ -240,28 +320,65 @@ func (r *ClientRelease) UpdateReturningPreviousObjectKey(actorUserId int) (strin
 			return err
 		}
 		var current ClientRelease
-		query := tx
-		if tx.Dialector.Name() != "sqlite" {
-			query = query.Clauses(clause.Locking{Strength: "UPDATE"})
-		}
-		if err := query.Where("id = ?", r.Id).First(&current).Error; err != nil {
+		if err := lockForUpdate(tx).Where("id = ?", r.Id).First(&current).Error; err != nil {
 			return err
 		}
 		if current.Status == ClientReleaseStatusPublished && !allowPublished {
 			return ErrClientReleasePublishPermissionRequired
 		}
-		previousObjectKey = current.ObjectKey
+		if expectedRevision != nil && current.Revision != *expectedRevision {
+			return ErrClientReleaseRevisionConflict
+		}
+		if NormalizeClientReleasePlatform(current.Platform) != NormalizeClientReleasePlatform(r.Platform) {
+			return errors.New("client release platform cannot be changed")
+		}
+		previousObjectKeys = ClientReleaseObjectKeys{
+			Installer: current.ObjectKey,
+			Updater:   current.UpdaterObjectKey,
+		}
+		if expected != nil && r.ObjectKey == expected.Installer && current.ObjectKey != expected.Installer {
+			r.FileName = current.FileName
+			r.ObjectKey = current.ObjectKey
+			r.Size = current.Size
+			r.SHA256 = current.SHA256
+			r.SHA512 = current.SHA512
+		}
+		if expected != nil && r.UpdaterObjectKey == expected.Updater && current.UpdaterObjectKey != expected.Updater {
+			r.UpdaterFileName = current.UpdaterFileName
+			r.UpdaterObjectKey = current.UpdaterObjectKey
+			r.UpdaterSize = current.UpdaterSize
+			r.UpdaterSHA256 = current.UpdaterSHA256
+			r.UpdaterSHA512 = current.UpdaterSHA512
+		}
 		r.CreatedTime = current.CreatedTime
+		r.Revision = current.Revision + 1
 		// Publishing is a separate capability. Preserve the status observed
 		// under the row lock so metadata edits cannot publish, unpublish, or
 		// overwrite a concurrent status transition.
 		r.Status = current.Status
 		return tx.Save(r).Error
 	})
-	return previousObjectKey, err
+	return previousObjectKeys, err
+}
+
+func (r *ClientRelease) UpdateReturningPreviousObjectKey(actorUserId int) (string, error) {
+	keys, err := r.UpdateReturningPreviousObjectKeys(actorUserId)
+	return keys.Installer, err
 }
 
 func UpdateClientReleaseStatus(id int, status int, actorUserId int) (*ClientRelease, error) {
+	return updateClientReleaseStatus(id, "", status, actorUserId)
+}
+
+func UpdateClientReleaseStatusForPlatform(id int, platform string, status int, actorUserId int) (*ClientRelease, error) {
+	platform = NormalizeClientReleasePlatform(platform)
+	if !IsAllowedClientReleasePlatform(platform) {
+		return nil, errors.New("client release platform must be windows, macos, or linux")
+	}
+	return updateClientReleaseStatus(id, platform, status, actorUserId)
+}
+
+func updateClientReleaseStatus(id int, platform string, status int, actorUserId int) (*ClientRelease, error) {
 	if status != ClientReleaseStatusDraft && status != ClientReleaseStatusPublished {
 		return nil, errors.New("client release status is invalid")
 	}
@@ -279,15 +396,28 @@ func UpdateClientReleaseStatus(id int, status int, actorUserId int) (*ClientRele
 		if !allowed {
 			return ErrClientReleasePublishPermissionRequired
 		}
-		query := tx
-		if tx.Dialector.Name() != "sqlite" {
-			query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+		query := lockForUpdate(tx).Where("id = ?", id)
+		if platform != "" {
+			query = query.Where("platform IN ?", clientReleasePlatformAliases(platform))
 		}
-		if err := query.Where("id = ?", id).First(&release).Error; err != nil {
+		if err := query.First(&release).Error; err != nil {
 			return err
 		}
 		release.Status = status
-		return tx.Save(&release).Error
+		if status == ClientReleaseStatusPublished {
+			if err := ValidateClientRelease(&release); err != nil {
+				return err
+			}
+		}
+		release.Revision++
+		release.UpdatedTime = common.GetTimestamp()
+		return tx.Session(&gorm.Session{SkipHooks: true}).Model(&ClientRelease{}).
+			Where("id = ?", release.Id).
+			Updates(map[string]any{
+				"status":       release.Status,
+				"revision":     release.Revision,
+				"updated_time": release.UpdatedTime,
+			}).Error
 	})
 	if err != nil {
 		return nil, err
@@ -296,7 +426,24 @@ func UpdateClientReleaseStatus(id int, status int, actorUserId int) (*ClientRele
 }
 
 func DeleteClientRelease(id int, actorUserId int) (string, error) {
-	var objectKey string
+	keys, err := DeleteClientReleaseReturningObjectKeys(id, actorUserId)
+	return keys.Installer, err
+}
+
+func DeleteClientReleaseReturningObjectKeys(id int, actorUserId int) (ClientReleaseObjectKeys, error) {
+	return deleteClientReleaseReturningObjectKeys(id, "", actorUserId)
+}
+
+func DeleteClientReleaseReturningObjectKeysForPlatform(id int, platform string, actorUserId int) (ClientReleaseObjectKeys, error) {
+	platform = NormalizeClientReleasePlatform(platform)
+	if !IsAllowedClientReleasePlatform(platform) {
+		return ClientReleaseObjectKeys{}, errors.New("client release platform must be windows, macos, or linux")
+	}
+	return deleteClientReleaseReturningObjectKeys(id, platform, actorUserId)
+}
+
+func deleteClientReleaseReturningObjectKeys(id int, platform string, actorUserId int) (ClientReleaseObjectKeys, error) {
+	var objectKeys ClientReleaseObjectKeys
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		allowPublished, err := hasAnyManagementPermissionTx(
 			tx,
@@ -308,20 +455,23 @@ func DeleteClientRelease(id int, actorUserId int) (string, error) {
 			return err
 		}
 		var release ClientRelease
-		query := tx
-		if tx.Dialector.Name() != "sqlite" {
-			query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+		query := lockForUpdate(tx).Where("id = ?", id)
+		if platform != "" {
+			query = query.Where("platform IN ?", clientReleasePlatformAliases(platform))
 		}
-		if err := query.Where("id = ?", id).First(&release).Error; err != nil {
+		if err := query.First(&release).Error; err != nil {
 			return err
 		}
 		if release.Status == ClientReleaseStatusPublished && !allowPublished {
 			return ErrClientReleasePublishPermissionRequired
 		}
-		objectKey = release.ObjectKey
+		objectKeys = ClientReleaseObjectKeys{
+			Installer: release.ObjectKey,
+			Updater:   release.UpdaterObjectKey,
+		}
 		return tx.Delete(&release).Error
 	})
-	return objectKey, err
+	return objectKeys, err
 }
 
 func GetClientReleaseByID(id int) (*ClientRelease, error) {
@@ -396,36 +546,44 @@ func GetLatestClientRelease(platform string, arch string, channel string) (*Clie
 	return &release, nil
 }
 
-func ClientReleasesToResponses(releases []*ClientRelease, admin bool, downloadURL func(*ClientRelease) string) []ClientReleaseResponse {
+func ClientReleasesToResponses(releases []*ClientRelease, admin bool, releaseURLs func(*ClientRelease) ClientReleaseURLs) []ClientReleaseResponse {
 	responses := make([]ClientReleaseResponse, 0, len(releases))
 	for _, release := range releases {
-		url := ""
-		if downloadURL != nil {
-			url = downloadURL(release)
+		urls := ClientReleaseURLs{}
+		if releaseURLs != nil {
+			urls = releaseURLs(release)
 		}
-		responses = append(responses, release.ToResponse(admin, url))
+		responses = append(responses, release.ToResponse(admin, urls))
 	}
 	return responses
 }
 
-func (r *ClientRelease) ToResponse(admin bool, downloadURL string) ClientReleaseResponse {
+func (r *ClientRelease) ToResponse(admin bool, urls ClientReleaseURLs) ClientReleaseResponse {
 	response := ClientReleaseResponse{
-		ID:           r.Id,
-		Version:      r.Version,
-		Platform:     NormalizeClientReleasePlatform(r.Platform),
-		Arch:         r.Arch,
-		Channel:      r.Channel,
-		FileName:     r.FileName,
-		ObjectKey:    r.ObjectKey,
-		DownloadURL:  downloadURL,
-		Size:         r.Size,
-		SHA256:       r.SHA256,
-		SHA512:       r.SHA512,
-		ReleaseNotes: r.ReleaseNotes,
-		MinVersion:   r.MinVersion,
-		Forced:       r.Forced,
-		Published:    r.Status == ClientReleaseStatusPublished,
-		Status:       r.Status,
+		ID:                 r.Id,
+		Version:            r.Version,
+		Platform:           NormalizeClientReleasePlatform(r.Platform),
+		Arch:               r.Arch,
+		Channel:            r.Channel,
+		FileName:           r.FileName,
+		ObjectKey:          r.ObjectKey,
+		DownloadURL:        urls.DownloadURL,
+		UpdaterDownloadURL: urls.UpdaterDownloadURL,
+		UpdateManifestURL:  urls.UpdateManifestURL,
+		Size:               r.Size,
+		SHA256:             r.SHA256,
+		SHA512:             r.SHA512,
+		UpdaterFileName:    r.UpdaterFileName,
+		UpdaterObjectKey:   r.UpdaterObjectKey,
+		UpdaterSize:        r.UpdaterSize,
+		UpdaterSHA256:      r.UpdaterSHA256,
+		UpdaterSHA512:      r.UpdaterSHA512,
+		ReleaseNotes:       r.ReleaseNotes,
+		MinVersion:         r.MinVersion,
+		Forced:             r.Forced,
+		Published:          r.Status == ClientReleaseStatusPublished,
+		Status:             r.Status,
+		Revision:           r.Revision,
 	}
 	if r.CreatedTime > 0 {
 		response.CreatedAt = time.Unix(r.CreatedTime, 0).UTC().Format(time.RFC3339)
@@ -435,6 +593,11 @@ func (r *ClientRelease) ToResponse(admin bool, downloadURL string) ClientRelease
 	}
 	if !admin {
 		response.ObjectKey = ""
+		response.UpdaterFileName = ""
+		response.UpdaterObjectKey = ""
+		response.UpdaterSize = 0
+		response.UpdaterSHA256 = ""
+		response.UpdaterSHA512 = ""
 		response.Status = 0
 		response.Published = false
 	}
@@ -540,6 +703,42 @@ func cleanClientReleaseFileName(value string) string {
 	return value
 }
 
+func ClientReleaseExpectedFileName(version string, platform string, arch string, channel string, fileName string) string {
+	ext := strings.ToLower(path.Ext(strings.ReplaceAll(fileName, "\\", "/")))
+	if ext == ".appimage" {
+		ext = ".AppImage"
+	}
+	return fmt.Sprintf(
+		"Z-UP-Setup-%s-%s-%s-%s%s",
+		NormalizeClientReleaseVersion(version),
+		NormalizeClientReleasePlatform(platform),
+		NormalizeClientReleaseArch(arch),
+		NormalizeClientReleaseChannel(channel),
+		ext,
+	)
+}
+
+func IsAllowedClientReleaseInstallerFile(platform string, fileName string) bool {
+	ext := strings.ToLower(path.Ext(strings.ReplaceAll(fileName, "\\", "/")))
+	switch NormalizeClientReleasePlatform(platform) {
+	case "windows":
+		return ext == ".exe" || ext == ".msi" || ext == ".zip"
+	case "macos":
+		return ext == ".dmg"
+	case "linux":
+		return ext == ".appimage" || ext == ".deb" || ext == ".rpm" || ext == ".zip"
+	default:
+		return false
+	}
+}
+
+func IsAllowedClientReleaseUploadFile(platform string, fileName string) bool {
+	if IsAllowedClientReleaseInstallerFile(platform, fileName) {
+		return true
+	}
+	return NormalizeClientReleasePlatform(platform) == "macos" && strings.EqualFold(path.Ext(fileName), ".zip")
+}
+
 func ClientReleaseTarget(platform string, arch string, channel string) string {
 	return fmt.Sprintf(
 		"%s/%s/%s",
@@ -547,4 +746,29 @@ func ClientReleaseTarget(platform string, arch string, channel string) string {
 		NormalizeClientReleaseArch(arch),
 		NormalizeClientReleaseChannel(channel),
 	)
+}
+
+func migrateClientReleasePlatformToMacOS(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&ClientRelease{}) {
+		return nil
+	}
+
+	var releases []ClientRelease
+	if err := db.Unscoped().Where("platform IN ?", []string{"darwin", "macos"}).Find(&releases).Error; err != nil {
+		return err
+	}
+	targets := make(map[string]int, len(releases))
+	for _, release := range releases {
+		deletedAt := "active"
+		if release.DeletedAt.Valid {
+			deletedAt = release.DeletedAt.Time.UTC().Format(time.RFC3339Nano)
+		}
+		key := fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s", release.Version, release.Arch, release.Channel, deletedAt, NormalizeClientReleasePlatform(release.Platform))
+		if previousID, exists := targets[key]; exists {
+			return fmt.Errorf("cannot migrate client release platform to macos: releases %d and %d have the same target", previousID, release.Id)
+		}
+		targets[key] = release.Id
+	}
+
+	return db.Unscoped().Model(&ClientRelease{}).Where("platform = ?", "darwin").UpdateColumn("platform", "macos").Error
 }

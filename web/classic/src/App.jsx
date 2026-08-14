@@ -58,6 +58,7 @@ import Task from './pages/Task';
 import ModelPage from './pages/Model';
 import ModelDeploymentPage from './pages/ModelDeployment';
 import SkillHub from './pages/SkillHub';
+import SkillHubList from './pages/SkillHub/SkillHubList';
 import SkillHubTags from './pages/SkillHubTags';
 import SkillHubReports from './pages/SkillHubReports';
 import ClientReleases from './pages/ClientReleases';
@@ -171,7 +172,27 @@ function App() {
             <ManagementPermissionRoute
               permissions={[MANAGEMENT_PERMISSION.SKILL_HUB_CONTENT]}
             >
-              <SkillHub />
+              <SkillHubList />
+            </ManagementPermissionRoute>
+          }
+        />
+        <Route
+          path='/console/skill-hub/new'
+          element={
+            <ManagementPermissionRoute
+              permissions={[MANAGEMENT_PERMISSION.SKILL_HUB_CONTENT]}
+            >
+              <SkillHub editorOnly />
+            </ManagementPermissionRoute>
+          }
+        />
+        <Route
+          path='/console/skill-hub/:skillId'
+          element={
+            <ManagementPermissionRoute
+              permissions={[MANAGEMENT_PERMISSION.SKILL_HUB_CONTENT]}
+            >
+              <SkillHub editorOnly />
             </ManagementPermissionRoute>
           }
         />

@@ -626,6 +626,88 @@ func TestSearchSkillHubSkillsUsesConfiguredSortOrder(t *testing.T) {
 	assertSkillHubSkillIDs(t, taggedOriginSkills, []string{"newer-first-skill"})
 }
 
+func TestSearchSkillHubSkillsCombinesAdminFilters(t *testing.T) {
+	setupSkillHubTestDB(t)
+
+	fixtures := []*SkillHubSkill{
+		{
+			SkillID:     "published-recommended-target",
+			Name:        "Target Filter Skill",
+			Version:     "1.0.0",
+			Tags:        StringListToJSON([]string{"combined-filter"}),
+			Status:      SkillHubStatusPublished,
+			Recommended: true,
+			SourceType:  "zip",
+			SourceURL:   "https://cdn.example.com/published-recommended-target.zip",
+		},
+		{
+			SkillID:     "draft-recommended-target",
+			Name:        "Target Filter Skill Draft",
+			Version:     "1.0.0",
+			Tags:        StringListToJSON([]string{"combined-filter"}),
+			Status:      SkillHubStatusDraft,
+			Recommended: true,
+			SourceType:  "zip",
+			SourceURL:   "https://cdn.example.com/draft-recommended-target.zip",
+		},
+		{
+			SkillID:    "published-regular-target",
+			Name:       "Target Filter Skill Regular",
+			Version:    "1.0.0",
+			Tags:       StringListToJSON([]string{"combined-filter"}),
+			Status:     SkillHubStatusPublished,
+			SourceType: "zip",
+			SourceURL:  "https://cdn.example.com/published-regular-target.zip",
+		},
+	}
+	for _, skill := range fixtures {
+		require.NoError(t, skill.Insert())
+	}
+
+	filter := SkillHubSkillSearchFilter{
+		RecommendedOnly: true,
+		Statuses:        []int{SkillHubStatusPublished},
+	}
+	tag := mustGetSkillHubTagByName(t, "combined-filter")
+	skills, total, err := SearchSkillHubSkillsByTagIDs(
+		[]int{tag.Id},
+		"Target Filter",
+		true,
+		0,
+		10,
+		filter,
+	)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	assertSkillHubSkillIDs(t, skills, []string{"published-recommended-target"})
+
+	drafts, draftTotal, err := SearchSkillHubSkills(
+		"Target Filter",
+		true,
+		0,
+		10,
+		SkillHubSkillSearchFilter{Statuses: []int{SkillHubStatusDraft}},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), draftTotal)
+	assertSkillHubSkillIDs(t, drafts, []string{"draft-recommended-target"})
+
+	allStatuses, allStatusTotal, err := SearchSkillHubSkills(
+		"Target Filter",
+		true,
+		0,
+		10,
+		SkillHubSkillSearchFilter{Statuses: []int{SkillHubStatusPublished, SkillHubStatusDraft}},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), allStatusTotal)
+	assertSkillHubSkillIDs(t, allStatuses, []string{
+		"published-regular-target",
+		"draft-recommended-target",
+		"published-recommended-target",
+	})
+}
+
 func TestValidateSkillHubTag(t *testing.T) {
 	if err := ValidateSkillHubTag(&SkillHubTag{Name: "办公协同"}); err != nil {
 		t.Fatalf("ValidateSkillHubTag() error = %v", err)

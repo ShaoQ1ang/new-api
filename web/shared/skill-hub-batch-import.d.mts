@@ -73,6 +73,8 @@ export type SkillHubBatchOptions = {
 export const SKILL_HUB_BATCH_LIMITS: {
   maxEntries: number
   transferBatchSize: number
+  commitBatchSize: number
+  commitBodyBytes: number
   maxFiles: number
   manifestBytes: number
   zipBytes: number
@@ -84,6 +86,11 @@ export const SKILL_HUB_BATCH_LIMITS: {
 export function splitSkillHubBatchItems<T>(
   items: T[],
   batchSize?: number,
+): T[][]
+export function splitSkillHubCommitItems<T>(
+  items: T[],
+  batchSize?: number,
+  maxBytes?: number,
 ): T[][]
 
 export class SkillHubBatchValidationError extends Error {
