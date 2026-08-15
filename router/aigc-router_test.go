@@ -20,3 +20,10 @@ func TestSetAigcRouterRegistersServiceCatalog(t *testing.T) {
 	}
 	require.True(t, routes[http.MethodGet+" /v1/aigc/models"])
 }
+
+func TestBuildAigcHandlersIncludesGenerationProtocol(t *testing.T) {
+	handlers := buildAigcHandlers(nil)
+
+	require.NotNil(t, handlers.models)
+	require.NotNil(t, handlers.generations)
+}

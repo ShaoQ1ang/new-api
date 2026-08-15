@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -72,4 +73,18 @@ func TestTaskModelFromSubmitPreservesExecutionAndBillingSnapshot(t *testing.T) {
 	assert.Equal(t, 1.25, task.PrivateData.BillingContext.ModelPrice)
 	assert.Equal(t, 2.0, task.PrivateData.BillingContext.ModelRatio)
 	assert.Equal(t, 1.5, task.PrivateData.BillingContext.GroupRatio)
+}
+
+func TestTaskWorkflowChannelSelectionMode(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	context, _ := gin.CreateTestContext(nil)
+	info := &relaycommon.RelayInfo{}
+
+	assert.True(t, taskWorkflowNeedsChannelSelection(context, info))
+
+	common.SetContextKey(context, constant.ContextKeyChannelId, 9)
+	assert.False(t, taskWorkflowNeedsChannelSelection(context, info))
+
+	info.ChannelMeta = &relaycommon.ChannelMeta{ChannelId: 12}
+	assert.True(t, taskWorkflowNeedsChannelSelection(context, info))
 }

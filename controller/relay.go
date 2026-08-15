@@ -417,6 +417,10 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 
 }
 
+func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
+	processChannelError(c, channelError, err)
+}
+
 func RelayMidjourney(c *gin.Context) {
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatMjProxy, nil, nil)
 

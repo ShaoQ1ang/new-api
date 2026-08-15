@@ -1,17 +1,30 @@
 package router
 
 import (
+	aigcexecution "github.com/QuantumNous/new-api/aigc/execution"
 	aigchandler "github.com/QuantumNous/new-api/aigc/handler"
 	aigcrepository "github.com/QuantumNous/new-api/aigc/repository"
 	aigcrouter "github.com/QuantumNous/new-api/aigc/router"
 	aigcservice "github.com/QuantumNous/new-api/aigc/service"
+	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
-func SetAigcRouter(engine *gin.Engine) {
-	profiles := aigcrepository.New(model.DB)
-	catalog := aigcservice.NewCatalogService(profiles, aigcservice.NewModelAvailability())
+type aigcHandlers struct {
+	models        *aigchandler.ModelHandler
+	generations   *aigchandler.GenerationHandler
+	admin         *aigchandler.AdminModelHandler
+	upstream      *aigchandler.UpstreamModelHandler
+	profileImport *aigchandler.ProfileImportHandler
+}
+
+func buildAigcHandlers(db *gorm.DB) aigcHandlers {
+	profiles := aigcrepository.New(db)
+	availability := aigcservice.NewModelAvailability()
+	catalog := aigcservice.NewCatalogService(profiles, availability)
 	modelHandler := aigchandler.NewModelHandler(catalog)
 	admin := aigcservice.NewAdminService(profiles)
 	adminHandler := aigchandler.NewAdminModelHandler(admin, catalog)
@@ -19,6 +32,22 @@ func SetAigcRouter(engine *gin.Engine) {
 	upstreamHandler := aigchandler.NewUpstreamModelHandler(upstreamModels)
 	profileImporter := aigcservice.NewProfileImportService(profiles, upstreamModels)
 	importHandler := aigchandler.NewProfileImportHandler(profileImporter)
-	aigcrouter.RegisterRelayRoutes(engine, modelHandler, nil)
-	aigcrouter.RegisterAPIRoutes(engine, adminHandler, upstreamHandler, importHandler)
+
+	resolver := aigcservice.NewGenerationResolver(profiles, availability)
+	idempotency := aigcservice.NewIdempotencyService(profiles, nil)
+	workflow := &relay.TaskWorkflow{OnChannelError: controller.ProcessChannelError}
+	executor := aigcexecution.NewTaskExecutor(workflow, aigcexecution.ModelTaskStore{})
+	generations := aigcservice.NewGenerationService(resolver, idempotency, profiles, executor)
+	generationHandler := aigchandler.NewGenerationHandler(generations)
+
+	return aigcHandlers{
+		models: modelHandler, generations: generationHandler, admin: adminHandler,
+		upstream: upstreamHandler, profileImport: importHandler,
+	}
+}
+
+func SetAigcRouter(engine *gin.Engine) {
+	handlers := buildAigcHandlers(model.DB)
+	aigcrouter.RegisterRelayRoutes(engine, handlers.models, handlers.generations)
+	aigcrouter.RegisterAPIRoutes(engine, handlers.admin, handlers.upstream, handlers.profileImport)
 }

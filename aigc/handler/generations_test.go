@@ -18,13 +18,15 @@ import (
 )
 
 type generationCatalogStub struct {
+	context  context.Context
 	identity execution.Identity
 	request  dto.GenerationRequest
 	response *dto.GenerationResponse
 	err      error
 }
 
-func (stub *generationCatalogStub) Submit(_ context.Context, identity execution.Identity, request dto.GenerationRequest) (*dto.GenerationResponse, error) {
+func (stub *generationCatalogStub) Submit(ctx context.Context, identity execution.Identity, request dto.GenerationRequest) (*dto.GenerationResponse, error) {
+	stub.context = ctx
 	stub.identity, stub.request = identity, request
 	return stub.response, stub.err
 }
@@ -52,6 +54,9 @@ func TestGenerationSubmitUsesAuthenticatedIdentity(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	assert.Equal(t, execution.Identity{UserID: 7, TokenID: 11, Group: "vip"}, catalog.identity)
 	assert.Equal(t, "turn-1", catalog.request.RequestID)
+	received, ok := execution.GinContextFrom(catalog.context)
+	require.True(t, ok)
+	assert.Same(t, c, received)
 }
 
 func TestGenerationSubmitRejectsMismatchedIdempotencyKey(t *testing.T) {

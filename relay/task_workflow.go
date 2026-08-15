@@ -117,7 +117,7 @@ func (workflow TaskWorkflow) Submit(c *gin.Context, relayInfo *relaycommon.Relay
 }
 
 func selectTaskChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.NewAPIError) {
-	if info.ChannelMeta == nil {
+	if !taskWorkflowNeedsChannelSelection(c, info) {
 		autoBanInt := 0
 		if c.GetBool("auto_ban") {
 			autoBanInt = 1
@@ -136,6 +136,10 @@ func selectTaskChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *
 		return nil, setupErr
 	}
 	return channel, nil
+}
+
+func taskWorkflowNeedsChannelSelection(c *gin.Context, info *relaycommon.RelayInfo) bool {
+	return info.ChannelMeta != nil || common.GetContextKeyInt(c, constant.ContextKeyChannelId) <= 0
 }
 
 func taskModelFromSubmit(relayInfo *relaycommon.RelayInfo, result *TaskSubmitResult) *model.Task {

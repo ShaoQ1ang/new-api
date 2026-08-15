@@ -43,7 +43,7 @@ func (handler *GenerationHandler) Submit(c *gin.Context) {
 		writeGenerationError(c, request.RequestID, serviceError(http.StatusUnauthorized, "UNAUTHORIZED", "authenticated token identity is required", false))
 		return
 	}
-	response, err := handler.catalog.Submit(c.Request.Context(), identity, request)
+	response, err := handler.catalog.Submit(execution.WithGinContext(c.Request.Context(), c), identity, request)
 	if err != nil {
 		writeGenerationError(c, request.RequestID, err)
 		return
@@ -57,7 +57,7 @@ func (handler *GenerationHandler) Get(c *gin.Context) {
 		writeGenerationError(c, "", serviceError(http.StatusUnauthorized, "UNAUTHORIZED", "authenticated token identity is required", false))
 		return
 	}
-	response, err := handler.catalog.Get(c.Request.Context(), identity, strings.TrimSpace(c.Param("id")))
+	response, err := handler.catalog.Get(execution.WithGinContext(c.Request.Context(), c), identity, strings.TrimSpace(c.Param("id")))
 	if err != nil {
 		writeGenerationError(c, "", err)
 		return
