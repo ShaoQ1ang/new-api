@@ -35,8 +35,11 @@ func buildAigcHandlers(db *gorm.DB) aigcHandlers {
 
 	resolver := aigcservice.NewGenerationResolver(profiles, availability)
 	idempotency := aigcservice.NewIdempotencyService(profiles, nil)
-	workflow := &relay.TaskWorkflow{OnChannelError: controller.ProcessChannelError}
-	executor := aigcexecution.NewTaskExecutor(workflow, aigcexecution.ModelTaskStore{})
+	taskWorkflow := &relay.TaskWorkflow{OnChannelError: controller.ProcessChannelError}
+	taskExecutor := aigcexecution.NewTaskExecutor(taskWorkflow, aigcexecution.ModelTaskStore{})
+	syncWorkflow := &relay.SyncWorkflow{OnChannelError: controller.ProcessChannelError}
+	syncExecutor := aigcexecution.NewSyncExecutor(syncWorkflow)
+	executor := aigcexecution.NewCompositeExecutor(syncExecutor, taskExecutor)
 	generations := aigcservice.NewGenerationService(resolver, idempotency, profiles, executor)
 	generationHandler := aigchandler.NewGenerationHandler(generations)
 
