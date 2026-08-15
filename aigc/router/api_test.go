@@ -32,7 +32,7 @@ func TestRegisterAPIRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
 
-	RegisterAPIRoutes(engine, nil, nil)
+	RegisterAPIRoutes(engine, nil, nil, nil)
 
 	routes := make(map[string]bool)
 	for _, route := range engine.Routes() {
@@ -47,6 +47,7 @@ func TestRegisterAPIRoutes(t *testing.T) {
 		http.MethodPost + " /api/aigc/models/:id/publish",
 		http.MethodPost + " /api/aigc/models/:id/disable",
 		http.MethodDelete + " /api/aigc/models/:id",
+		http.MethodPost + " /api/aigc/models/import",
 		http.MethodGet + " /api/aigc/upstream-models",
 		http.MethodGet + " /api/aigc/upstream-models/*path",
 	} {
@@ -59,7 +60,7 @@ func TestUpstreamModelRouteAcceptsIDsContainingSlashes(t *testing.T) {
 	engine := gin.New()
 	engine.Use(sessions.Sessions("test-session", cookie.NewStore([]byte("test-secret"))))
 	catalog := &upstreamRouteCatalogStub{}
-	RegisterAPIRoutes(engine, nil, handler.NewUpstreamModelHandler(catalog))
+	RegisterAPIRoutes(engine, nil, handler.NewUpstreamModelHandler(catalog), nil)
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/aigc/upstream-models/openai/gpt-image-1", nil)
 

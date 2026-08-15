@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func RegisterAPIRoutes(engine *gin.Engine, adminHandler *handler.AdminModelHandler, upstreamHandler *handler.UpstreamModelHandler) {
+func RegisterAPIRoutes(engine *gin.Engine, adminHandler *handler.AdminModelHandler, upstreamHandler *handler.UpstreamModelHandler, importHandler *handler.ProfileImportHandler) {
 	aigcRouter := engine.Group("/api/aigc")
 	aigcRouter.Use(middleware.RouteTag("api"))
 	aigcRouter.Use(middleware.GlobalAPIRateLimit())
@@ -32,6 +32,13 @@ func RegisterAPIRoutes(engine *gin.Engine, adminHandler *handler.AdminModelHandl
 	aigcRouter.POST("/models/:id/publish", invoke(func(h *handler.AdminModelHandler, c *gin.Context) { h.Publish(c) }))
 	aigcRouter.POST("/models/:id/disable", invoke(func(h *handler.AdminModelHandler, c *gin.Context) { h.Disable(c) }))
 	aigcRouter.DELETE("/models/:id", invoke(func(h *handler.AdminModelHandler, c *gin.Context) { h.Delete(c) }))
+	if importHandler != nil {
+		aigcRouter.POST("/models/import", importHandler.Import)
+	} else {
+		aigcRouter.POST("/models/import", func(c *gin.Context) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "AIGC is not configured"})
+		})
+	}
 
 	invokeUpstream := func(action func(*handler.UpstreamModelHandler, *gin.Context)) gin.HandlerFunc {
 		return func(c *gin.Context) {

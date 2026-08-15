@@ -544,6 +544,7 @@ POST   /api/aigc/models/:id/validate
 POST   /api/aigc/models/:id/publish
 POST   /api/aigc/models/:id/disable
 DELETE /api/aigc/models/:id              # 仅未发布草稿
+POST   /api/aigc/models/import           # 一次性导入旧 model_access
 GET    /api/aigc/upstream-models
 GET    /api/aigc/upstream-models/:id
 ```
@@ -1018,6 +1019,14 @@ AIGC_MUSIC_EXECUTION=local|newapi
 - 迁移报告列出无法解析、真实模型不存在或缺少价格的配置。
 
 迁移是一次性导入，不建立双向同步。
+
+导入通过管理员接口 `POST /api/aigc/models/import` 执行，Body 使用 `items` 数组，每项兼容旧表的
+`model_id`、`display_name`、`model_type`、`config_json` 和 `enabled` 字段，也可直接传对象形式的
+`config`。接口幂等地跳过已存在的 `public_model_id`，不会覆盖管理员已经编辑的 Profile。响应逐项
+返回 `imported`、`skipped` 或 `failed`，以及 `INVALID_JSON`、`INVALID_CONFIG`、
+`UPSTREAM_MODEL_NOT_FOUND`、`UPSTREAM_MODEL_NOT_AVAILABLE_FOR_GROUP`、`PRICING_MISSING` 等报告项。
+旧文本配置的根级 `upstream_model_id` 在导入时转换为新的 `text` 配置信封；不合法 JSON 不落库，
+能力不完整、上游不可用或缺少价格的合法 JSON 保存为草稿。
 
 ## 22. 安全要求
 

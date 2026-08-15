@@ -44,6 +44,17 @@ func (repository *Repository) GetProfileByPublicID(ctx context.Context, publicMo
 	return &profile, nil
 }
 
+func (repository *Repository) FindProfileByPublicID(ctx context.Context, publicModelID string) (*entity.ModelProfile, bool, error) {
+	profile, err := repository.GetProfileByPublicID(ctx, publicModelID)
+	if IsNotFound(err) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return profile, true, nil
+}
+
 func (repository *Repository) GetProfileByID(ctx context.Context, id int64) (*entity.ModelProfile, error) {
 	if repository == nil || repository.db == nil {
 		return nil, fmt.Errorf("AIGC repository is not configured")

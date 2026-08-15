@@ -17,6 +17,8 @@ func SetAigcRouter(engine *gin.Engine) {
 	adminHandler := aigchandler.NewAdminModelHandler(admin, catalog)
 	upstreamModels := aigcservice.NewUpstreamModelService(aigcservice.NewModelUpstreamSource())
 	upstreamHandler := aigchandler.NewUpstreamModelHandler(upstreamModels)
+	profileImporter := aigcservice.NewProfileImportService(profiles, upstreamModels)
+	importHandler := aigchandler.NewProfileImportHandler(profileImporter)
 	aigcrouter.RegisterRelayRoutes(engine, modelHandler)
-	aigcrouter.RegisterAPIRoutes(engine, adminHandler, upstreamHandler)
+	aigcrouter.RegisterAPIRoutes(engine, adminHandler, upstreamHandler, importHandler)
 }
