@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/QuantumNous/new-api/aigc/entity"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 
@@ -313,6 +314,7 @@ func migrateDB() error {
 		&ChatModelOption{},
 		&AlipayPendingTask{},
 		&PlaygroundConversation{},
+		&entity.ModelProfile{},
 	)
 	if err != nil {
 		return err
@@ -383,6 +385,7 @@ func migrateDBFast() error {
 		{&ChatModelOption{}, "ChatModelOption"},
 		{&AlipayPendingTask{}, "AlipayPendingTask"},
 		{&PlaygroundConversation{}, "PlaygroundConversation"},
+		{&entity.ModelProfile{}, "AigcModelProfile"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))
