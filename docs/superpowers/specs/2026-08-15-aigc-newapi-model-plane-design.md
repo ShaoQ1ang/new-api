@@ -244,9 +244,12 @@ aigc/router.SetRelayRouter(router)
 | `upstream_model_id` | varchar(255) | 解析后的真实模型 ID |
 | `model_type` | varchar(16) | 模型类型 |
 | `mode` | varchar(40) | 解析后的业务模式 |
+| `config_version` | int | 提交时解析使用的 Profile 版本 |
 | `status` | varchar(24) | 标准状态 |
+| `progress` | int | 标准化进度，范围 `0-100` |
 | `native_task_id` | varchar(191) | New API 原生异步 Task ID，可空 |
 | `request_digest` | varchar(64) | 规范化请求摘要 |
+| `request_json` | text | 规范化请求快照，用于故障恢复和审计 |
 | `result_json` | text | 结果描述，不保存永久作品二进制 |
 | `error_code` | varchar(64) | 标准错误码 |
 | `error_message` | text | 安全的用户错误信息 |

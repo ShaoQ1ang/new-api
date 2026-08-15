@@ -315,6 +315,7 @@ func migrateDB() error {
 		&AlipayPendingTask{},
 		&PlaygroundConversation{},
 		&entity.ModelProfile{},
+		&entity.AigcRequest{},
 	)
 	if err != nil {
 		return err
