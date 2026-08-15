@@ -95,7 +95,7 @@ func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, req
 	return channel.DoTaskApiRequest(a, c, info, requestBody)
 }
 
-func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *dto.TaskError) {
+func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, publicResponse any, taskErr *dto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		taskErr = service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
@@ -114,15 +114,13 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	}
 
 	// 使用公开 task_xxxx ID 替换上游 ID 返回给客户端
-	publicResponse := dto.TaskResponse[string]{
+	publicResponse = dto.TaskResponse[string]{
 		Code:    sunoResponse.Code,
 		Message: sunoResponse.Message,
 		Data:    info.PublicTaskID,
 	}
 	tracelog.Default.LogResponseValue(c.Request.Context(), "newapi.output", "server-response", func() any { return publicResponse })
-	c.JSON(http.StatusOK, publicResponse)
-
-	return sunoResponse.Data, nil, nil
+	return sunoResponse.Data, nil, publicResponse, nil
 }
 
 func (a *TaskAdaptor) GetModelList() []string {

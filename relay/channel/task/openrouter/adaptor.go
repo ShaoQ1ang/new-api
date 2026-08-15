@@ -129,25 +129,24 @@ func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, req
 	return channel.DoTaskApiRequest(a, c, info, requestBody)
 }
 
-func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *dto.TaskError) {
+func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, publicResponse any, taskErr *dto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", nil, service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
+		return "", nil, nil, service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 	}
 	tracelog.Default.LogHTTPResponse(c.Request.Context(), "newapi.upstream.response", resp, responseBody)
 	_ = resp.Body.Close()
 	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
-		return "", nil, service.TaskErrorWrapper(err, "request_not_found", http.StatusInternalServerError)
+		return "", nil, nil, service.TaskErrorWrapper(err, "request_not_found", http.StatusInternalServerError)
 	}
 	handler := selectRequestHandler(info, req.Model)
 	result, err := handler.ParseSubmitResponse(info, responseBody)
 	if err != nil {
-		return "", nil, service.TaskErrorWrapper(err, "unmarshal_response_body_failed", http.StatusInternalServerError)
+		return "", nil, nil, service.TaskErrorWrapper(err, "unmarshal_response_body_failed", http.StatusInternalServerError)
 	}
 	tracelog.Default.LogResponseValue(c.Request.Context(), "newapi.output", "server-response", func() any { return result.PublicResponse })
-	c.JSON(http.StatusOK, result.PublicResponse)
-	return result.UpstreamTaskID, responseBody, nil
+	return result.UpstreamTaskID, responseBody, result.PublicResponse, nil
 }
 
 func (a *TaskAdaptor) FetchTask(baseURL, key string, body map[string]any, proxy string) (*http.Response, error) {

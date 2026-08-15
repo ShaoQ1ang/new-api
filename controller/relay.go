@@ -623,6 +623,7 @@ func RelayTask(c *gin.Context) {
 		if insertErr := task.Insert(); insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
 		}
+		c.JSON(http.StatusOK, result.PublicResponse)
 	}
 
 	if taskErr != nil {

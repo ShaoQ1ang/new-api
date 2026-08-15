@@ -1,16 +1,44 @@
 package openrouter
 
 import (
+	"bytes"
+	"io"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestTaskAdaptorDoResponseReturnsPublicResponseWithoutWritingHTTP(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+	context.Set("task_request", relaycommon.TaskSubmitReq{Model: "google/veo-3.1-lite"})
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "video-public",
+		TaskRelayInfo:   &relaycommon.TaskRelayInfo{PublicTaskID: "task_public"},
+	}
+	response := &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewBufferString(`{"id":"upstream_1","status":"queued"}`))}
+
+	taskID, _, publicResponse, taskErr := (&TaskAdaptor{}).DoResponse(context, response, info)
+
+	require.Nil(t, taskErr)
+	assert.Equal(t, "upstream_1", taskID)
+	video, ok := publicResponse.(*dto.OpenAIVideo)
+	require.True(t, ok)
+	assert.Equal(t, "task_public", video.ID)
+	assert.Empty(t, recorder.Body.String())
+}
 
 func TestSelectHandlerUsesSupportedOpenRouterVideoFamilies(t *testing.T) {
 	tests := []struct {
