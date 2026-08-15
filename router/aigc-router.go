@@ -13,5 +13,8 @@ func SetAigcRouter(engine *gin.Engine) {
 	profiles := aigcrepository.New(model.DB)
 	catalog := aigcservice.NewCatalogService(profiles, aigcservice.NewModelAvailability())
 	modelHandler := aigchandler.NewModelHandler(catalog)
+	admin := aigcservice.NewAdminService(profiles)
+	adminHandler := aigchandler.NewAdminModelHandler(admin, catalog)
 	aigcrouter.RegisterRelayRoutes(engine, modelHandler)
+	aigcrouter.RegisterAPIRoutes(engine, adminHandler)
 }

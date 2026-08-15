@@ -44,6 +44,17 @@ func (repository *Repository) GetProfileByPublicID(ctx context.Context, publicMo
 	return &profile, nil
 }
 
+func (repository *Repository) GetProfileByID(ctx context.Context, id int64) (*entity.ModelProfile, error) {
+	if repository == nil || repository.db == nil {
+		return nil, fmt.Errorf("AIGC repository is not configured")
+	}
+	var profile entity.ModelProfile
+	if err := repository.db.WithContext(ctx).First(&profile, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &profile, nil
+}
+
 func (repository *Repository) UpdateProfile(ctx context.Context, profile *entity.ModelProfile, expectedVersion int) error {
 	if repository == nil || repository.db == nil {
 		return fmt.Errorf("AIGC repository is not configured")
@@ -92,6 +103,34 @@ func (repository *Repository) ListPublishedProfiles(ctx context.Context, modelTy
 		return nil, err
 	}
 	return profiles, nil
+}
+
+func (repository *Repository) SearchProfiles(ctx context.Context, modelType string, status *int, offset, limit int) ([]entity.ModelProfile, int64, error) {
+	if repository == nil || repository.db == nil {
+		return nil, 0, fmt.Errorf("AIGC repository is not configured")
+	}
+	query := repository.db.WithContext(ctx).Model(&entity.ModelProfile{})
+	if modelType = strings.TrimSpace(modelType); modelType != "" {
+		query = query.Where("model_type = ?", modelType)
+	}
+	if status != nil {
+		query = query.Where("status = ?", *status)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	var profiles []entity.ModelProfile
+	if err := query.Order("public_model_id ASC").Offset(offset).Limit(limit).Find(&profiles).Error; err != nil {
+		return nil, 0, err
+	}
+	return profiles, total, nil
 }
 
 func IsNotFound(err error) bool {
