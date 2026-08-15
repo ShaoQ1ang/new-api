@@ -170,10 +170,15 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		priceData.ImageResolutionTier = imageResolutionTier
 	}
 	if usePrice {
+		ApplyImageInputPricing(info, &priceData, meta.InputImageTiers)
+		if priceData.InputImageCost > 0 {
+			priceData.FreeModel = false
+		}
 		for name, ratio := range meta.BillingRatios {
 			priceData.AddOtherRatio(name, ratio)
 		}
-		quotaToPreConsume := priceData.ApplyOtherRatiosToFloat(modelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
+		priceBeforeGroup := priceData.ApplyOtherRatiosToFloat(modelPrice) + priceData.InputImageCost
+		quotaToPreConsume := priceBeforeGroup * common.QuotaPerUnit * groupRatioInfo.GroupRatio
 		quota, err := common.QuotaFromFloatStrict(quotaToPreConsume)
 		if err != nil {
 			return types.PriceData{}, err
@@ -188,10 +193,27 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	return priceData, nil
 }
 
+func ApplyImageInputPricing(info *relaycommon.RelayInfo, priceData *types.PriceData, tiers []string) {
+	if info == nil || priceData == nil || !priceData.UsePrice || len(tiers) == 0 {
+		return
+	}
+	cost, counts, freeCount, configured := ratio_setting.CalculateImageInputCost(
+		info.OriginModelName,
+		info.GetUpstreamModelName(),
+		tiers,
+	)
+	if !configured {
+		return
+	}
+	priceData.InputImageCost = cost
+	priceData.InputImageCounts = counts
+	priceData.InputImageFreeCount = freeCount
+}
+
 // ModelPriceHelperPerCall 按次/按量计费的 PriceHelper (MJ、Task)
 func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types.PriceData, error) {
 	groupRatioInfo := HandleGroupRatio(c, info)
-	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeVideoSeconds {
+	if billing_setting.ResolveBillingMode(info.OriginModelName, info.GetUpstreamModelName()) == billing_setting.BillingModeVideoSeconds {
 		return types.PriceData{
 			UsePrice:       true,
 			GroupRatioInfo: groupRatioInfo,

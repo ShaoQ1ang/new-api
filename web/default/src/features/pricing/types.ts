@@ -43,6 +43,7 @@ export type PricingModel = {
   cache_ratio?: number | null
   create_cache_ratio?: number | null
   image_ratio?: number | null
+  image_input_price?: Record<string, number>
   audio_ratio?: number | null
   audio_completion_ratio?: number | null
   enable_groups: string[]

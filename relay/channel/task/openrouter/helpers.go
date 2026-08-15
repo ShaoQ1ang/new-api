@@ -43,7 +43,7 @@ func normalizeTier(value string) string {
 		return "1080p"
 	case "2k":
 		return "2k"
-	case "4k":
+	case "4k", "3840x2160", "2160x3840", "2160x2160", "2880x2160", "2160x2880", "5040x2160":
 		return "4k"
 	}
 	return ""
@@ -64,6 +64,37 @@ func resolveRequestedDuration(req *relaycommon.TaskSubmitReq, fallback int) (int
 		return 0, errf("seconds must be between 1 and %d", relaycommon.MaxTaskDurationSeconds)
 	}
 	return duration, nil
+}
+
+func metadataDurationSeconds(metadata map[string]any) (int, bool, error) {
+	value, ok := metadata["durationSeconds"]
+	if !ok {
+		return 0, false, nil
+	}
+	var duration int64
+	switch typed := value.(type) {
+	case int:
+		duration = int64(typed)
+	case int64:
+		duration = typed
+	case float64:
+		if math.IsNaN(typed) || math.IsInf(typed, 0) || typed != math.Trunc(typed) || typed < math.MinInt64 || typed > math.MaxInt64 {
+			return 0, true, errf("durationSeconds must be an integer")
+		}
+		duration = int64(typed)
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
+		if err != nil {
+			return 0, true, errf("durationSeconds must be an integer")
+		}
+		duration = parsed
+	default:
+		return 0, true, errf("durationSeconds must be an integer")
+	}
+	if duration < 1 || duration > relaycommon.MaxTaskDurationSeconds {
+		return 0, true, errf("durationSeconds must be between 1 and %d", relaycommon.MaxTaskDurationSeconds)
+	}
+	return int(duration), true, nil
 }
 
 func requestResolution(req *relaycommon.TaskSubmitReq) string {

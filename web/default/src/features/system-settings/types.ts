@@ -212,6 +212,7 @@ export type ModelSettings = {
   CreateCacheRatio: string
   CompletionRatio: string
   ImageRatio: string
+  ImageInputPrice: string
   AudioRatio: string
   AudioCompletionRatio: string
   ExposeRatioEnabled: boolean
@@ -266,6 +267,7 @@ export type BillingSettings = {
   CreateCacheRatio: string
   CompletionRatio: string
   ImageRatio: string
+  ImageInputPrice: string
   AudioRatio: string
   AudioCompletionRatio: string
   VideoSecondsPrice: string
@@ -406,6 +408,7 @@ export type RatioType =
   | 'audio_ratio'
   | 'audio_completion_ratio'
   | 'model_price'
+  | 'image_input_price'
   | 'video_seconds_price'
   | 'billing_mode'
   | 'billing_expr'

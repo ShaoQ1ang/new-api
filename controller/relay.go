@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
+	"github.com/QuantumNous/new-api/pkg/tracelog"
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -63,7 +64,7 @@ func shouldMarkTaskPerCallBilling(relayInfo *relaycommon.RelayInfo) bool {
 	if common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) {
 		return true
 	}
-	if billing_setting.GetBillingMode(relayInfo.OriginModelName) == billing_setting.BillingModeVideoSeconds {
+	if billing_setting.ResolveBillingMode(relayInfo.OriginModelName, relayInfo.GetUpstreamModelName()) == billing_setting.BillingModeVideoSeconds {
 		return false
 	}
 	return relayInfo.PriceData.UsePrice
@@ -130,6 +131,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		return
 	}
+	tracelog.Default.LogValue(c.Request.Context(), "newapi.input", "server-request", func() any { return request })
 
 	relayInfo, err := relaycommon.GenRelayInfo(c, relayFormat, request, ws)
 	if err != nil {
@@ -603,6 +605,9 @@ func RelayTask(c *gin.Context) {
 			GroupRatio:            relayInfo.PriceData.GroupRatioInfo.GroupRatio,
 			ModelRatio:            relayInfo.PriceData.ModelRatio,
 			ConditionalInputPrice: relayInfo.PriceData.ConditionalInputPrice,
+			InputImageCost:        relayInfo.PriceData.InputImageCost,
+			InputImageCounts:      relayInfo.PriceData.InputImageCounts,
+			InputImageFreeCount:   relayInfo.PriceData.InputImageFreeCount,
 			VideoSecondsUnitPrice: relayInfo.PriceData.VideoSecondsUnitPrice,
 			VideoSecondsTier:      relayInfo.PriceData.VideoSecondsTier,
 			VideoDurationSeconds:  relayInfo.PriceData.VideoDurationSeconds,

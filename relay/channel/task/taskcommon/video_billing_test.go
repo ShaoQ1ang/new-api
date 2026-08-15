@@ -69,6 +69,38 @@ func TestAliHappyHorseConverterResolves720PFromResolutionSizeEnum(t *testing.T) 
 	}
 }
 
+func TestAliHappyHorseConverterUsesExplicitGenerateAudio(t *testing.T) {
+	generateAudio := false
+	req := relaycommon.TaskSubmitReq{
+		Model:         "happyhorse-1.1-r2v",
+		Duration:      5,
+		GenerateAudio: &generateAudio,
+		Metadata: map[string]any{
+			"audio": true,
+		},
+	}
+
+	params, err := ConvertVideoBillingParams(nil, req)
+
+	require.NoError(t, err)
+	assert.False(t, params.AudioEnabled)
+}
+
+func TestAliHappyHorseConverterSupportsLegacyGenerateAudio(t *testing.T) {
+	req := relaycommon.TaskSubmitReq{
+		Model:    "happyhorse-1.1-r2v",
+		Duration: 5,
+		Metadata: map[string]any{
+			"generateAudio": false,
+		},
+	}
+
+	params, err := ConvertVideoBillingParams(nil, req)
+
+	require.NoError(t, err)
+	assert.False(t, params.AudioEnabled)
+}
+
 func TestAliKlingConverterResolvesStdTo720P(t *testing.T) {
 	req := relaycommon.TaskSubmitReq{
 		Model:    "kling/kling-v3-video-generation",

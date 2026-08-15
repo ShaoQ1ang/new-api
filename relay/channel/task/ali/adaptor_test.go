@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -169,4 +170,97 @@ func TestConvertToAliRequestWan25I2VKeepsLegacyImgURL(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(body), `"img_url"`)
 	require.NotContains(t, string(body), `"media"`)
+}
+
+func TestHappyHorseMapsUnifiedVideoOptions(t *testing.T) {
+	generateAudio := false
+	tests := []struct {
+		name        string
+		model       string
+		images      []string
+		expectRatio bool
+	}{
+		{name: "text to video", model: "happyhorse-1.1-t2v", expectRatio: true},
+		{name: "image to video", model: "happyhorse-1.1-i2v", images: []string{"https://example.com/first.png"}},
+		{name: "reference to video", model: "happyhorse-1.1-r2v", images: []string{"https://example.com/reference.png"}, expectRatio: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			req := relaycommon.TaskSubmitReq{
+				Model:         test.model,
+				Prompt:        "generate a video",
+				Images:        test.images,
+				Size:          "720p",
+				AspectRatio:   "16:9",
+				Duration:      5,
+				GenerateAudio: &generateAudio,
+			}
+
+			aliReq := (&TaskAdaptor{}).buildHappyHorseRequest(test.model, req)
+			body, err := common.Marshal(aliReq)
+			require.NoError(t, err)
+
+			require.NotNil(t, aliReq.Parameters.Audio)
+			assert.False(t, *aliReq.Parameters.Audio)
+			require.NotNil(t, aliReq.Parameters.Watermark)
+			assert.False(t, *aliReq.Parameters.Watermark)
+			assert.Contains(t, string(body), `"audio":false`)
+			assert.Contains(t, string(body), `"watermark":false`)
+			if test.expectRatio {
+				require.NotNil(t, aliReq.Parameters.Ratio)
+				assert.Equal(t, "16:9", *aliReq.Parameters.Ratio)
+				assert.Nil(t, aliReq.Parameters.AspectRatio)
+				assert.Contains(t, string(body), `"ratio":"16:9"`)
+				assert.NotContains(t, string(body), `"aspect_ratio"`)
+			} else {
+				require.NotNil(t, aliReq.Parameters.AspectRatio)
+				assert.Equal(t, "16:9", *aliReq.Parameters.AspectRatio)
+				assert.Nil(t, aliReq.Parameters.Ratio)
+				assert.Contains(t, string(body), `"aspect_ratio":"16:9"`)
+				assert.NotContains(t, string(body), `"ratio"`)
+			}
+		})
+	}
+}
+
+func TestHappyHorseUnifiedOptionsOverrideLegacyMetadata(t *testing.T) {
+	generateAudio := false
+	req := relaycommon.TaskSubmitReq{
+		Model:         "happyhorse-1.1-t2v",
+		AspectRatio:   "16:9",
+		GenerateAudio: &generateAudio,
+		Metadata: map[string]any{
+			"ratio":         "9:16",
+			"generateAudio": true,
+			"watermark":     true,
+		},
+	}
+
+	aliReq := (&TaskAdaptor{}).buildHappyHorseRequest(req.Model, req)
+
+	require.NotNil(t, aliReq.Parameters.Ratio)
+	assert.Equal(t, "16:9", *aliReq.Parameters.Ratio)
+	require.NotNil(t, aliReq.Parameters.Audio)
+	assert.False(t, *aliReq.Parameters.Audio)
+	require.NotNil(t, aliReq.Parameters.Watermark)
+	assert.True(t, *aliReq.Parameters.Watermark)
+}
+
+func TestHappyHorseSupportsLegacyI2VMetadata(t *testing.T) {
+	req := relaycommon.TaskSubmitReq{
+		Model:  "happyhorse-1.1-i2v",
+		Images: []string{"https://example.com/first.png"},
+		Metadata: map[string]any{
+			"aspectRatio":   "9:16",
+			"generateAudio": false,
+		},
+	}
+
+	aliReq := (&TaskAdaptor{}).buildHappyHorseRequest(req.Model, req)
+
+	require.NotNil(t, aliReq.Parameters.AspectRatio)
+	assert.Equal(t, "9:16", *aliReq.Parameters.AspectRatio)
+	require.NotNil(t, aliReq.Parameters.Audio)
+	assert.False(t, *aliReq.Parameters.Audio)
 }

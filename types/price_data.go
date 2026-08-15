@@ -23,6 +23,9 @@ type PriceData struct {
 	VideoDurationSeconds  int
 	VideoFixedPrice       float64
 	ConditionalInputPrice float64
+	InputImageCost        float64
+	InputImageCounts      map[string]int
+	InputImageFreeCount   int
 	CompletionRatio       float64
 	CacheRatio            float64
 	CacheCreationRatio    float64
@@ -118,5 +121,5 @@ func isValidOtherRatio(ratio float64) bool {
 }
 
 func (p *PriceData) ToSetting() string {
-	return fmt.Sprintf("ModelPrice: %f, ModelRatio: %f, VideoSecondsUnitPrice: %f, VideoSecondsTier: %s, VideoDurationSeconds: %d, VideoFixedPrice: %f, ConditionalInputPrice: %f, CompletionRatio: %f, CacheRatio: %f, GroupRatio: %f, UsePrice: %t, CacheCreationRatio: %f, CacheCreation5mRatio: %f, CacheCreation1hRatio: %f, QuotaToPreConsume: %d, ImageRatio: %f, ImageSize: %s, ImageResolutionTier: %s, AudioRatio: %f, AudioCompletionRatio: %f", p.ModelPrice, p.ModelRatio, p.VideoSecondsUnitPrice, p.VideoSecondsTier, p.VideoDurationSeconds, p.VideoFixedPrice, p.ConditionalInputPrice, p.CompletionRatio, p.CacheRatio, p.GroupRatioInfo.GroupRatio, p.UsePrice, p.CacheCreationRatio, p.CacheCreation5mRatio, p.CacheCreation1hRatio, p.QuotaToPreConsume, p.ImageRatio, p.ImageSize, p.ImageResolutionTier, p.AudioRatio, p.AudioCompletionRatio)
+	return fmt.Sprintf("ModelPrice: %f, ModelRatio: %f, VideoSecondsUnitPrice: %f, VideoSecondsTier: %s, VideoDurationSeconds: %d, VideoFixedPrice: %f, ConditionalInputPrice: %f, InputImageCost: %f, InputImageCounts: %v, InputImageFreeCount: %d, CompletionRatio: %f, CacheRatio: %f, GroupRatio: %f, UsePrice: %t, CacheCreationRatio: %f, CacheCreation5mRatio: %f, CacheCreation1hRatio: %f, QuotaToPreConsume: %d, ImageRatio: %f, ImageSize: %s, ImageResolutionTier: %s, AudioRatio: %f, AudioCompletionRatio: %f", p.ModelPrice, p.ModelRatio, p.VideoSecondsUnitPrice, p.VideoSecondsTier, p.VideoDurationSeconds, p.VideoFixedPrice, p.ConditionalInputPrice, p.InputImageCost, p.InputImageCounts, p.InputImageFreeCount, p.CompletionRatio, p.CacheRatio, p.GroupRatioInfo.GroupRatio, p.UsePrice, p.CacheCreationRatio, p.CacheCreation5mRatio, p.CacheCreation1hRatio, p.QuotaToPreConsume, p.ImageRatio, p.ImageSize, p.ImageResolutionTier, p.AudioRatio, p.AudioCompletionRatio)
 }

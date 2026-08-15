@@ -2,9 +2,9 @@
 Copyright (C) 2025 QuantumNous
 
 This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -25,7 +25,7 @@ import { codeInspectorPlugin } from 'code-inspector-plugin';
 const { vitePluginSemi } = pkg;
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   css: {
     preprocessorOptions: {
       scss: {
@@ -44,9 +44,11 @@ export default defineConfig({
     },
   },
   plugins: [
-    codeInspectorPlugin({
-      bundler: 'vite',
-    }),
+    command === 'serve'
+      ? codeInspectorPlugin({
+          bundler: 'vite',
+        })
+      : null,
     {
       name: 'treat-js-files-as-jsx',
       async transform(code, id) {
@@ -66,7 +68,7 @@ export default defineConfig({
     vitePluginSemi({
       cssLayer: true,
     }),
-  ],
+  ].filter(Boolean),
   optimizeDeps: {
     force: true,
     esbuildOptions: {
@@ -77,6 +79,7 @@ export default defineConfig({
     },
   },
   build: {
+    reportCompressedSize: false,
     rollupOptions: {
       output: {
         manualChunks: {
@@ -116,4 +119,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/QuantumNous/new-api/pkg/tracelog"
 )
 
 const mockHistoryLimit = 500
@@ -40,6 +42,7 @@ type mockHistoryResponse struct {
 type historyResponseWriter struct {
 	http.ResponseWriter
 	status int
+	body   bytes.Buffer
 }
 
 func (w *historyResponseWriter) WriteHeader(status int) {
@@ -54,6 +57,7 @@ func (w *historyResponseWriter) Write(body []byte) (int, error) {
 	if w.status == 0 {
 		w.WriteHeader(http.StatusOK)
 	}
+	_, _ = w.body.Write(body)
 	return w.ResponseWriter.Write(body)
 }
 
@@ -65,17 +69,20 @@ func (s *mockServer) captureRequests(next http.Handler) http.Handler {
 		}
 
 		startedAt := time.Now()
+		traceContext := tracelog.Default.WithTraceID(r.Context(), r.Header.Get(tracelog.Header))
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, "read request body: "+err.Error(), http.StatusBadRequest)
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
+		tracelog.Default.LogHTTPServerRequest(traceContext, "mock.input", r, body)
 		response := &historyResponseWriter{ResponseWriter: w}
 		next.ServeHTTP(response, r)
 		if response.status == 0 {
 			response.status = http.StatusOK
 		}
+		tracelog.Default.LogHTTPServerResponse(traceContext, "mock.output", response.status, response.Header(), response.body.Bytes())
 
 		record := mockRequestRecord{
 			ReceivedAt:    startedAt,

@@ -60,6 +60,15 @@ func (h *SeedanceHandler) Validate(req *relaycommon.TaskSubmitReq) error {
 	if duration <= 0 {
 		duration = parsePositiveInt(req.Seconds)
 	}
+	if duration <= 0 {
+		legacyDuration, ok, err := metadataDurationSeconds(req.Metadata)
+		if err != nil {
+			return err
+		}
+		if ok {
+			duration = legacyDuration
+		}
+	}
 	if duration > 0 && (duration < 4 || duration > 15) {
 		return errf("seedance duration must be between 4 and 15 seconds")
 	}
@@ -145,7 +154,19 @@ func (h *SeedanceHandler) normalizeRequest(req *relaycommon.TaskSubmitReq) (*see
 		duration = parsePositiveInt(req.Seconds)
 	}
 	if duration <= 0 {
+		legacyDuration, ok, err := metadataDurationSeconds(req.Metadata)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			duration = legacyDuration
+		}
+	}
+	if duration <= 0 {
 		duration = 5
+	}
+	if duration < 4 || duration > 15 {
+		return nil, errf("seedance duration must be between 4 and 15 seconds")
 	}
 	seed, _ := requestSeed(req)
 	provider, _ := requestProvider(req)
@@ -155,12 +176,16 @@ func (h *SeedanceHandler) normalizeRequest(req *relaycommon.TaskSubmitReq) (*see
 	if exactSize == "" {
 		resolution = firstNonEmpty(resolution, rawSize)
 	}
+	aspectRatio := requestAspectRatio(req)
+	if aspectRatio == "" {
+		aspectRatio = stringMetadata(req.Metadata, "aspectRatio")
+	}
 	normalized := &seedanceNormalizedRequest{
 		Prompt:          strings.TrimSpace(req.Prompt),
 		DurationSeconds: duration,
 		Resolution:      resolution,
 		Size:            exactSize,
-		AspectRatio:     requestAspectRatio(req),
+		AspectRatio:     aspectRatio,
 		GenerateAudio:   requestAudioEnabled(req),
 		Seed:            seed,
 		Provider:        provider,
@@ -209,6 +234,9 @@ func buildFrameImage(frameType, url string) map[string]any {
 
 func inferInputReferences(images []string, videos []string, metadata map[string]any, usedFrameImages int) []map[string]any {
 	var refs []map[string]any
+	if usedFrameImages > len(images) {
+		usedFrameImages = len(images)
+	}
 	for _, image := range images[usedFrameImages:] {
 		refs = append(refs, buildInputReference("image", image))
 	}
@@ -317,7 +345,7 @@ func cloneMetadataExcludingKnown(metadata map[string]any) map[string]any {
 		switch key {
 		case "resolution", "aspect_ratio", "ratio", "audio", "generate_audio",
 			"seed", "provider", "callback_url", "frame_images", "input_references",
-			"reference_images", "reference_videos", "reference_audios":
+			"reference_images", "reference_videos", "reference_audios", "aspectRatio", "durationSeconds":
 			continue
 		default:
 			cloned[key] = value

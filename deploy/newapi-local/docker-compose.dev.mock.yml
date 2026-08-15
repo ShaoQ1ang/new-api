@@ -13,10 +13,10 @@ services:
     environment:
       ALI_VIDEO_MOCK_LISTEN: ":8080"
       ALI_VIDEO_MOCK_FAIL_RATE: "${ALI_VIDEO_MOCK_FAIL_RATE:-0}"
-      ALI_VIDEO_MOCK_COMPLETE_AFTER_POLL: "${ALI_VIDEO_MOCK_COMPLETE_AFTER_POLL:-2}"
+      ALI_VIDEO_MOCK_COMPLETION_DELAY_SECONDS: "${ALI_VIDEO_MOCK_COMPLETION_DELAY_SECONDS:-10}"
       ALI_VIDEO_MOCK_PUBLIC_BASE_URL: "${ALI_VIDEO_MOCK_PUBLIC_BASE_URL:-}"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/healthz | grep -o '\"ok\":true' || exit 1"]
+      test: ["CMD", "/usr/local/bin/ali-video-mock", "healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 5

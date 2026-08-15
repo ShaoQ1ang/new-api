@@ -13,6 +13,7 @@ var (
 		"dall-e-3",
 		"dall-e-2",
 		"gpt-image-1",
+		"bytedance-seed/seedream-4.5",
 		"prefix:imagen-",
 		"flux-",
 		"flux.1-",

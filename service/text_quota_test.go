@@ -70,6 +70,27 @@ func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 	require.Equal(t, 1488, chatSummary.Quota)
 }
 
+func TestCalculateTextQuotaSummaryAddsInputImagesAfterFixedPriceRatios(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	priceData := types.PriceData{
+		UsePrice:       true,
+		ModelPrice:     0.1,
+		InputImageCost: 0.03,
+		GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 1},
+	}
+	priceData.AddOtherRatio("n", 2)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "fixed-image-model",
+		StartTime:       time.Now(),
+		PriceData:       priceData,
+	}
+
+	summary := calculateTextQuotaSummary(ctx, info, &dto.Usage{PromptTokens: 1, TotalTokens: 1})
+
+	require.Equal(t, common.QuotaFromFloat((0.1*2+0.03)*common.QuotaPerUnit), summary.Quota)
+}
+
 func TestCalculateTextQuotaSummaryUsesSplitClaudeCacheCreationRatios(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

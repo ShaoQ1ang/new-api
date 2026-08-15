@@ -51,6 +51,12 @@ func TestGetEndpointTypesByChannelTypeOpenRouterVideoFamilies(t *testing.T) {
 	}
 }
 
+func TestGetEndpointTypesByChannelTypeOpenRouterSeedream45(t *testing.T) {
+	endpoints := GetEndpointTypesByChannelType(constant.ChannelTypeOpenRouter, "bytedance-seed/seedream-4.5")
+
+	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeImageGeneration, constant.EndpointTypeOpenAI}, endpoints)
+}
+
 func TestGetDefaultEndpointInfo_OpenAIVideo(t *testing.T) {
 	info, ok := GetDefaultEndpointInfo(constant.EndpointTypeOpenAIVideo)
 	if !ok {

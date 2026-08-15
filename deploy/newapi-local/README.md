@@ -320,13 +320,11 @@ http://127.0.0.1:18080
 行为约定：
 
 - 会校验 Wan 文生/图生、HappyHorse 文生/首帧/参考生/视频编辑，以及 Kling 标准版/Omni 的媒体组合
-- 默认快速成功
-- 第 1 次轮询返回 `RUNNING`
-- 第 2 次轮询默认返回 `SUCCEEDED`
+- 默认在提交约 10 秒后成功，频繁轮询不会提前完成；可通过 `ALI_VIDEO_MOCK_COMPLETION_DELAY_SECONDS` 调整
 - 会返回 `usage.duration`、`usage.SR`、`usage.audio`，方便验证本地计费链路
 - 成功结果 URL 返回真正可播放的 H.264 MP4，不再返回字符串占位符
 - 视频端点支持 `GET`、`HEAD` 和 HTTP Range 请求，可供浏览器 `<video>`、NewAPI 视频代理和下载客户端使用
-- 内嵌视频为固定的一秒合成测试片段；任务请求中的 `duration` 仍会原样反映到上游 mock usage，便于验证计费
+- mock 在内存中按完整 H.264 GOP 扩展内嵌视频，并按任务 `duration` 缓存实际 1–15 秒 MP4，无需 ffmpeg
 - 只有请求显式开启 `watermark=true` 时才返回 `watermark_video_url`
 - Seedance 成功响应返回 `content.video_url` 和 token usage，可验证视频输入与分辨率计费链路
 - OpenRouter Seedance/Veo 成功响应返回 `output.video_url`、`usage.video_tokens`、`usage.total_tokens`、duration 和 provider cost
@@ -477,11 +475,13 @@ curl -H 'Range: bytes=0-31' -o /tmp/mock-video-prefix.bin http://localhost:18080
 curl -o /tmp/newapi-mock-video.mp4 http://localhost:18080/mock-assets/videos/sample.mp4
 ```
 
-终态轮询次数可通过 `ALI_VIDEO_MOCK_COMPLETE_AFTER_POLL` 调整，必须为正整数。例如第 3 次轮询才进入终态：
+完成等待时间可通过 `ALI_VIDEO_MOCK_COMPLETION_DELAY_SECONDS` 调整，默认 10 秒。例如改成 5 秒：
 
 ```bash
-ALI_VIDEO_MOCK_COMPLETE_AFTER_POLL=3 docker compose -f docker-compose.dev.mock.yml up -d --build
+ALI_VIDEO_MOCK_COMPLETION_DELAY_SECONDS=5 docker compose -f docker-compose.dev.mock.yml up -d --build
 ```
+
+`ALI_VIDEO_MOCK_COMPLETE_AFTER_POLL` 仍可用于测试兼容；设置为正整数时会覆盖墙钟等待时间，按轮询次数进入终态。
 
 可选失败率：
 

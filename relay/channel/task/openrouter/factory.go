@@ -81,8 +81,7 @@ type KlingHandler struct {
 }
 
 func (h *KlingHandler) Match(model string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(model))
-	return strings.HasPrefix(normalized, "kwaivgi/kling-v3.0-") || normalized == "kwaivgi/kling-video-o1"
+	return isSupportedKlingModel(model)
 }
 
 type MiniMaxHandler struct {

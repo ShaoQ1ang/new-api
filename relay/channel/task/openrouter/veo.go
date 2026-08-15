@@ -21,7 +21,6 @@ type veoNormalizedRequest struct {
 	CallbackURL     string
 	FrameImages     []map[string]any
 	InputReferences []map[string]any
-	RawMetadata     map[string]any
 }
 
 var veoSupportedDurations = []int{4, 6, 8}
@@ -81,12 +80,6 @@ func (h *VeoHandler) BuildUpstreamRequest(info *relaycommon.RelayInfo, req *rela
 	if normalized.CallbackURL != "" {
 		body["callback_url"] = normalized.CallbackURL
 	}
-	for key, value := range normalized.RawMetadata {
-		if _, exists := body[key]; exists {
-			continue
-		}
-		body[key] = value
-	}
 	return body, nil
 }
 
@@ -95,7 +88,7 @@ func (h *VeoHandler) EstimateBillingContext(req *relaycommon.TaskSubmitReq) (*Vi
 	if err != nil {
 		return nil, err
 	}
-	tier := normalizeTier(firstNonEmpty(normalized.Resolution, normalized.Size))
+	tier := normalizeTier(normalized.Size)
 	if tier == "" {
 		tier = normalizeResolutionTier(req)
 	}
@@ -136,25 +129,38 @@ func (h *VeoHandler) normalizeRequest(req *relaycommon.TaskSubmitReq) (*veoNorma
 	if duration <= 0 {
 		duration = parsePositiveInt(req.Seconds)
 	}
+	if duration <= 0 {
+		legacyDuration, ok, err := metadataDurationSeconds(req.Metadata)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			duration = legacyDuration
+		}
+	}
 	duration = normalizeSupportedDuration(duration, veoSupportedDurations, 8)
 	rawSize := requestSize(req)
 	exactSize := normalizeExactVideoSize(rawSize)
 	rawResolution := requestResolution(req)
-	if exactSize == "" {
-		rawResolution = firstNonEmpty(rawResolution, rawSize)
-	}
-	resolution := normalizeVeoResolution(firstNonEmpty(rawResolution, exactSize))
-	if raw := firstNonEmpty(rawResolution, exactSize); strings.TrimSpace(raw) != "" && resolution == "" {
+	resolution := normalizeVeoResolution(firstNonEmpty(rawResolution, rawSize, exactSize))
+	if raw := firstNonEmpty(rawResolution, rawSize, exactSize); strings.TrimSpace(raw) != "" && resolution == "" {
 		return nil, errf("unsupported veo resolution: %s", raw)
 	}
-	if exactSize != "" {
-		resolution = ""
+	if strings.EqualFold(resolution, "4K") && strings.EqualFold(strings.TrimSpace(req.Model), "google/veo-3.1-lite") {
+		return nil, errf("unsupported veo resolution: %s", firstNonEmpty(rawResolution, rawSize, exactSize))
 	}
 	aspectRatio := requestAspectRatio(req)
+	if aspectRatio == "" {
+		aspectRatio = stringMetadata(req.Metadata, "aspectRatio")
+	}
 	if aspectRatio != "" {
 		if _, ok := veoSupportedAspectRatios[strings.TrimSpace(aspectRatio)]; !ok {
 			return nil, errf("unsupported veo aspect_ratio: %s", aspectRatio)
 		}
+	}
+	if exactSize != "" {
+		resolution = ""
+		aspectRatio = ""
 	}
 	seed, _ := requestSeed(req)
 	provider, _ := requestProvider(req)
@@ -168,7 +174,6 @@ func (h *VeoHandler) normalizeRequest(req *relaycommon.TaskSubmitReq) (*veoNorma
 		Seed:            seed,
 		Provider:        provider,
 		CallbackURL:     requestCallbackURL(req),
-		RawMetadata:     cloneMetadataExcludingKnown(req.Metadata),
 	}
 	if frameImages, ok := requestFrameImages(req); ok && len(frameImages) > 0 {
 		normalized.FrameImages = frameImages
@@ -185,6 +190,9 @@ func (h *VeoHandler) normalizeRequest(req *relaycommon.TaskSubmitReq) (*veoNorma
 
 func inferVeoInputReferences(images []string, usedFrameImages int, metadata map[string]any) []map[string]any {
 	var refs []map[string]any
+	if usedFrameImages > len(images) {
+		usedFrameImages = len(images)
+	}
 	for _, image := range images[usedFrameImages:] {
 		refs = append(refs, buildInputReference("image", image))
 	}
@@ -210,6 +218,9 @@ func normalizeSupportedDuration(value int, allowed []int, fallback int) int {
 
 func normalizeVeoResolution(value string) string {
 	normalized := normalizeTier(value)
+	if normalized == "4k" {
+		return "4K"
+	}
 	if _, ok := veoSupportedResolutions[normalized]; ok {
 		return normalized
 	}

@@ -73,6 +73,7 @@ type ModelRatioVisualEditorProps = {
   savedCreateCacheRatio: string
   savedCompletionRatio: string
   savedImageRatio: string
+  savedImageInputPrice: string
   savedAudioRatio: string
   savedAudioCompletionRatio: string
   savedBillingMode: string
@@ -83,6 +84,7 @@ type ModelRatioVisualEditorProps = {
   createCacheRatio: string
   completionRatio: string
   imageRatio: string
+  imageInputPrice: string
   audioRatio: string
   audioCompletionRatio: string
   billingMode: string
@@ -112,6 +114,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
     savedCreateCacheRatio,
     savedCompletionRatio,
     savedImageRatio,
+    savedImageInputPrice,
     savedAudioRatio,
     savedAudioCompletionRatio,
     savedBillingMode,
@@ -122,6 +125,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
     createCacheRatio,
     completionRatio,
     imageRatio,
+    imageInputPrice,
     audioRatio,
     audioCompletionRatio,
     billingMode,
@@ -196,6 +200,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       createCacheRatio: savedCreateCacheRatio,
       completionRatio: savedCompletionRatio,
       imageRatio: savedImageRatio,
+      imageInputPrice: savedImageInputPrice,
       audioRatio: savedAudioRatio,
       audioCompletionRatio: savedAudioCompletionRatio,
       billingMode: savedBillingMode,
@@ -208,6 +213,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       createCacheRatio,
       completionRatio,
       imageRatio,
+      imageInputPrice,
       audioRatio,
       audioCompletionRatio,
       billingMode,
@@ -251,6 +257,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
     savedCreateCacheRatio,
     savedCompletionRatio,
     savedImageRatio,
+    savedImageInputPrice,
     savedAudioRatio,
     savedAudioCompletionRatio,
     savedBillingMode,
@@ -261,6 +268,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
     createCacheRatio,
     completionRatio,
     imageRatio,
+    imageInputPrice,
     audioRatio,
     audioCompletionRatio,
     billingMode,
@@ -273,6 +281,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
         (acc, model) => {
           const mode =
             model.billingMode === 'per-request' ||
+            model.billingMode === 'video_seconds' ||
             model.billingMode === 'tiered_expr'
               ? model.billingMode
               : 'per-token'
@@ -283,7 +292,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
           'per-token': 0,
           'per-request': 0,
           tiered_expr: 0,
-        } as Record<'per-token' | 'per-request' | 'tiered_expr', number>
+          video_seconds: 0,
+        } as Record<
+          'per-token' | 'per-request' | 'video_seconds' | 'tiered_expr',
+          number
+        >
       ),
     [models]
   )
@@ -294,6 +307,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       let editBillingMode: PricingMode = 'per-token'
       if (editableModel.billingMode === 'tiered_expr') {
         editBillingMode = 'tiered_expr'
+      } else if (editableModel.billingMode === 'video_seconds') {
+        editBillingMode = 'video_seconds'
       } else if (editableModel.price && editableModel.price !== '') {
         editBillingMode = 'per-request'
       }
@@ -305,6 +320,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
         createCacheRatio: editableModel.createCacheRatio,
         completionRatio: editableModel.completionRatio,
         imageRatio: editableModel.imageRatio,
+        imageInputPrice: editableModel.imageInputPrice,
         audioRatio: editableModel.audioRatio,
         audioCompletionRatio: editableModel.audioCompletionRatio,
         billingMode: editBillingMode,
@@ -364,6 +380,9 @@ const ModelRatioVisualEditorComponent = forwardRef<
         fallback: {},
         silent: true,
       })
+      const imageInputPriceMap = safeJsonParse<
+        Record<string, Record<string, number>>
+      >(imageInputPrice, { fallback: {}, silent: true })
       const audioMap = safeJsonParse<Record<string, number>>(audioRatio, {
         fallback: {},
         silent: true,
@@ -387,6 +406,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       delete createCacheMap[name]
       delete completionMap[name]
       delete imageMap[name]
+      delete imageInputPriceMap[name]
       delete audioMap[name]
       delete audioCompletionMap[name]
       delete billingModeMap[name]
@@ -398,6 +418,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       onChange('CreateCacheRatio', JSON.stringify(createCacheMap, null, 2))
       onChange('CompletionRatio', JSON.stringify(completionMap, null, 2))
       onChange('ImageRatio', JSON.stringify(imageMap, null, 2))
+      onChange('ImageInputPrice', JSON.stringify(imageInputPriceMap, null, 2))
       onChange('AudioRatio', JSON.stringify(audioMap, null, 2))
       onChange(
         'AudioCompletionRatio',
@@ -425,6 +446,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       createCacheRatio,
       completionRatio,
       imageRatio,
+      imageInputPrice,
       audioRatio,
       audioCompletionRatio,
       billingMode,
@@ -504,6 +526,9 @@ const ModelRatioVisualEditorComponent = forwardRef<
         fallback: {},
         silent: true,
       })
+      const imageInputPriceMap = safeJsonParse<
+        Record<string, Record<string, number>>
+      >(imageInputPrice, { fallback: {}, silent: true })
       const audioMap = safeJsonParse<Record<string, number>>(audioRatio, {
         fallback: {},
         silent: true,
@@ -527,7 +552,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
         value: string | undefined
       ) => {
         if (!value || value === '') return
-        const parsed = parseFloat(value)
+        const parsed = Number.parseFloat(value)
         if (Number.isFinite(parsed)) target[name] = parsed
       }
 
@@ -538,10 +563,18 @@ const ModelRatioVisualEditorComponent = forwardRef<
         delete createCacheMap[name]
         delete completionMap[name]
         delete imageMap[name]
+        delete imageInputPriceMap[name]
         delete audioMap[name]
         delete audioCompletionMap[name]
         delete billingModeMap[name]
         delete billingExprMap[name]
+
+        if (
+          data.imageInputPrice &&
+          Object.keys(data.imageInputPrice).length > 0
+        ) {
+          imageInputPriceMap[name] = { ...data.imageInputPrice }
+        }
 
         if (data.billingMode === 'tiered_expr') {
           const combined = combineBillingExpr(
@@ -564,6 +597,10 @@ const ModelRatioVisualEditorComponent = forwardRef<
           setIfPresent(imageMap, name, data.imageRatio)
           setIfPresent(audioMap, name, data.audioRatio)
           setIfPresent(audioCompletionMap, name, data.audioCompletionRatio)
+        } else if (data.billingMode === 'video_seconds') {
+          billingModeMap[name] = 'video_seconds'
+          setIfPresent(priceMap, name, data.price)
+          setIfPresent(ratioMap, name, data.ratio)
         } else if (data.price && data.price !== '') {
           setIfPresent(priceMap, name, data.price)
         } else {
@@ -583,6 +620,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       onChange('CreateCacheRatio', JSON.stringify(createCacheMap, null, 2))
       onChange('CompletionRatio', JSON.stringify(completionMap, null, 2))
       onChange('ImageRatio', JSON.stringify(imageMap, null, 2))
+      onChange('ImageInputPrice', JSON.stringify(imageInputPriceMap, null, 2))
       onChange('AudioRatio', JSON.stringify(audioMap, null, 2))
       onChange(
         'AudioCompletionRatio',
@@ -604,6 +642,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       createCacheRatio,
       completionRatio,
       imageRatio,
+      imageInputPrice,
       audioRatio,
       audioCompletionRatio,
       billingMode,
@@ -696,6 +735,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
                     label: 'Per-request',
                     value: 'per-request',
                     count: modeCounts['per-request'],
+                  },
+                  {
+                    label: 'Per-second',
+                    value: 'video_seconds',
+                    count: modeCounts.video_seconds,
                   },
                   {
                     label: 'Expression',
@@ -836,6 +880,7 @@ export const ModelRatioVisualEditor = memo(
       prevProps.savedCreateCacheRatio === nextProps.savedCreateCacheRatio &&
       prevProps.savedCompletionRatio === nextProps.savedCompletionRatio &&
       prevProps.savedImageRatio === nextProps.savedImageRatio &&
+      prevProps.savedImageInputPrice === nextProps.savedImageInputPrice &&
       prevProps.savedAudioRatio === nextProps.savedAudioRatio &&
       prevProps.savedAudioCompletionRatio ===
         nextProps.savedAudioCompletionRatio &&
@@ -847,6 +892,7 @@ export const ModelRatioVisualEditor = memo(
       prevProps.createCacheRatio === nextProps.createCacheRatio &&
       prevProps.completionRatio === nextProps.completionRatio &&
       prevProps.imageRatio === nextProps.imageRatio &&
+      prevProps.imageInputPrice === nextProps.imageInputPrice &&
       prevProps.audioRatio === nextProps.audioRatio &&
       prevProps.audioCompletionRatio === nextProps.audioCompletionRatio &&
       prevProps.billingMode === nextProps.billingMode &&

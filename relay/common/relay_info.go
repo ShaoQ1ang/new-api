@@ -193,6 +193,13 @@ type RelayInfo struct {
 	*TaskRelayInfo
 }
 
+func (info *RelayInfo) GetUpstreamModelName() string {
+	if info == nil || info.ChannelMeta == nil {
+		return ""
+	}
+	return info.ChannelMeta.UpstreamModelName
+}
+
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
 	channelType := common.GetContextKeyInt(c, constant.ContextKeyChannelType)
 	paramOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelParamOverride)

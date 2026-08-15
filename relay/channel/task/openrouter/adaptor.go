@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/tracelog"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
@@ -42,6 +43,7 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 			req.Images = []string{req.Image}
 		}
 	}
+	tracelog.Default.LogValue(c.Request.Context(), "newapi.input", "server-request", func() any { return req })
 	handler := selectRequestHandler(info, req.Model)
 	resolvedReq := requestForHandler(info, &req)
 	if err := handler.Validate(&resolvedReq); err != nil {
@@ -119,6 +121,7 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if err != nil {
 		return nil, err
 	}
+	tracelog.Default.LogValue(c.Request.Context(), "newapi.upstream.request", "client-request", func() any { return body })
 	return bytes.NewReader(bodyBytes), nil
 }
 
@@ -131,6 +134,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	if err != nil {
 		return "", nil, service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 	}
+	tracelog.Default.LogHTTPResponse(c.Request.Context(), "newapi.upstream.response", resp, responseBody)
 	_ = resp.Body.Close()
 	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
@@ -141,6 +145,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	if err != nil {
 		return "", nil, service.TaskErrorWrapper(err, "unmarshal_response_body_failed", http.StatusInternalServerError)
 	}
+	tracelog.Default.LogResponseValue(c.Request.Context(), "newapi.output", "server-response", func() any { return result.PublicResponse })
 	c.JSON(http.StatusOK, result.PublicResponse)
 	return result.UpstreamTaskID, responseBody, nil
 }

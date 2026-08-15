@@ -14,9 +14,16 @@ var klingReferenceTypes = map[string]struct{}{"image_url": {}}
 var klingSizes = map[string]struct{}{"1280x720": {}, "720x1280": {}, "720x720": {}}
 
 func init() {
-	taskcommon.RegisterVideoBillingConverter(func(modelName string) bool {
-		return strings.HasPrefix(modelName, "kwaivgi/kling-v3.0-") || modelName == "kwaivgi/kling-video-o1"
-	}, convertKlingVideoBillingParams)
+	taskcommon.RegisterVideoBillingConverter(isSupportedKlingModel, convertKlingVideoBillingParams)
+}
+
+func isSupportedKlingModel(modelName string) bool {
+	switch strings.ToLower(strings.TrimSpace(modelName)) {
+	case "kwaivgi/kling-v3.0-pro", "kwaivgi/kling-v3.0-std", "kwaivgi/kling-video-o1":
+		return true
+	default:
+		return false
+	}
 }
 
 func (h *KlingHandler) Validate(req *relaycommon.TaskSubmitReq) error {

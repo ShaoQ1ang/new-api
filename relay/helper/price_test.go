@@ -208,12 +208,12 @@ func TestModelPriceHelperUsesConfiguredImageResolutionPrice(t *testing.T) {
 			}
 	}
 
-	ctx, info, meta := newRequest("1696x2528")
+	ctx, info, meta := newRequest("1600x1600")
 	priceData, err := ModelPriceHelper(ctx, info, 0, meta)
 	require.NoError(t, err)
 	assert.Equal(t, 0.08, priceData.ModelPrice)
 	assert.Equal(t, "2k", priceData.ImageResolutionTier)
-	assert.Equal(t, "1696x2528", priceData.ImageSize)
+	assert.Equal(t, "1600x1600", priceData.ImageSize)
 	assert.Equal(t, int(0.08*common.QuotaPerUnit*2), priceData.QuotaToPreConsume)
 
 	ctx, info, meta = newRequest("4096x4096")
@@ -222,12 +222,12 @@ func TestModelPriceHelperUsesConfiguredImageResolutionPrice(t *testing.T) {
 	assert.Equal(t, 0.27, priceData.ModelPrice, "an unconfigured 4k SKU falls back to legacy fixed-price behavior")
 	assert.Empty(t, priceData.ImageResolutionTier)
 
-	ctx, info, meta = newRequest("1600x1600")
+	ctx, info, meta = newRequest("auto")
 	meta.ImagePriceRatio = 1
 	priceData, err = ModelPriceHelper(ctx, info, 0, meta)
 	require.NoError(t, err)
-	assert.Equal(t, 0.03, priceData.ModelPrice, "an unknown custom size falls back to ModelPrice")
-	assert.Empty(t, priceData.ImageResolutionTier)
+	assert.Equal(t, 0.08, priceData.ModelPrice, "auto uses the default 2k resolution price")
+	assert.Equal(t, "2k", priceData.ImageResolutionTier)
 }
 
 func TestModelPriceHelperAllowsResolutionOnlyFixedPrice(t *testing.T) {
@@ -350,4 +350,46 @@ func TestModelPriceHelperRequestBillingRatiosOnlyApplyToFixedPrice(t *testing.T)
 	require.Equal(t, "QuotaFromFloat", clamp.Op)
 	require.Equal(t, common.QuotaClampOverflow, clamp.Kind)
 	require.Nil(t, info.Billing)
+}
+
+func TestModelPriceHelperAddsInputImagesAfterOutputCount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	savedModelPrices := ratio_setting.ModelPrice2JSONString()
+	savedInputPrices := ratio_setting.ImageInputPrice2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedModelPrices))
+		require.NoError(t, ratio_setting.UpdateImageInputPriceByJSONString(savedInputPrices))
+	})
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"priced-image-model":0.1}`))
+	require.NoError(t, ratio_setting.UpdateImageInputPriceByJSONString(`{
+		"priced-image-model":{"1k":0.01,"2k":0.02}
+	}`))
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "priced-image-model",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+	priceData, err := ModelPriceHelper(ctx, info, 0, &types.TokenCountMeta{
+		BillingRatios:   map[string]float64{"n": 2},
+		InputImageTiers: []string{"1k", "2k"},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, common.QuotaFromFloat((0.1*2+0.01+0.02)*common.QuotaPerUnit), priceData.QuotaToPreConsume)
+	assert.InDelta(t, 0.03, priceData.InputImageCost, 1e-9)
+	assert.Equal(t, map[string]int{"1k": 1, "2k": 1}, priceData.InputImageCounts)
+}
+
+func TestApplyImageInputPricingIgnoresRatioBilling(t *testing.T) {
+	savedInputPrices := ratio_setting.ImageInputPrice2JSONString()
+	t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateImageInputPriceByJSONString(savedInputPrices)) })
+	require.NoError(t, ratio_setting.UpdateImageInputPriceByJSONString(`{"ratio-model":{"default":1}}`))
+	priceData := types.PriceData{UsePrice: false}
+
+	ApplyImageInputPricing(&relaycommon.RelayInfo{OriginModelName: "ratio-model"}, &priceData, []string{"default"})
+
+	assert.Zero(t, priceData.InputImageCost)
 }

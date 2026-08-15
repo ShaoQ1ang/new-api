@@ -33,13 +33,23 @@ export const createModelPricingSchema = (t: (key: string) => string) =>
     imageRatio: z.string().optional(),
     audioRatio: z.string().optional(),
     audioCompletionRatio: z.string().optional(),
+    inputImageDefaultPrice: z.string().optional(),
+    inputImage1kPrice: z.string().optional(),
+    inputImage2kPrice: z.string().optional(),
+    inputImage4kPrice: z.string().optional(),
+    inputImage8kPrice: z.string().optional(),
+    inputImageFreeCount: z.string().optional(),
   })
 
 export type ModelPricingFormValues = z.infer<
   ReturnType<typeof createModelPricingSchema>
 >
 
-export type PricingMode = 'per-token' | 'per-request' | 'tiered_expr'
+export type PricingMode =
+  | 'per-token'
+  | 'per-request'
+  | 'video_seconds'
+  | 'tiered_expr'
 
 export type LaneKey =
   | 'completion'
@@ -62,6 +72,7 @@ export type ModelRatioData = {
   billingMode?: PricingMode
   billingExpr?: string
   requestRuleExpr?: string
+  imageInputPrice?: Record<string, number>
 }
 
 export type PreviewRow = {
@@ -231,11 +242,32 @@ export function buildPreviewRows(
   }
 
   if (mode === 'per-request') {
-    return [
+    const rows: PreviewRow[] = [
       {
         key: 'price',
         label: 'ModelPrice',
         value: values.price || t('Empty'),
+      },
+    ]
+    if (values.inputImageDefaultPrice) {
+      rows.push({
+        key: 'inputImageDefaultPrice',
+        label: t('Input image surcharge'),
+        value: `$${values.inputImageDefaultPrice} / ${t('image')}`,
+      })
+    }
+    return rows
+  }
+
+  if (mode === 'video_seconds') {
+    return [
+      { key: 'mode', label: 'BillingMode', value: 'video_seconds' },
+      {
+        key: 'inputImageDefaultPrice',
+        label: t('Input image surcharge'),
+        value: values.inputImageDefaultPrice
+          ? `$${values.inputImageDefaultPrice} / ${t('image')}`
+          : t('Empty'),
       },
     ]
   }

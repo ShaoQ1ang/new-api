@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/pkg/tracelog"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
@@ -42,6 +43,7 @@ func GeminiTextGenerationHandler(c *gin.Context, info *relaycommon.RelayInfo, re
 	// 计算使用量（优先上游 UsageMetadata，缺失时本地估算并保留 Gemini 计费语义）
 	usage := buildUsageFromGeminiResponse(c, info, &geminiResponse)
 
+	tracelog.Default.LogHTTPResponse(c.Request.Context(), "newapi.output", resp, responseBody)
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
 	return &usage, nil

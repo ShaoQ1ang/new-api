@@ -16,13 +16,15 @@ func TestResolveImageResolutionTier(t *testing.T) {
 	}{
 		{name: "direct tier", size: " 2K ", wantTier: "2k", wantOK: true},
 		{name: "one k square", size: "1024x1024", wantTier: "1k", wantOK: true},
-		{name: "two k portrait", size: "1696*2528", wantTier: "2k", wantOK: true},
+		{name: "large portrait", size: "1696*2528", wantTier: "4k", wantOK: true},
 		{name: "four k ultrawide", size: "6336×2688", wantTier: "4k", wantOK: true},
-		{name: "qwen one k preset", size: "1280X720", wantTier: "1k", wantOK: true},
-		{name: "qwen two k preset", size: "2688x1152", wantTier: "2k", wantOK: true},
-		{name: "arbitrary qwen size", size: "1600x1600", wantOK: false},
-		{name: "unsupported size", size: "8192x8192", wantOK: false},
-		{name: "invalid size", size: "wide", wantOK: false},
+		{name: "maximum edge decides tier", size: "1280X720", wantTier: "2k", wantOK: true},
+		{name: "large custom size", size: "2688x1152", wantTier: "4k", wantOK: true},
+		{name: "arbitrary size", size: "1600x1600", wantTier: "2k", wantOK: true},
+		{name: "oversized image", size: "8192x8192", wantTier: "4k", wantOK: true},
+		{name: "auto defaults to two k", size: "auto", wantTier: "2k", wantOK: true},
+		{name: "empty defaults to two k", size: "", wantTier: "2k", wantOK: true},
+		{name: "invalid defaults to two k", size: "wide", wantTier: "2k", wantOK: true},
 	}
 
 	for _, tt := range tests {

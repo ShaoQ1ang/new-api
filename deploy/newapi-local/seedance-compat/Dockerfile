@@ -1,10 +1,10 @@
-FROM golang:1.23-alpine AS build
+FROM golang:1.25-alpine AS build
 
 WORKDIR /src
 COPY . .
 RUN go build -o /out/seedance-compat .
 
-FROM alpine:3.20
+FROM alpine:3.22
 
 WORKDIR /app
 COPY --from=build /out/seedance-compat /app/seedance-compat

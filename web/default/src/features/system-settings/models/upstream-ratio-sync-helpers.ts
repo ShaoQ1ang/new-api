@@ -71,6 +71,7 @@ export const RATIO_SYNC_FIELDS: RatioType[] = [
 export const SYNC_FIELD_ORDER: RatioType[] = [
   ...RATIO_SYNC_FIELDS,
   'model_price',
+  'image_input_price',
   'video_seconds_price',
   'billing_mode',
   'billing_expr',
@@ -120,6 +121,7 @@ export function getPreferredSyncField(
   const videoPrice = ratioTypes.video_seconds_price?.upstreams?.[sourceName]
   if (
     ratioType !== 'video_seconds_price' &&
+    ratioType !== 'image_input_price' &&
     videoPrice !== null &&
     videoPrice !== undefined &&
     videoPrice !== 'same'
@@ -162,6 +164,7 @@ export function getBillingCategory(
   ratioType: string
 ): 'price' | 'ratio' | 'video' | 'tiered' {
   if (ratioType === 'model_price') return 'price'
+  if (ratioType === 'image_input_price') return 'price'
   if (ratioType === 'video_seconds_price') return 'video'
   if (ratioType === 'billing_mode' || ratioType === 'billing_expr') {
     return 'tiered'

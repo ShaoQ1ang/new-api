@@ -5,11 +5,15 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/pkg/tracelog"
 	taskali "github.com/QuantumNous/new-api/relay/channel/task/ali"
 	"github.com/abema/go-mp4"
 	"github.com/stretchr/testify/assert"
@@ -145,6 +149,42 @@ func TestMockVideoIsPlayableMP4AndSupportsRanges(t *testing.T) {
 	assert.Equal(t, strconv.Itoa(fullResp.Body.Len()), headResp.Header().Get("Content-Length"))
 }
 
+func TestMockVideoMatchesRequestedDuration(t *testing.T) {
+	server := newMockServerWithConfig(mockConfig{CompleteAfterPoll: 1})
+
+	for _, seconds := range []int{5, 10, 15} {
+		t.Run(strconv.Itoa(seconds)+"s", func(t *testing.T) {
+			taskID := server.nextTaskID()
+			server.storeTask(&mockTask{ID: taskID, Duration: seconds})
+			resp := performRequest(t, server.routes(), http.MethodGet, "/mock-assets/videos/"+taskID+".mp4", "")
+			require.Equal(t, http.StatusOK, resp.Code)
+			probe, err := mp4.Probe(bytes.NewReader(resp.Body.Bytes()))
+			require.NoError(t, err)
+			actualSeconds := float64(probe.Duration) / float64(probe.Timescale)
+			assert.InDelta(t, float64(seconds), actualSeconds, 0.1)
+		})
+	}
+}
+
+func TestCompletionDelayUsesElapsedTime(t *testing.T) {
+	server := newMockServerWithConfig(mockConfig{CompletionDelay: 10 * time.Second})
+	task := mockTask{CompletedAt: time.Now().Add(10 * time.Second), PollCount: 100}
+	assert.False(t, server.taskComplete(task), "polling must not complete a timed task early")
+
+	task.CompletedAt = time.Now().Add(-time.Millisecond)
+	assert.True(t, server.taskComplete(task))
+}
+
+func TestLoadMockConfigDefaultsToTenSecondCompletionDelay(t *testing.T) {
+	t.Setenv("ALI_VIDEO_MOCK_COMPLETE_AFTER_POLL", "")
+	t.Setenv("ALI_VIDEO_MOCK_COMPLETION_DELAY_SECONDS", "")
+
+	cfg := loadMockConfig()
+
+	assert.Equal(t, 10*time.Second, cfg.CompletionDelay)
+	assert.Zero(t, cfg.CompleteAfterPoll)
+}
+
 func TestRequestHistoryCapturesCompleteUpstreamInput(t *testing.T) {
 	server := newMockServerWithConfig(mockConfig{CompleteAfterPoll: 1})
 	handler := server.routes()
@@ -176,6 +216,44 @@ func TestRequestHistoryCapturesCompleteUpstreamInput(t *testing.T) {
 	assert.Equal(t, "video-mock:8080", record.Host)
 	assert.Equal(t, "OpenRouter", record.Protocol)
 	assert.Equal(t, http.StatusOK, record.Status)
+}
+
+func TestTraceLogCapturesMockRequestAndResponse(t *testing.T) {
+	directory := t.TempDir()
+	client := tracelog.New("mock", directory, 8)
+	previous := tracelog.Default
+	tracelog.Default = client
+	t.Cleanup(func() {
+		client.Close()
+		tracelog.Default = previous
+	})
+
+	handler := newMockServerWithConfig(mockConfig{CompleteAfterPoll: 1}).routes()
+	body := `{"model":"google/veo-3.1-lite","prompt":"ocean waves","duration":4}`
+	request := httptest.NewRequest(http.MethodPost, "/v1/videos", strings.NewReader(body))
+	request.Header.Set(tracelog.Header, "turn-mock-trace")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	client.Close()
+
+	content, err := os.ReadFile(filepath.Join(directory, "mock.jsonl"))
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+	require.Len(t, lines, 2)
+
+	var inputEvent tracelog.Event
+	require.NoError(t, common.Unmarshal([]byte(lines[0]), &inputEvent))
+	assert.Equal(t, "turn-mock-trace", inputEvent.TraceID)
+	assert.Equal(t, "mock.input", inputEvent.Name)
+	assert.Equal(t, body, inputEvent.Request.Body)
+
+	var outputEvent tracelog.Event
+	require.NoError(t, common.Unmarshal([]byte(lines[1]), &outputEvent))
+	assert.Equal(t, "turn-mock-trace", outputEvent.TraceID)
+	assert.Equal(t, "mock.output", outputEvent.Name)
+	assert.Equal(t, http.StatusOK, outputEvent.Response.Status)
+	assert.Contains(t, outputEvent.Response.Body, `"status":"queued"`)
 }
 
 func TestRequestHistoryCapturesErrorsAndExcludesInspectorTraffic(t *testing.T) {

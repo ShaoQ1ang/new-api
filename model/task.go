@@ -114,6 +114,9 @@ type TaskBillingContext struct {
 	GroupRatio            float64            `json:"group_ratio,omitempty"`             // 分组倍率
 	ModelRatio            float64            `json:"model_ratio,omitempty"`             // 模型倍率
 	ConditionalInputPrice float64            `json:"conditional_input_price,omitempty"` // 条件输入单价（如视频输入）
+	InputImageCost        float64            `json:"input_image_cost,omitempty"`
+	InputImageCounts      map[string]int     `json:"input_image_counts,omitempty"`
+	InputImageFreeCount   int                `json:"input_image_free_count,omitempty"`
 	VideoSecondsUnitPrice float64            `json:"video_seconds_unit_price,omitempty"`
 	VideoSecondsTier      string             `json:"video_seconds_tier,omitempty"`
 	VideoDurationSeconds  int                `json:"video_duration_seconds,omitempty"`

@@ -51,6 +51,18 @@ func GetBillingMode(model string) string {
 	return BillingModeRatio
 }
 
+// ResolveBillingMode prefers an explicit setting for the requested model and
+// falls back to the mapped upstream model when the request model has none.
+func ResolveBillingMode(model, upstreamModel string) string {
+	if mode, ok := billingSetting.BillingMode[model]; ok {
+		return mode
+	}
+	if mode, ok := billingSetting.BillingMode[upstreamModel]; ok {
+		return mode
+	}
+	return BillingModeRatio
+}
+
 func GetBillingExpr(model string) (string, bool) {
 	expr, ok := billingSetting.BillingExpr[model]
 	return expr, ok

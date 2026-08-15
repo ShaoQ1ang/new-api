@@ -26,6 +26,14 @@ func TestConvertOpenRouterVideoToRatioData(t *testing.T) {
 				}
 			},
 			{
+				"id": "kwaivgi/kling-v3.0-pro",
+				"supported_resolutions": ["720p"],
+				"pricing_skus": {
+					"duration_seconds": "0.112",
+					"duration_seconds_with_audio": "0.168"
+				}
+			},
+			{
 				"id": "minimax/hailuo-3",
 				"supported_resolutions": ["2K"],
 				"pricing_skus": {
@@ -56,6 +64,9 @@ func TestConvertOpenRouterVideoToRatioData(t *testing.T) {
 		"720p": {"silent": 0.084, "default": 0.126},
 	}, prices["kwaivgi/kling-v3.0-std"])
 	assert.Equal(t, map[string]map[string]float64{
+		"720p": {"silent": 0.112, "default": 0.168},
+	}, prices["kwaivgi/kling-v3.0-pro"])
+	assert.Equal(t, map[string]map[string]float64{
 		"2k": {"silent": 0.13, "default": 0.13, "reference_image": 0.04},
 	}, prices["minimax/hailuo-3"])
 	assert.Equal(t, map[string]map[string]float64{
@@ -65,8 +76,20 @@ func TestConvertOpenRouterVideoToRatioData(t *testing.T) {
 
 	modes := valueMap(converted[billing_setting.BillingModeField])
 	assert.Equal(t, billing_setting.BillingModeVideoSeconds, modes["kwaivgi/kling-v3.0-std"])
+	assert.Equal(t, billing_setting.BillingModeVideoSeconds, modes["kwaivgi/kling-v3.0-pro"])
 	assert.Equal(t, billing_setting.BillingModeVideoSeconds, modes["minimax/hailuo-3"])
 	assert.Equal(t, billing_setting.BillingModeVideoSeconds, modes["resolution-skus"])
+}
+
+func TestConvertOpenRouterImageInputPriceWithoutTokenPricing(t *testing.T) {
+	converted, err := convertOpenRouterToRatioData(strings.NewReader(`{
+		"data":[{"id":"bytedance/seedream-5.0-pro","pricing":{"image":"0.003"}}]
+	}`))
+
+	require.NoError(t, err)
+	prices, ok := converted["image_input_price"].(ratio_setting.ImageInputPriceMap)
+	require.True(t, ok)
+	assert.Equal(t, map[string]float64{"default": 0.003}, prices["bytedance/seedream-5.0-pro"])
 }
 
 func TestFetchOpenRouterPricingDataUsesGeneralAndVideoEndpoints(t *testing.T) {

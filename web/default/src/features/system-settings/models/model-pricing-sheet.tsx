@@ -104,6 +104,18 @@ export type ModelPricingEditorPanelHandle = {
   commitDraft: () => Promise<ModelRatioData | null>
 }
 
+const inputImagePriceFields = [
+  {
+    name: 'inputImageDefaultPrice',
+    label: 'Default price',
+    placeholder: '0.003',
+  },
+  { name: 'inputImage1kPrice', label: '1K price', placeholder: '0.003' },
+  { name: 'inputImage2kPrice', label: '2K price', placeholder: '0.006' },
+  { name: 'inputImage4kPrice', label: '4K price', placeholder: '0.012' },
+  { name: 'inputImage8kPrice', label: '8K price', placeholder: '0.024' },
+] as const
+
 export const ModelPricingSheet = forwardRef<
   ModelPricingEditorPanelHandle,
   ModelPricingSheetProps
@@ -170,6 +182,12 @@ export const ModelPricingEditorPanel = forwardRef<
       imageRatio: '',
       audioRatio: '',
       audioCompletionRatio: '',
+      inputImageDefaultPrice: '',
+      inputImage1kPrice: '',
+      inputImage2kPrice: '',
+      inputImage4kPrice: '',
+      inputImage8kPrice: '',
+      inputImageFreeCount: '',
     },
   })
 
@@ -187,14 +205,19 @@ export const ModelPricingEditorPanel = forwardRef<
         imageRatio: editData.imageRatio || '',
         audioRatio: editData.audioRatio || '',
         audioCompletionRatio: editData.audioCompletionRatio || '',
+        inputImageDefaultPrice:
+          editData.imageInputPrice?.default?.toString() || '',
+        inputImage1kPrice: editData.imageInputPrice?.['1k']?.toString() || '',
+        inputImage2kPrice: editData.imageInputPrice?.['2k']?.toString() || '',
+        inputImage4kPrice: editData.imageInputPrice?.['4k']?.toString() || '',
+        inputImage8kPrice: editData.imageInputPrice?.['8k']?.toString() || '',
+        inputImageFreeCount:
+          editData.imageInputPrice?.free_count?.toString() || '',
       })
-      setPricingMode(
-        editData.billingMode === 'tiered_expr'
-          ? 'tiered_expr'
-          : editData.price
-            ? 'per-request'
-            : 'per-token'
-      )
+      let nextMode: PricingMode = editData.price ? 'per-request' : 'per-token'
+      if (editData.billingMode === 'tiered_expr') nextMode = 'tiered_expr'
+      if (editData.billingMode === 'video_seconds') nextMode = 'video_seconds'
+      setPricingMode(nextMode)
       setBillingExpr(editData.billingExpr || '')
       setRequestRuleExpr(editData.requestRuleExpr || '')
     } else {
@@ -208,6 +231,12 @@ export const ModelPricingEditorPanel = forwardRef<
         imageRatio: '',
         audioRatio: '',
         audioCompletionRatio: '',
+        inputImageDefaultPrice: '',
+        inputImage1kPrice: '',
+        inputImage2kPrice: '',
+        inputImage4kPrice: '',
+        inputImage8kPrice: '',
+        inputImageFreeCount: '',
       })
       setPricingMode('per-token')
       setBillingExpr('')
@@ -435,6 +464,36 @@ export const ModelPricingEditorPanel = forwardRef<
       return false
     }
 
+    if (pricingMode === 'per-request' || pricingMode === 'video_seconds') {
+      const values = form.getValues()
+      const priceFields = inputImagePriceFields.map(
+        (field) => values[field.name]
+      )
+      if (
+        priceFields.some((value) => {
+          if (!hasValue(value)) return false
+          const parsed = Number(value)
+          return !Number.isFinite(parsed) || parsed < 0
+        })
+      ) {
+        form.setError('inputImageDefaultPrice', {
+          message: t('Input image prices must be non-negative numbers.'),
+        })
+        return false
+      }
+      if (hasValue(values.inputImageFreeCount)) {
+        const freeCount = Number(values.inputImageFreeCount)
+        if (!Number.isInteger(freeCount) || freeCount < 0 || freeCount > 128) {
+          form.setError('inputImageFreeCount', {
+            message: t(
+              'Free image count must be an integer between 0 and 128.'
+            ),
+          })
+          return false
+        }
+      }
+    }
+
     return true
   }, [form, laneEnabled, lanePrices, pricingMode, promptPrice, t])
 
@@ -451,6 +510,23 @@ export const ModelPricingEditorPanel = forwardRef<
         imageRatio: values.imageRatio || '',
         audioRatio: values.audioRatio || '',
         audioCompletionRatio: values.audioCompletionRatio || '',
+      }
+
+      if (pricingMode === 'per-request' || pricingMode === 'video_seconds') {
+        const inputPrices: Record<string, number> = {}
+        const fieldToTier = {
+          inputImageDefaultPrice: 'default',
+          inputImage1kPrice: '1k',
+          inputImage2kPrice: '2k',
+          inputImage4kPrice: '4k',
+          inputImage8kPrice: '8k',
+          inputImageFreeCount: 'free_count',
+        } as const
+        for (const [field, tier] of Object.entries(fieldToTier)) {
+          const value = values[field as keyof typeof fieldToTier]
+          if (hasValue(value)) inputPrices[tier] = Number(value)
+        }
+        data.imageInputPrice = inputPrices
       }
 
       if (pricingMode === 'tiered_expr') {
@@ -544,12 +620,15 @@ export const ModelPricingEditorPanel = forwardRef<
                   onValueChange={handleModeChange}
                   className='gap-4'
                 >
-                  <TabsList className='grid w-full grid-cols-3'>
+                  <TabsList className='grid w-full grid-cols-4'>
                     <TabsTrigger value='per-token'>
                       {t('Per-token')}
                     </TabsTrigger>
                     <TabsTrigger value='per-request'>
                       {t('Per-request')}
+                    </TabsTrigger>
+                    <TabsTrigger value='video_seconds'>
+                      {t('Per-second')}
                     </TabsTrigger>
                     <TabsTrigger value='tiered_expr'>
                       {t('Expression')}
@@ -639,6 +718,19 @@ export const ModelPricingEditorPanel = forwardRef<
                     </FieldGroup>
                   </TabsContent>
 
+                  <TabsContent value='video_seconds' className='pt-0'>
+                    <FieldGroup className='gap-5'>
+                      <Field>
+                        <FieldLabel>{t('Video seconds price')}</FieldLabel>
+                        <FieldDescription>
+                          {t(
+                            'The base per-second prices remain in VideoSecondsPrice JSON; this panel edits the input image surcharge.'
+                          )}
+                        </FieldDescription>
+                      </Field>
+                    </FieldGroup>
+                  </TabsContent>
+
                   <TabsContent value='tiered_expr' className='pt-0'>
                     <FieldGroup className='gap-5'>
                       <TieredPricingEditor
@@ -652,6 +744,82 @@ export const ModelPricingEditorPanel = forwardRef<
                     </FieldGroup>
                   </TabsContent>
                 </Tabs>
+
+                {(pricingMode === 'per-request' ||
+                  pricingMode === 'video_seconds') && (
+                  <FieldGroup className='gap-4 border-t pt-4'>
+                    <Field>
+                      <FieldLabel>{t('Input image surcharge')}</FieldLabel>
+                      <FieldDescription>
+                        {t(
+                          'Added once per billable input image after request or duration pricing. Unknown resolutions use the default price.'
+                        )}
+                      </FieldDescription>
+                    </Field>
+                    <div className='grid gap-3 sm:grid-cols-2'>
+                      {inputImagePriceFields.map((config) => (
+                        <FormField
+                          key={config.name}
+                          control={form.control}
+                          name={config.name}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>{t(config.label)}</FormLabel>
+                              <FormControl>
+                                <InputGroup>
+                                  <InputGroupAddon>$</InputGroupAddon>
+                                  <InputGroupInput
+                                    inputMode='decimal'
+                                    placeholder={config.placeholder}
+                                    {...field}
+                                    onChange={(event) => {
+                                      if (
+                                        numericDraftRegex.test(
+                                          event.target.value
+                                        )
+                                      ) {
+                                        field.onChange(event.target.value)
+                                      }
+                                    }}
+                                  />
+                                  <InputGroupAddon align='inline-end'>
+                                    {t('per image')}
+                                  </InputGroupAddon>
+                                </InputGroup>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      ))}
+                      <FormField
+                        control={form.control}
+                        name='inputImageFreeCount'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{t('Free image count')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                inputMode='numeric'
+                                placeholder='0'
+                                {...field}
+                                onChange={(event) => {
+                                  if (/^\d*$/.test(event.target.value)) {
+                                    field.onChange(event.target.value)
+                                  }
+                                }}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {t('The first N input images are free.')}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </FieldGroup>
+                )}
               </FieldGroup>
 
               <aside className='bg-muted/20 sticky top-0 rounded-lg border'>

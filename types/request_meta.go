@@ -29,6 +29,7 @@ type TokenCountMeta struct {
 	ImagePriceRatio float64            `json:"image_ratio,omitempty"`    // Ratio for image size, if applicable
 	ImageSize       string             `json:"image_size,omitempty"`     // Requested output size used by resolution SKU billing
 	BillingRatios   map[string]float64 `json:"billing_ratios,omitempty"` // Validated request multipliers used by pre-consume billing
+	InputImageTiers []string           `json:"input_image_tiers,omitempty"`
 	//IsStreaming   bool        `json:"is_streaming,omitempty"`   // Indicates if the request is streaming
 }
 

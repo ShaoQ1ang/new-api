@@ -67,6 +67,7 @@ func TestVeoHandlerBuildsFramesReferencesAndNormalizedBilling(t *testing.T) {
 	assert.Equal(t, "google/veo-3.1-lite", body["model"])
 	assert.Equal(t, 6, body["duration"])
 	assert.Equal(t, "1080p", body["resolution"])
+	assert.Equal(t, "16:9", body["aspect_ratio"])
 	assert.Equal(t, true, body["generate_audio"])
 	frames, ok := body["frame_images"].([]map[string]any)
 	require.True(t, ok)
@@ -84,6 +85,57 @@ func TestVeoHandlerBuildsFramesReferencesAndNormalizedBilling(t *testing.T) {
 	assert.Equal(t, "1080p", billing.ResolutionTier)
 	require.NotNil(t, billing.AudioEnabled)
 	assert.True(t, *billing.AudioEnabled)
+}
+
+func TestVeoHandlerConvertsLegacyMetadataToCanonicalOpenRouterPayload(t *testing.T) {
+	frames := []map[string]any{
+		buildFrameImage("first_frame", "https://example.com/first.png"),
+		buildFrameImage("last_frame", "https://example.com/last.png"),
+	}
+	handler := &VeoHandler{BaseHandler: NewBaseHandler("veo")}
+
+	for _, modelName := range []string{"google/veo-3.1-lite", "google/veo-3.1", "google/veo-3.1-fast"} {
+		t.Run(modelName, func(t *testing.T) {
+			info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: modelName}}
+			req := &relaycommon.TaskSubmitReq{
+				Model: modelName, Prompt: "cinematic", Resolution: "720p", FrameImages: frames,
+				Metadata: map[string]any{
+					"aspectRatio":     "16:9",
+					"durationSeconds": float64(4),
+					"watermark":       false,
+				},
+			}
+
+			body, err := handler.BuildUpstreamRequest(info, req)
+
+			require.NoError(t, err)
+			assert.Equal(t, map[string]any{
+				"model": modelName, "prompt": "cinematic", "duration": 4,
+				"resolution": "720p", "aspect_ratio": "16:9", "frame_images": frames,
+			}, body)
+		})
+	}
+}
+
+func TestVeoHandlerPreservesCanonicalOpenRouterPayload(t *testing.T) {
+	frames := []map[string]any{
+		buildFrameImage("first_frame", "data:image/jpeg;base64,AAAA"),
+		buildFrameImage("last_frame", "data:image/jpeg;base64,BBBB"),
+	}
+	handler := &VeoHandler{BaseHandler: NewBaseHandler("veo")}
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "google/veo-3.1-lite"}}
+	req := &relaycommon.TaskSubmitReq{
+		Model: "google/veo-3.1-lite", Prompt: "cinematic", Duration: 6,
+		Size: "1280x720", FrameImages: frames,
+	}
+
+	body, err := handler.BuildUpstreamRequest(info, req)
+
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"model": "google/veo-3.1-lite", "prompt": "cinematic", "duration": 6,
+		"size": "1280x720", "frame_images": frames,
+	}, body)
 }
 
 func TestHappyHorseHandlerBuildsReferenceRequestAndBilling(t *testing.T) {
@@ -365,6 +417,82 @@ func TestSeedanceHandlerBuildsMultimodalReferences(t *testing.T) {
 
 	req.Duration = 16
 	require.ErrorContains(t, handler.Validate(req), "between 4 and 15")
+}
+
+func TestSeedanceHandlerConvertsLegacyMetadataToCanonicalOpenRouterPayload(t *testing.T) {
+	handler := &SeedanceHandler{BaseHandler: NewBaseHandler("seedance")}
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "bytedance/seedance-2.0"}}
+	req := &relaycommon.TaskSubmitReq{
+		Model: "bytedance/seedance-2.0", Prompt: "cinematic", Resolution: "480p",
+		Metadata: map[string]any{
+			"aspectRatio":     "16:9",
+			"durationSeconds": float64(5),
+			"watermark":       false,
+		},
+	}
+
+	body, err := handler.BuildUpstreamRequest(info, req)
+
+	require.NoError(t, err)
+	assert.Equal(t, "480p", body["resolution"])
+	assert.Equal(t, "16:9", body["aspect_ratio"])
+	assert.Equal(t, 5, body["duration"])
+	assert.Equal(t, false, body["watermark"])
+	assert.NotContains(t, body, "size")
+	assert.NotContains(t, body, "aspectRatio")
+	assert.NotContains(t, body, "durationSeconds")
+}
+
+func TestVeoHandlerUsesModelSpecificResolutionCapabilities(t *testing.T) {
+	handler := &VeoHandler{BaseHandler: NewBaseHandler("veo")}
+	for _, modelName := range []string{"google/veo-3.1", "google/veo-3.1-fast"} {
+		t.Run(modelName, func(t *testing.T) {
+			info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: modelName}}
+			body, err := handler.BuildUpstreamRequest(info, &relaycommon.TaskSubmitReq{
+				Model: modelName, Prompt: "cinematic", Duration: 4, Size: "3840x2160",
+			})
+
+			require.NoError(t, err)
+			assert.Equal(t, "3840x2160", body["size"])
+		})
+	}
+
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "google/veo-3.1"}}
+	body, err := handler.BuildUpstreamRequest(info, &relaycommon.TaskSubmitReq{
+		Model: "google/veo-3.1", Prompt: "cinematic", Duration: 4, Resolution: "4k", AspectRatio: "16:9",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "4K", body["resolution"])
+
+	info = &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "google/veo-3.1-lite"}}
+	_, err = handler.BuildUpstreamRequest(info, &relaycommon.TaskSubmitReq{
+		Model: "google/veo-3.1-lite", Prompt: "cinematic", Duration: 4, Size: "3840x2160",
+	})
+	require.ErrorContains(t, err, "unsupported veo resolution")
+}
+
+func TestOpenRouterLegacyDurationSecondsRejectsUnboundedBillingMultiplier(t *testing.T) {
+	requests := []struct {
+		name    string
+		handler ModelHandler
+		model   string
+	}{
+		{name: "veo", handler: &VeoHandler{BaseHandler: NewBaseHandler("veo")}, model: "google/veo-3.1"},
+		{name: "seedance", handler: &SeedanceHandler{BaseHandler: NewBaseHandler("seedance")}, model: "bytedance/seedance-2.0"},
+	}
+	for _, tt := range requests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: tt.model}}
+			req := &relaycommon.TaskSubmitReq{
+				Model: tt.model, Prompt: "test",
+				Metadata: map[string]any{"durationSeconds": float64(relaycommon.MaxTaskDurationSeconds + 1)},
+			}
+
+			_, err := tt.handler.BuildUpstreamRequest(info, req)
+
+			require.ErrorContains(t, err, "durationSeconds must be between")
+		})
+	}
 }
 
 func TestBaseHandlerParsesOpenRouterLifecycle(t *testing.T) {

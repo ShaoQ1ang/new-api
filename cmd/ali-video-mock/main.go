@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/pkg/tracelog"
 	taskali "github.com/QuantumNous/new-api/relay/channel/task/ali"
 	taskdoubao "github.com/QuantumNous/new-api/relay/channel/task/doubao"
 )
@@ -36,12 +37,13 @@ type mockServer struct {
 	history       []mockRequestRecord
 	config        mockConfig
 	rng           *rand.Rand
-	videoBytes    []byte
+	videoRenderer *mockVideoRenderer
 }
 
 type mockConfig struct {
 	FailRate          float64
 	CompleteAfterPoll int
+	CompletionDelay   time.Duration
 	PublicBaseURL     string
 }
 
@@ -160,7 +162,7 @@ func newMockServer() *mockServer {
 }
 
 func newMockServerWithConfig(cfg mockConfig) *mockServer {
-	if cfg.CompleteAfterPoll <= 0 {
+	if cfg.CompleteAfterPoll <= 0 && cfg.CompletionDelay <= 0 {
 		cfg.CompleteAfterPoll = 2
 	}
 	videoBytes, err := decodeEmbeddedMockVideo()
@@ -168,19 +170,34 @@ func newMockServerWithConfig(cfg mockConfig) *mockServer {
 		panic(fmt.Sprintf("decode embedded mock video: %v", err))
 	}
 	return &mockServer{
-		tasks:      make(map[string]*mockTask),
-		history:    make([]mockRequestRecord, 0, mockHistoryLimit),
-		config:     cfg,
-		rng:        rand.New(rand.NewSource(time.Now().UnixNano())),
-		videoBytes: videoBytes,
+		tasks:         make(map[string]*mockTask),
+		history:       make([]mockRequestRecord, 0, mockHistoryLimit),
+		config:        cfg,
+		rng:           rand.New(rand.NewSource(time.Now().UnixNano())),
+		videoRenderer: newMockVideoRenderer(videoBytes),
 	}
 }
 
 func main() {
 	addr := strings.TrimSpace(getenv("ALI_VIDEO_MOCK_LISTEN", defaultListenAddr))
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		healthURL := "http://127.0.0.1" + addr + "/healthz"
+		if strings.HasPrefix(addr, ":") {
+			healthURL = "http://127.0.0.1" + addr + "/healthz"
+		}
+		resp, err := http.Get(healthURL)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			os.Exit(1)
+		}
+		_ = resp.Body.Close()
+		return
+	}
+	tracelog.InitDefaultFromEnv("mock")
+	defer tracelog.Default.Close()
 	srv := newMockServer()
-	log.Printf("ali-video-mock listening on %s fail_rate=%.2f complete_after_poll=%d public_base_url=%q video_bytes=%d",
-		addr, srv.config.FailRate, srv.config.CompleteAfterPoll, srv.config.PublicBaseURL, len(srv.videoBytes))
+	log.Printf("ali-video-mock listening on %s fail_rate=%.2f complete_after_poll=%d completion_delay=%s public_base_url=%q video_bytes=%d",
+		addr, srv.config.FailRate, srv.config.CompleteAfterPoll, srv.config.CompletionDelay, srv.config.PublicBaseURL,
+		len(srv.videoRenderer.cache[1]))
 	if err := http.ListenAndServe(addr, srv.routes()); err != nil {
 		log.Fatalf("ali-video-mock listen failed: %v", err)
 	}
@@ -207,7 +224,7 @@ func (s *mockServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	log.Printf("healthz check remote=%s", r.RemoteAddr)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":             true,
-		"video_bytes":    len(s.videoBytes),
+		"video_bytes":    len(s.videoRenderer.cache[1]),
 		"model_families": []string{"wan", "happyhorse", "kling", "minimax", "seedance", "veo"},
 		"providers":      []string{"alibaba", "doubao", "gemini", "vertex", "openrouter"},
 	})
@@ -261,7 +278,7 @@ func (s *mockServer) handleOpenRouterVideoSubmit(w http.ResponseWriter, r *http.
 	task := &mockTask{
 		ID: taskID, Provider: "openrouter", Model: req.Model, Family: family,
 		Duration: duration, Resolution: resolution, SR: resolutionValue(resolution), Audio: audio, Ratio: ratio,
-		CreatedAt: now, ScheduledAt: now.Add(800 * time.Millisecond), CompletedAt: now.Add(1600 * time.Millisecond),
+		CreatedAt: now, ScheduledAt: now.Add(time.Second), CompletedAt: s.completionTime(now),
 		ShouldFail: s.shouldFail(), FailReason: "mock upstream random failure",
 		VideoURL: s.buildAssetURL(r, "/mock-assets/videos/"+taskID+".mp4"),
 	}
@@ -314,7 +331,7 @@ func (s *mockServer) handleOpenRouterVideoFetch(w http.ResponseWriter, r *http.R
 		"duration": task.Duration, "resolution": task.Resolution, "aspect_ratio": task.Ratio,
 		"created_at": task.CreatedAt.Unix(),
 	}
-	if task.PollCount < s.config.CompleteAfterPoll {
+	if !s.taskComplete(task) {
 		writeJSON(w, http.StatusOK, response)
 		return
 	}
@@ -540,8 +557,8 @@ func (s *mockServer) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		SR:           sr,
 		Audio:        audio,
 		CreatedAt:    now,
-		ScheduledAt:  now.Add(800 * time.Millisecond),
-		CompletedAt:  now.Add(1600 * time.Millisecond),
+		ScheduledAt:  now.Add(time.Second),
+		CompletedAt:  s.completionTime(now),
 		ShouldFail:   s.shouldFail(),
 		FailReason:   "mock upstream random failure",
 		VideoURL:     videoURL,
@@ -610,7 +627,7 @@ func (s *mockServer) handleSeedanceSubmit(w http.ResponseWriter, r *http.Request
 	task := &mockTask{
 		ID: taskID, Provider: "seedance", Model: req.Model, Family: "seedance",
 		Duration: duration, Resolution: resolution, SR: resolutionValue(resolution), Audio: audio,
-		CreatedAt: now, ScheduledAt: now.Add(800 * time.Millisecond), CompletedAt: now.Add(1600 * time.Millisecond),
+		CreatedAt: now, ScheduledAt: now.Add(time.Second), CompletedAt: s.completionTime(now),
 		ShouldFail: s.shouldFail(), FailReason: "mock upstream random failure",
 		VideoURL: s.buildAssetURL(r, "/mock-assets/videos/"+taskID+".mp4"), Ratio: ratio, Seed: req.Seed,
 	}
@@ -632,7 +649,7 @@ func (s *mockServer) handleSeedanceFetch(w http.ResponseWriter, r *http.Request)
 	status := "running"
 	videoURL := ""
 	errorCode, errorMessage := "", ""
-	if task.PollCount >= s.config.CompleteAfterPoll {
+	if s.taskComplete(task) {
 		if task.ShouldFail {
 			status, errorCode, errorMessage = "failed", "MockFailure", task.FailReason
 		} else {
@@ -704,7 +721,7 @@ func (s *mockServer) handleVeoSubmit(w http.ResponseWriter, r *http.Request) {
 	task := &mockTask{
 		ID: path.Base(operationName), Provider: provider, OperationName: operationName, Model: model, Family: "veo",
 		Duration: duration, Resolution: resolution, SR: resolutionValue(resolution), Audio: audio, Seed: seed,
-		Ratio: req.Parameters.AspectRatio, CreatedAt: now, ScheduledAt: now.Add(800 * time.Millisecond), CompletedAt: now.Add(1600 * time.Millisecond),
+		Ratio: req.Parameters.AspectRatio, CreatedAt: now, ScheduledAt: now.Add(time.Second), CompletedAt: s.completionTime(now),
 		ShouldFail: s.shouldFail(), FailReason: "mock upstream random failure",
 		VideoURL: s.buildAssetURL(r, "/mock-assets/videos/"+path.Base(operationName)+".mp4"),
 	}
@@ -742,7 +759,7 @@ func (s *mockServer) handleVertexVeoFetch(w http.ResponseWriter, r *http.Request
 }
 
 func (s *mockServer) writeVeoOperation(w http.ResponseWriter, task mockTask, vertex bool) {
-	if task.PollCount < s.config.CompleteAfterPoll {
+	if !s.taskComplete(task) {
 		writeJSON(w, http.StatusOK, map[string]any{"name": task.OperationName, "done": false})
 		return
 	}
@@ -752,7 +769,7 @@ func (s *mockServer) writeVeoOperation(w http.ResponseWriter, task mockTask, ver
 	}
 	if vertex {
 		writeJSON(w, http.StatusOK, map[string]any{"name": task.OperationName, "done": true, "response": map[string]any{
-			"videos": []map[string]string{{"mimeType": "video/mp4", "bytesBase64Encoded": base64.StdEncoding.EncodeToString(s.videoBytes), "encoding": "mp4"}},
+			"videos": []map[string]string{{"mimeType": "video/mp4", "bytesBase64Encoded": base64.StdEncoding.EncodeToString(s.videoRenderer.bytesForDuration(task.Duration)), "encoding": "mp4"}},
 		}})
 		return
 	}
@@ -795,7 +812,7 @@ func (s *mockServer) handleFetchTask(w http.ResponseWriter, r *http.Request) {
 	failReason := ""
 	endTime := ""
 	switch {
-	case task.PollCount >= s.config.CompleteAfterPoll:
+	case s.taskComplete(task):
 		if task.ShouldFail {
 			status = mockTaskFailed
 			failReason = task.FailReason
@@ -846,11 +863,39 @@ func (s *mockServer) handleMockVideo(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	log.Printf("mock asset request remote=%s method=%s path=%s", r.RemoteAddr, r.Method, r.URL.Path)
+	duration := s.videoDurationForPath(r.URL.Path)
+	videoBytes := s.videoRenderer.bytesForDuration(duration)
+	log.Printf("mock asset request remote=%s method=%s path=%s duration=%ds bytes=%d", r.RemoteAddr, r.Method, r.URL.Path, duration, len(videoBytes))
 	w.Header().Set("Content-Type", "video/mp4")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", path.Base(r.URL.Path)))
-	http.ServeContent(w, r, path.Base(r.URL.Path), time.Unix(1, 0), bytes.NewReader(s.videoBytes))
+	http.ServeContent(w, r, path.Base(r.URL.Path), time.Unix(1, 0), bytes.NewReader(videoBytes))
+}
+
+func (s *mockServer) completionTime(createdAt time.Time) time.Time {
+	if s.config.CompletionDelay > 0 {
+		return createdAt.Add(s.config.CompletionDelay)
+	}
+	return createdAt.Add(1600 * time.Millisecond)
+}
+
+func (s *mockServer) taskComplete(task mockTask) bool {
+	if s.config.CompletionDelay > 0 {
+		return !time.Now().Before(task.CompletedAt)
+	}
+	return task.PollCount >= s.config.CompleteAfterPoll
+}
+
+func (s *mockServer) videoDurationForPath(assetPath string) int {
+	taskID := strings.TrimSuffix(path.Base(assetPath), path.Ext(assetPath))
+	taskID = strings.TrimSuffix(taskID, "-watermark")
+	s.mu.Lock()
+	task, ok := s.tasks[taskID]
+	s.mu.Unlock()
+	if ok && task.Duration > 0 {
+		return task.Duration
+	}
+	return maxMockVideoDurationSeconds
 }
 
 func (s *mockServer) nextTaskID() string {
@@ -1179,15 +1224,24 @@ func loadMockConfig() mockConfig {
 			}
 		}
 	}
-	completeAfterPoll := 2
+	completeAfterPoll := 0
 	if raw := strings.TrimSpace(os.Getenv("ALI_VIDEO_MOCK_COMPLETE_AFTER_POLL")); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
 			completeAfterPoll = parsed
 		}
 	}
+	completionDelay := 10 * time.Second
+	if completeAfterPoll > 0 {
+		completionDelay = 0
+	} else if raw := strings.TrimSpace(os.Getenv("ALI_VIDEO_MOCK_COMPLETION_DELAY_SECONDS")); raw != "" {
+		if parsed, err := strconv.ParseFloat(raw, 64); err == nil && parsed >= 0 {
+			completionDelay = time.Duration(parsed * float64(time.Second))
+		}
+	}
 	return mockConfig{
 		FailRate:          failRate,
 		CompleteAfterPoll: completeAfterPoll,
+		CompletionDelay:   completionDelay,
 		PublicBaseURL:     strings.TrimRight(strings.TrimSpace(os.Getenv("ALI_VIDEO_MOCK_PUBLIC_BASE_URL")), "/"),
 	}
 }

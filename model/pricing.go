@@ -32,6 +32,7 @@ type Pricing struct {
 	AudioRatio             *float64                      `json:"audio_ratio,omitempty"`
 	AudioCompletionRatio   *float64                      `json:"audio_completion_ratio,omitempty"`
 	ImageResolutionPrice   map[string]float64            `json:"image_resolution_price,omitempty"`
+	ImageInputPrice        map[string]float64            `json:"image_input_price,omitempty"`
 	TaskConditionPrice     map[string]map[string]float64 `json:"task_condition_price,omitempty"`
 	VideoSecondsPrice      map[string]map[string]float64 `json:"video_seconds_price,omitempty"`
 	EnableGroup            []string                      `json:"enable_groups"`
@@ -434,6 +435,9 @@ func applyConfiguredPricing(model string, pricing *Pricing) {
 	if imageResolutionPrice, ok := ratio_setting.GetImageResolutionPriceCopy()[model]; ok && len(imageResolutionPrice) > 0 {
 		pricing.ImageResolutionPrice = imageResolutionPrice
 		pricing.QuotaType = 1
+	}
+	if imageInputPrice, ok := ratio_setting.GetImageInputPriceCopy()[model]; ok && len(imageInputPrice) > 0 {
+		pricing.ImageInputPrice = imageInputPrice
 	}
 	if taskConditionPrice, ok := ratio_setting.GetTaskConditionPriceCopy()[model]; ok && len(taskConditionPrice) > 0 {
 		pricing.TaskConditionPrice = taskConditionPrice

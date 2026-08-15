@@ -104,6 +104,10 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if info.ChannelType == constant.ChannelTypeOpenRouter &&
+		info.RelayMode == relayconstant.RelayModeImagesGenerations {
+		return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, "/v1/images", info.ChannelType), nil
+	}
 	if info.RelayMode == relayconstant.RelayModeRealtime {
 		if strings.HasPrefix(info.ChannelBaseUrl, "https://") {
 			baseUrl := strings.TrimPrefix(info.ChannelBaseUrl, "https://")

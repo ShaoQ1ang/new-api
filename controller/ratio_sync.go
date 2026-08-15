@@ -71,6 +71,7 @@ var pricingSyncFields = []string{
 	"audio_ratio",
 	"audio_completion_ratio",
 	"model_price",
+	"image_input_price",
 	"video_seconds_price",
 	billing_setting.BillingModeField,
 	billing_setting.BillingExprField,
@@ -103,6 +104,8 @@ func valueMap(value any) map[string]any {
 		return lo.MapValues(typed, func(value string, _ string) any { return value })
 	case ratio_setting.VideoSecondsPriceMap:
 		return lo.MapValues(typed, func(value map[string]map[string]float64, _ string) any { return value })
+	case ratio_setting.ImageInputPriceMap:
+		return lo.MapValues(typed, func(value map[string]float64, _ string) any { return value })
 	default:
 		return nil
 	}
@@ -141,6 +144,7 @@ func getLocalPricingSyncData() map[string]any {
 	data["audio_ratio"] = ratio_setting.GetAudioRatioCopy()
 	data["audio_completion_ratio"] = ratio_setting.GetAudioCompletionRatioCopy()
 	data["video_seconds_price"] = ratio_setting.GetVideoSecondsPriceCopy()
+	data["image_input_price"] = ratio_setting.GetImageInputPriceCopy()
 	return data
 }
 
@@ -766,6 +770,7 @@ func convertOpenRouterToRatioData(reader io.Reader) (map[string]any, error) {
 				Prompt         string `json:"prompt"`
 				Completion     string `json:"completion"`
 				InputCacheRead string `json:"input_cache_read"`
+				Image          string `json:"image"`
 			} `json:"pricing"`
 		} `json:"data"`
 	}
@@ -777,8 +782,12 @@ func convertOpenRouterToRatioData(reader io.Reader) (map[string]any, error) {
 	modelRatioMap := make(map[string]any)
 	completionRatioMap := make(map[string]any)
 	cacheRatioMap := make(map[string]any)
+	imageInputPrices := make(ratio_setting.ImageInputPriceMap)
 
 	for _, m := range orResp.Data {
+		if imagePrice, err := strconv.ParseFloat(m.Pricing.Image, 64); err == nil && isValidNonNegativeCost(imagePrice) && imagePrice > 0 {
+			imageInputPrices[m.ID] = map[string]float64{"default": imagePrice}
+		}
 		promptPrice, promptErr := strconv.ParseFloat(m.Pricing.Prompt, 64)
 		completionPrice, compErr := strconv.ParseFloat(m.Pricing.Completion, 64)
 
@@ -838,6 +847,9 @@ func convertOpenRouterToRatioData(reader io.Reader) (map[string]any, error) {
 	}
 	if len(cacheRatioMap) > 0 {
 		converted["cache_ratio"] = cacheRatioMap
+	}
+	if len(imageInputPrices) > 0 {
+		converted["image_input_price"] = imageInputPrices
 	}
 
 	return converted, nil

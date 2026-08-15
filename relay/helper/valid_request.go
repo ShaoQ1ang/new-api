@@ -3,6 +3,10 @@ package helper
 import (
 	"errors"
 	"fmt"
+	stdimage "image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"math"
 	"net/url"
 	"strconv"
@@ -191,6 +195,25 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 			if imageValue := formData.Get("image"); imageValue != "" {
 				imageRequest.Image, _ = common.Marshal(imageValue)
 			}
+			inputImageTiers := make([]string, 0, len(form.File["image"])+1)
+			if strings.TrimSpace(formData.Get("image")) != "" {
+				inputImageTiers = append(inputImageTiers, "default")
+			}
+			for _, fileHeader := range form.File["image"] {
+				tier := "default"
+				file, openErr := fileHeader.Open()
+				if openErr == nil {
+					if config, _, decodeErr := stdimage.DecodeConfig(file); decodeErr == nil {
+						tier = fmt.Sprintf("%dx%d", config.Width, config.Height)
+					}
+					_ = file.Close()
+				}
+				inputImageTiers = append(inputImageTiers, tier)
+			}
+			if len(inputImageTiers) > dto.MaxImageN {
+				return nil, fmt.Errorf("input image count must not exceed %d", dto.MaxImageN)
+			}
+			imageRequest.ParsedInputImageTiers = inputImageTiers
 
 			if imageRequest.Model == "gpt-image-1" {
 				if imageRequest.Quality == "" {
@@ -259,6 +282,9 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 		if imageRequest.N == nil || *imageRequest.N == 0 {
 			imageRequest.N = common.GetPointer(uint(1))
 		}
+	}
+	if len(imageRequest.GetInputImageTiers()) > dto.MaxImageN {
+		return nil, fmt.Errorf("input image count must not exceed %d", dto.MaxImageN)
 	}
 
 	return imageRequest, nil
