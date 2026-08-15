@@ -46,6 +46,7 @@ type GenerationRequest struct {
 type GenerationOutputItem struct {
 	ID          string `json:"id"`
 	Type        string `json:"type"`
+	Title       string `json:"title,omitempty"`
 	Text        string `json:"text,omitempty"`
 	URL         string `json:"url,omitempty"`
 	ContentType string `json:"content_type,omitempty"`

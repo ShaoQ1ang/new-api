@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	aigcdto "github.com/QuantumNous/new-api/aigc/dto"
+	relaydto "github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 )
 
@@ -31,6 +32,23 @@ func BuildTaskRequest(spec Spec) (relaycommon.TaskSubmitReq, error) {
 	request.Audios, request.AudioRoles = taskMedia(spec.Request.Inputs.Audios)
 	request.Metadata = taskOptions(spec.Request.Options)
 	return request, nil
+}
+
+func BuildMusicTaskRequest(spec Spec) (relaydto.SunoSubmitReq, error) {
+	if strings.TrimSpace(spec.ModelType) != "music" {
+		return relaydto.SunoSubmitReq{}, fmt.Errorf("AIGC music task execution does not support model type %q", spec.ModelType)
+	}
+	if strings.TrimSpace(spec.Mode) != "text_to_music" {
+		return relaydto.SunoSubmitReq{}, fmt.Errorf("AIGC music task execution does not support mode %q", spec.Mode)
+	}
+	upstreamModelID := strings.TrimSpace(spec.UpstreamModelID)
+	if upstreamModelID == "" {
+		return relaydto.SunoSubmitReq{}, fmt.Errorf("AIGC music task execution requires an upstream model")
+	}
+	return relaydto.SunoSubmitReq{
+		GptDescriptionPrompt: strings.TrimSpace(spec.Request.Prompt), Mv: upstreamModelID,
+		MakeInstrumental: spec.Request.Parameters.Instrumental,
+	}, nil
 }
 
 func taskMedia(items []aigcdto.MediaInput) ([]string, []string) {

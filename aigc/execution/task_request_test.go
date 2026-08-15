@@ -62,3 +62,28 @@ func TestBuildTaskRequestRejectsUnsupportedExecutionSpec(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildMusicTaskRequestPreservesResolvedContract(t *testing.T) {
+	spec := Spec{
+		UpstreamModelID: "chirp-v4", ModelType: "music", Mode: "text_to_music", Adapter: "music-task",
+		Request: aigcdto.GenerationRequest{Prompt: "bright synthwave", Parameters: aigcdto.GenerationParameters{Instrumental: true}},
+	}
+
+	request, err := BuildMusicTaskRequest(spec)
+
+	require.NoError(t, err)
+	assert.Equal(t, "bright synthwave", request.GptDescriptionPrompt)
+	assert.Equal(t, "chirp-v4", request.Mv)
+	assert.True(t, request.MakeInstrumental)
+}
+
+func TestBuildMusicTaskRequestRejectsUnsupportedSpec(t *testing.T) {
+	for _, spec := range []Spec{
+		{ModelType: "video", Mode: "text_to_music", UpstreamModelID: "chirp-v4"},
+		{ModelType: "music", Mode: "lyrics", UpstreamModelID: "chirp-v4"},
+		{ModelType: "music", Mode: "text_to_music"},
+	} {
+		_, err := BuildMusicTaskRequest(spec)
+		require.Error(t, err)
+	}
+}

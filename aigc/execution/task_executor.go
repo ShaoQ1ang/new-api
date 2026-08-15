@@ -3,6 +3,7 @@ package execution
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -58,7 +59,18 @@ func (executor *TaskExecutor) Execute(ctx context.Context, identity Identity, sp
 	if !ok || source.Request == nil {
 		return Result{}, executionError(http.StatusInternalServerError, "AIGC_EXECUTION_CONTEXT_MISSING", "authenticated AIGC execution context is missing", false)
 	}
-	request, err := BuildTaskRequest(spec)
+	var request any
+	path := "/v1/videos"
+	var err error
+	switch strings.TrimSpace(spec.ModelType) {
+	case "video":
+		request, err = BuildTaskRequest(spec)
+	case "music":
+		request, err = BuildMusicTaskRequest(spec)
+		path = "/suno/submit/music"
+	default:
+		err = fmt.Errorf("AIGC task execution does not support model type %q", spec.ModelType)
+	}
 	if err != nil {
 		return Result{}, executionError(http.StatusBadRequest, "AIGC_EXECUTION_INVALID_SPEC", err.Error(), false)
 	}
@@ -73,7 +85,7 @@ func (executor *TaskExecutor) Execute(ctx context.Context, identity Identity, sp
 	defer common.CleanupBodyStorage(taskContext)
 	taskContext.Request = source.Request.Clone(source.Request.Context())
 	taskContext.Request.Method = http.MethodPost
-	taskContext.Request.URL.Path = "/v1/videos"
+	taskContext.Request.URL.Path = path
 	taskContext.Request.URL.RawPath = ""
 	taskContext.Request.URL.RawQuery = ""
 	taskContext.Request.Header.Set("Content-Type", "application/json")
@@ -83,6 +95,10 @@ func (executor *TaskExecutor) Execute(ctx context.Context, identity Identity, sp
 	common.SetContextKey(taskContext, constant.ContextKeyUsingGroup, identity.Group)
 	common.SetContextKey(taskContext, constant.ContextKeyUserId, identity.UserID)
 	common.SetContextKey(taskContext, constant.ContextKeyTokenId, identity.TokenID)
+	if spec.ModelType == "music" {
+		taskContext.Set("platform", string(constant.TaskPlatformSuno))
+		taskContext.Params = append(taskContext.Params, gin.Param{Key: "action", Value: "music"})
+	}
 
 	info, err := relaycommon.GenRelayInfo(taskContext, types.RelayFormatTask, nil, nil)
 	if err != nil {
@@ -121,11 +137,44 @@ func taskResult(spec Spec, task *model.Task) Result {
 		}
 		result.Outputs = append(result.Outputs, output)
 	}
+	if task.Status == model.TaskStatusSuccess && spec.ModelType == "music" {
+		result.Outputs = musicTaskOutputs(task.Data)
+		if len(result.Outputs) == 0 {
+			result.Status = "failed"
+			result.ErrorCode = "AIGC_MUSIC_RESULT_EMPTY"
+			result.ErrorMessage = "AIGC music task returned no playable tracks"
+		}
+	}
 	if task.Status == model.TaskStatusFailure {
 		result.ErrorCode = "AIGC_TASK_FAILED"
 		result.ErrorMessage = task.FailReason
 	}
 	return result
+}
+
+func musicTaskOutputs(data []byte) []aigcdto.GenerationOutputItem {
+	var songs []relaydto.SunoSong
+	if err := common.Unmarshal(data, &songs); err != nil {
+		var envelope struct {
+			Clips map[string]relaydto.SunoSong `json:"clips"`
+		}
+		if common.Unmarshal(data, &envelope) != nil {
+			return nil
+		}
+		for _, song := range envelope.Clips {
+			songs = append(songs, song)
+		}
+	}
+	outputs := make([]aigcdto.GenerationOutputItem, 0, len(songs))
+	for _, song := range songs {
+		if strings.TrimSpace(song.AudioURL) == "" {
+			continue
+		}
+		outputs = append(outputs, aigcdto.GenerationOutputItem{
+			ID: song.ID, Type: "music", Title: song.Title, URL: song.AudioURL, PosterURL: song.ImageURL,
+		})
+	}
+	return outputs
 }
 
 func taskStatus(status model.TaskStatus) string {

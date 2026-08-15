@@ -23,6 +23,7 @@ type taskWorkflowStub struct {
 	context *gin.Context
 	info    *relaycommon.RelayInfo
 	request relaycommon.TaskSubmitReq
+	music   relaydto.SunoSubmitReq
 	result  *relay.TaskWorkflowResult
 	err     *relaydto.TaskError
 	storage bool
@@ -38,7 +39,49 @@ func (stub *taskWorkflowStub) Submit(c *gin.Context, info *relaycommon.RelayInfo
 		contents, _ = io.ReadAll(c.Request.Body)
 	}
 	_ = common.Unmarshal(contents, &stub.request)
+	_ = common.Unmarshal(contents, &stub.music)
 	return stub.result, stub.err
+}
+
+func TestTaskExecutorSubmitsResolvedMusicThroughSharedWorkflow(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	requestContext, _ := gin.CreateTestContext(httptest.NewRecorder())
+	requestContext.Request = httptest.NewRequest(http.MethodPost, "/v1/aigc/generations", nil)
+	workflow := &taskWorkflowStub{result: &relay.TaskWorkflowResult{Task: &model.Task{TaskID: "task_music", Status: model.TaskStatusQueued, Progress: "10%"}}}
+	executor := NewTaskExecutor(workflow, &taskStoreStub{})
+	spec := Spec{UpstreamModelID: "chirp-v4", ModelType: "music", Mode: "text_to_music", Adapter: "music-task",
+		Request: dto.GenerationRequest{Prompt: "bright synthwave", Parameters: dto.GenerationParameters{Instrumental: true}}}
+
+	result, err := executor.Execute(WithGinContext(context.Background(), requestContext), Identity{UserID: 7, TokenID: 11, Group: "vip"}, spec)
+
+	require.NoError(t, err)
+	assert.Equal(t, "queued", result.Status)
+	assert.Equal(t, "/suno/submit/music", workflow.context.Request.URL.Path)
+	assert.Equal(t, "music", workflow.context.Param("action"))
+	assert.Equal(t, string(constant.TaskPlatformSuno), workflow.context.GetString("platform"))
+	assert.Equal(t, "bright synthwave", workflow.music.GptDescriptionPrompt)
+	assert.Equal(t, "chirp-v4", workflow.music.Mv)
+	assert.True(t, workflow.music.MakeInstrumental)
+}
+
+func TestTaskExecutorPollMapsCompletedMusicTracks(t *testing.T) {
+	data, err := common.Marshal([]relaydto.SunoSong{
+		{ID: "song-1", Title: "First", AudioURL: "https://cdn.test/first.mp3", ImageURL: "https://cdn.test/first.jpg"},
+		{ID: "song-2", Title: "Second", AudioURL: "https://cdn.test/second.mp3", ImageURL: "https://cdn.test/second.jpg"},
+	})
+	require.NoError(t, err)
+	store := &taskStoreStub{found: true, task: &model.Task{TaskID: "task_music", Status: model.TaskStatusSuccess, Progress: "100%", Data: data}}
+	executor := NewTaskExecutor(&taskWorkflowStub{}, store)
+
+	result, err := executor.Poll(context.Background(), Identity{UserID: 7}, Spec{ModelType: "music"}, "task_music")
+
+	require.NoError(t, err)
+	require.Len(t, result.Outputs, 2)
+	assert.Equal(t, "music", result.Outputs[0].Type)
+	assert.Equal(t, "song-1", result.Outputs[0].ID)
+	assert.Equal(t, "First", result.Outputs[0].Title)
+	assert.Equal(t, "https://cdn.test/first.mp3", result.Outputs[0].URL)
+	assert.Equal(t, "https://cdn.test/first.jpg", result.Outputs[0].PosterURL)
 }
 
 type taskStoreStub struct {
