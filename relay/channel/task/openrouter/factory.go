@@ -7,6 +7,7 @@ import (
 )
 
 var registeredHandlers = []ModelHandler{
+	&Wan27Handler{BaseHandler: NewBaseHandler("wan27")},
 	&HappyHorseHandler{BaseHandler: NewBaseHandler("happyhorse")},
 	&KlingHandler{BaseHandler: NewBaseHandler("kling")},
 	&MiniMaxHandler{BaseHandler: NewBaseHandler("minimax")},

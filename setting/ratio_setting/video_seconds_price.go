@@ -34,6 +34,22 @@ var defaultVideoSecondsPrice = VideoSecondsPriceMap{
 	"minimax/hailuo-2.3": {
 		"1080p": {"default": 0.0817, "silent": 0.0817},
 	},
+	"wan2.7-t2v": {
+		"720p": {"default": 0.1, "silent": 0.1}, "1080p": {"default": 0.1, "silent": 0.1},
+	},
+	"wan2.7-i2v": {
+		"720p": {"default": 0.1, "silent": 0.1}, "1080p": {"default": 0.1, "silent": 0.1},
+	},
+	"wan2.7-r2v": {
+		"720p": {"default": 0.1, "silent": 0.1}, "1080p": {"default": 0.1, "silent": 0.1},
+	},
+	"wan2.7-videoedit": {
+		"720p": {"default": 0.1, "silent": 0.1}, "1080p": {"default": 0.1, "silent": 0.1},
+	},
+	"alibaba/wan-2.7": {
+		"720p":  {"default": 0.1, "silent": 0.1},
+		"1080p": {"default": 0.1, "silent": 0.1},
+	},
 }
 
 func GetVideoSecondsExtraPrice(modelName, tier, key string) (float64, bool) {

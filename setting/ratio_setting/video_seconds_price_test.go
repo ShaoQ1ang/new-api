@@ -24,6 +24,11 @@ func TestOpenRouterVideoSecondsPricesInitializeFromOfficialSKUs(t *testing.T) {
 		{model: "kwaivgi/kling-v3.0-pro", tier: "720p", audio: true, price: 0.168},
 		{model: "minimax/hailuo-3", tier: "2k", audio: true, price: 0.13},
 		{model: "minimax/hailuo-2.3", tier: "1080p", price: 0.0817},
+		{model: "wan2.7-t2v", tier: "720p", price: 0.1},
+		{model: "wan2.7-i2v", tier: "1080p", audio: true, price: 0.1},
+		{model: "wan2.7-r2v", tier: "720p", price: 0.1},
+		{model: "wan2.7-videoedit", tier: "1080p", audio: true, price: 0.1},
+		{model: "alibaba/wan-2.7", tier: "720p", audio: true, price: 0.1},
 	}
 	for _, tt := range tests {
 		price, ok := GetVideoSecondsPrice(tt.model, tt.tier, tt.audio)

@@ -108,6 +108,9 @@ type openRouterVideoRequest struct {
 	GenerateAudio   *bool                      `json:"generate_audio,omitempty"`
 	FrameImages     []openRouterFrameImage     `json:"frame_images,omitempty"`
 	InputReferences []openRouterInputReference `json:"input_references,omitempty"`
+	Audio           string                     `json:"audio,omitempty"`
+	NegativePrompt  string                     `json:"negative_prompt,omitempty"`
+	PromptExtend    *bool                      `json:"prompt_extend,omitempty"`
 	Seed            any                        `json:"seed,omitempty"`
 }
 
@@ -296,6 +299,7 @@ func (s *mockServer) handleOpenRouterVideoModels(w http.ResponseWriter, r *http.
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": []map[string]any{
+		{"id": "alibaba/wan-2.7", "supported_durations": integerRange(2, 10), "supported_resolutions": []string{"720p", "1080p"}, "supported_aspect_ratios": []string{"16:9", "9:16", "1:1", "4:3", "3:4"}, "supported_frame_images": []string{"first_frame", "last_frame"}, "generate_audio": true, "seed": true, "pricing_skus": map[string]string{"duration_seconds": "0.1"}},
 		{"id": "alibaba/happyhorse-1.1", "supported_durations": integerRange(3, 15), "supported_resolutions": []string{"720p", "1080p"}, "pricing_skus": map[string]string{"duration_seconds_720p": "0.0988", "duration_seconds_1080p": "0.1278"}},
 		{"id": "kwaivgi/kling-v3.0-std", "supported_durations": integerRange(3, 15), "supported_resolutions": []string{"720p"}, "pricing_skus": map[string]string{"duration_seconds": "0.084", "duration_seconds_with_audio": "0.126"}},
 		{"id": "kwaivgi/kling-v3.0-pro", "supported_durations": integerRange(3, 15), "supported_resolutions": []string{"720p"}, "pricing_skus": map[string]string{"duration_seconds": "0.112", "duration_seconds_with_audio": "0.168"}},
@@ -362,6 +366,8 @@ func validateOpenRouterVideoRequest(req openRouterVideoRequest) (string, error) 
 		return "seedance", validateOpenRouterSeedanceOptions(req)
 	case strings.HasPrefix(model, "alibaba/happyhorse-1."):
 		return "happyhorse", validateOpenRouterHappyHorseOptions(req)
+	case model == "alibaba/wan-2.7":
+		return "wan", validateOpenRouterWan27Options(req)
 	case strings.HasPrefix(model, "kwaivgi/kling-v3.0-"), model == "kwaivgi/kling-video-o1":
 		return "kling", validateOpenRouterKlingOptions(req)
 	case model == "minimax/hailuo-3", model == "minimax/hailuo-2.3":
@@ -369,6 +375,46 @@ func validateOpenRouterVideoRequest(req openRouterVideoRequest) (string, error) 
 	default:
 		return "", fmt.Errorf("unsupported OpenRouter video model %s", req.Model)
 	}
+}
+
+func validateOpenRouterWan27Options(req openRouterVideoRequest) error {
+	if req.Duration != nil && (*req.Duration < 2 || *req.Duration > 10) {
+		return fmt.Errorf("duration must be between 2 and 10 seconds")
+	}
+	resolution := strings.ToLower(strings.TrimSpace(req.Resolution))
+	if resolution != "" && resolution != "720p" && resolution != "1080p" {
+		return fmt.Errorf("resolution must be 720p or 1080p")
+	}
+	if err := validateOpenRouterAspectRatio(req.AspectRatio, []string{"16:9", "9:16", "1:1", "4:3", "3:4"}); err != nil {
+		return err
+	}
+	if len(req.FrameImages) > 2 {
+		return fmt.Errorf("at most two frame_images are supported")
+	}
+	seenFrames := map[string]bool{}
+	for _, frame := range req.FrameImages {
+		if frame.FrameType != "first_frame" && frame.FrameType != "last_frame" {
+			return fmt.Errorf("frame_type must be first_frame or last_frame")
+		}
+		if seenFrames[frame.FrameType] || strings.TrimSpace(frame.ImageURL.URL) == "" {
+			return fmt.Errorf("frame_images require unique frame types and non-empty image URLs")
+		}
+		seenFrames[frame.FrameType] = true
+	}
+	visualReferences := 0
+	for _, reference := range req.InputReferences {
+		mediaType, mediaURL := reference.mediaTypeAndURL()
+		if !slices.Contains([]string{"image", "video", "audio"}, mediaType) || strings.TrimSpace(mediaURL) == "" {
+			return fmt.Errorf("input_references require image, video, or audio URLs")
+		}
+		if mediaType != "audio" {
+			visualReferences++
+		}
+	}
+	if visualReferences > 5 {
+		return fmt.Errorf("wan2.7 supports at most five visual references")
+	}
+	return nil
 }
 
 func validateOpenRouterHappyHorseOptions(req openRouterVideoRequest) error {
@@ -980,6 +1026,9 @@ func validateMockRequest(req taskali.AliVideoRequest, family string) error {
 	model := strings.ToLower(strings.TrimSpace(req.Model))
 	switch family {
 	case "wan":
+		if strings.HasPrefix(model, "wan2.7-") {
+			return validateWan27MockRequest(req)
+		}
 		if strings.Contains(model, "-t2v") && strings.TrimSpace(req.Input.Prompt) == "" {
 			return fmt.Errorf("wan text-to-video requires prompt")
 		}
@@ -1015,6 +1064,73 @@ func validateMockRequest(req taskali.AliVideoRequest, family string) error {
 	default:
 		return fmt.Errorf("unsupported model family %s", family)
 	}
+}
+
+func validateWan27MockRequest(req taskali.AliVideoRequest) error {
+	model := strings.ToLower(strings.TrimSpace(req.Model))
+	duration, resolution := 5, "1080P"
+	if req.Parameters != nil {
+		duration = req.Parameters.Duration
+		if duration == 0 && !strings.Contains(model, "videoedit") {
+			duration = 5
+		}
+		if value := strings.ToUpper(strings.TrimSpace(req.Parameters.Resolution)); value != "" {
+			resolution = value
+		}
+	}
+	if resolution != "720P" && resolution != "1080P" {
+		return fmt.Errorf("wan2.7 resolution must be 720P or 1080P")
+	}
+	if req.Parameters != nil && req.Parameters.Ratio != nil && !slices.Contains([]string{"16:9", "9:16", "1:1", "4:3", "3:4"}, *req.Parameters.Ratio) {
+		return fmt.Errorf("unsupported wan2.7 ratio")
+	}
+	switch {
+	case strings.Contains(model, "videoedit"):
+		if duration != 0 && (duration < 2 || duration > 10) {
+			return fmt.Errorf("wan2.7-videoedit duration must be 0 or 2-10")
+		}
+		if countMockMedia(req.Input.Media, "video") != 1 || countMockMedia(req.Input.Media, "reference_image") > 4 || countMockMedia(req.Input.Media, "video")+countMockMedia(req.Input.Media, "reference_image") != len(req.Input.Media) {
+			return fmt.Errorf("wan2.7-videoedit requires one video and at most four reference images")
+		}
+	case strings.Contains(model, "-r2v"):
+		if duration < 2 || duration > 15 {
+			return fmt.Errorf("wan2.7-r2v duration must be 2-15")
+		}
+		if len(req.Input.Media) < 1 || len(req.Input.Media) > 5 {
+			return fmt.Errorf("wan2.7-r2v requires 1-5 visual references")
+		}
+		videos, firstFrames := 0, 0
+		for _, media := range req.Input.Media {
+			switch media.Type {
+			case "reference_image":
+			case "reference_video":
+				videos++
+			case "first_frame":
+				firstFrames++
+			default:
+				return fmt.Errorf("unsupported wan2.7-r2v media type")
+			}
+		}
+		if firstFrames > 1 || videos > 0 && duration > 10 {
+			return fmt.Errorf("invalid wan2.7-r2v media or duration")
+		}
+	case strings.Contains(model, "-i2v"):
+		if duration < 2 || duration > 15 {
+			return fmt.Errorf("wan2.7-i2v duration must be 2-15")
+		}
+		first, last, audio, clip := countMockMedia(req.Input.Media, "first_frame"), countMockMedia(req.Input.Media, "last_frame"), countMockMedia(req.Input.Media, "driving_audio"), countMockMedia(req.Input.Media, "first_clip")
+		valid := first == 1 && clip == 0 && last <= 1 && audio <= 1 || clip == 1 && first == 0 && last <= 1 && audio == 0
+		if !valid || first+last+audio+clip != len(req.Input.Media) {
+			return fmt.Errorf("invalid wan2.7-i2v media combination")
+		}
+	case strings.Contains(model, "-t2v"):
+		if strings.TrimSpace(req.Input.Prompt) == "" || duration < 2 || duration > 15 {
+			return fmt.Errorf("wan2.7-t2v requires prompt and duration 2-15")
+		}
+	default:
+		return fmt.Errorf("unsupported wan2.7 model")
+	}
+	return nil
 }
 
 func validateKlingMockRequest(req taskali.AliVideoRequest) error {

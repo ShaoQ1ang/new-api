@@ -552,6 +552,48 @@ func TestOpenRouterVideoModelsEndpoint(t *testing.T) {
 	assert.Contains(t, ids, "alibaba/happyhorse-1.1")
 	assert.Contains(t, ids, "kwaivgi/kling-v3.0-std")
 	assert.Contains(t, ids, "minimax/hailuo-3")
+	assert.Contains(t, ids, "alibaba/wan-2.7")
+}
+
+func TestOpenRouterWan27EveryModeLifecycle(t *testing.T) {
+	tests := []struct{ name, body string }{
+		{name: "text audio", body: `{"model":"alibaba/wan-2.7","prompt":"sing","duration":2,"resolution":"720p","aspect_ratio":"16:9","generate_audio":true,"audio":"https://example.com/voice.mp3"}`},
+		{name: "first frame", body: `{"model":"alibaba/wan-2.7","prompt":"animate","duration":5,"resolution":"1080p","aspect_ratio":"9:16","frame_images":[{"frame_type":"first_frame","type":"image_url","image_url":{"url":"https://example.com/first.png"}}]}`},
+		{name: "first last", body: `{"model":"alibaba/wan-2.7","prompt":"interpolate","duration":10,"resolution":"720p","aspect_ratio":"1:1","frame_images":[{"frame_type":"first_frame","type":"image_url","image_url":{"url":"https://example.com/first.png"}},{"frame_type":"last_frame","type":"image_url","image_url":{"url":"https://example.com/last.png"}}]}`},
+		{name: "references", body: `{"model":"alibaba/wan-2.7","prompt":"keep subjects","duration":10,"resolution":"1080p","aspect_ratio":"4:3","input_references":[{"type":"image_url","image_url":{"url":"https://example.com/ref.png"}},{"type":"video_url","video_url":{"url":"https://example.com/ref.mp4"}},{"type":"audio_url","audio_url":{"url":"https://example.com/ref.mp3"}}]}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := newMockServerWithConfig(mockConfig{CompleteAfterPoll: 1})
+			response := performRequest(t, server.routes(), http.MethodPost, "/v1/videos", tt.body)
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			var submitted openRouterVideoResponse
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &submitted))
+			assert.True(t, strings.HasPrefix(submitted.ID, "mock-openrouter-wan-"))
+			assert.Equal(t, "completed", fetchOpenRouterVeo(t, server.routes(), submitted.ID).Status)
+		})
+	}
+}
+
+func TestAliWan27ModelFamilyLifecycle(t *testing.T) {
+	tests := []struct{ name, body string }{
+		{name: "t2v", body: `{"model":"wan2.7-t2v","input":{"prompt":"story","audio_url":"https://example.com/voice.mp3"},"parameters":{"resolution":"720P","ratio":"16:9","duration":15,"prompt_extend":true,"watermark":false}}`},
+		{name: "i2v driving audio", body: `{"model":"wan2.7-i2v","input":{"prompt":"speak","media":[{"type":"first_frame","url":"https://example.com/first.png"},{"type":"driving_audio","url":"https://example.com/voice.mp3"}]},"parameters":{"resolution":"1080P","duration":10}}`},
+		{name: "r2v voice", body: `{"model":"wan2.7-r2v","input":{"prompt":"perform","media":[{"type":"reference_image","url":"https://example.com/role.png","reference_voice":"https://example.com/voice.mp3"}]},"parameters":{"resolution":"720P","ratio":"4:3","duration":15}}`},
+		{name: "video edit", body: `{"model":"wan2.7-videoedit","input":{"prompt":"replace coat","media":[{"type":"video","url":"https://example.com/source.mp4"},{"type":"reference_image","url":"https://example.com/coat.png"}]},"parameters":{"resolution":"1080P","ratio":"9:16","duration":0,"audio_setting":"origin"}}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := newMockServerWithConfig(mockConfig{CompleteAfterPoll: 1})
+			response := performRequest(t, server.routes(), http.MethodPost, "/api/v1/services/aigc/video-generation/video-synthesis", tt.body)
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			var submitted taskali.AliVideoResponse
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &submitted))
+			require.NotEmpty(t, submitted.Output.TaskID)
+			completed := performRequest(t, server.routes(), http.MethodGet, "/api/v1/tasks/"+submitted.Output.TaskID, "")
+			require.Equal(t, http.StatusOK, completed.Code)
+		})
+	}
 }
 
 func TestOpenRouterSeedanceRejectsInvalidOptions(t *testing.T) {

@@ -32,6 +32,11 @@ var billingSetting = BillingSetting{
 		"kwaivgi/kling-video-o1": BillingModeVideoSeconds,
 		"minimax/hailuo-3":       BillingModeVideoSeconds,
 		"minimax/hailuo-2.3":     BillingModeVideoSeconds,
+		"wan2.7-t2v":             BillingModeVideoSeconds,
+		"wan2.7-i2v":             BillingModeVideoSeconds,
+		"wan2.7-r2v":             BillingModeVideoSeconds,
+		"wan2.7-videoedit":       BillingModeVideoSeconds,
+		"alibaba/wan-2.7":        BillingModeVideoSeconds,
 	},
 	BillingExpr: make(map[string]string),
 }
