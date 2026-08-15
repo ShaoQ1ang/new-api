@@ -26,12 +26,22 @@ type AigcRequest struct {
 	NativeTaskID    string `json:"-" gorm:"type:varchar(191);not null"`
 	RequestDigest   string `json:"-" gorm:"type:varchar(64);not null"`
 	RequestJSON     string `json:"-" gorm:"type:text;not null"`
+	ExecutionJSON   string `json:"-" gorm:"type:text;not null"`
 	ResultJSON      string `json:"-" gorm:"type:text;not null"`
 	ErrorCode       string `json:"error_code,omitempty" gorm:"type:varchar(64);not null"`
 	ErrorMessage    string `json:"error_message,omitempty" gorm:"type:text;not null"`
 	CreatedTime     int64  `json:"created_at" gorm:"not null"`
 	UpdatedTime     int64  `json:"updated_at" gorm:"not null"`
 	FinishedTime    int64  `json:"finished_at,omitempty" gorm:"not null"`
+}
+
+type RequestStateUpdate struct {
+	Status       string
+	Progress     int
+	NativeTaskID string
+	ResultJSON   string
+	ErrorCode    string
+	ErrorMessage string
 }
 
 func (AigcRequest) TableName() string {

@@ -42,3 +42,38 @@ type GenerationRequest struct {
 	Options    GenerationOptions    `json:"options,omitempty"`
 	Parameters GenerationParameters `json:"parameters,omitempty"`
 }
+
+type GenerationOutputItem struct {
+	ID          string `json:"id"`
+	Type        string `json:"type"`
+	Text        string `json:"text,omitempty"`
+	URL         string `json:"url,omitempty"`
+	ContentType string `json:"content_type,omitempty"`
+	Width       int    `json:"width,omitempty"`
+	Height      int    `json:"height,omitempty"`
+	Duration    int    `json:"duration,omitempty"`
+	PosterURL   string `json:"poster_url,omitempty"`
+}
+
+type GenerationUsage struct {
+	Quota int `json:"quota,omitempty"`
+}
+
+type GenerationFailure struct {
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	Retryable bool   `json:"retryable"`
+}
+
+type GenerationResponse struct {
+	ID        string                 `json:"id"`
+	RequestID string                 `json:"request_id"`
+	Status    string                 `json:"status"`
+	Progress  int                    `json:"progress"`
+	Model     string                 `json:"model"`
+	Type      string                 `json:"type"`
+	CreatedAt int64                  `json:"created_at"`
+	Outputs   []GenerationOutputItem `json:"outputs"`
+	Usage     *GenerationUsage       `json:"usage,omitempty"`
+	Error     *GenerationFailure     `json:"error,omitempty"`
+}

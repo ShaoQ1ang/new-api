@@ -70,7 +70,10 @@ func TestGetRequestByGenerationIDIsScopedToUser(t *testing.T) {
 	loaded, err := repository.GetRequestByGenerationID(context.Background(), 7, request.GenerationID)
 	require.NoError(t, err)
 	assert.Equal(t, request.RequestID, loaded.RequestID)
+	byRequestID, err := repository.GetRequestByUserRequestID(context.Background(), 7, request.RequestID)
+	require.NoError(t, err)
+	assert.Equal(t, request.GenerationID, byRequestID.GenerationID)
 
 	_, err = repository.GetRequestByGenerationID(context.Background(), 8, request.GenerationID)
-	assert.True(t, IsNotFound(err))
+	assert.ErrorIs(t, err, entity.ErrGenerationNotFound)
 }

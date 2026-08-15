@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -10,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/aigc/capability"
 	"github.com/QuantumNous/new-api/aigc/dto"
 	"github.com/QuantumNous/new-api/aigc/entity"
+	"github.com/QuantumNous/new-api/aigc/execution"
 )
 
 type GenerationError struct {
@@ -23,18 +23,6 @@ func (err *GenerationError) Error() string {
 	return err.Message
 }
 
-type ExecutionSpec struct {
-	PublicModelID   string
-	UpstreamModelID string
-	ModelType       string
-	Mode            string
-	Adapter         string
-	TaskProtocol    string
-	OutputSpecID    string
-	ConfigVersion   int
-	Request         dto.GenerationRequest
-}
-
 type GenerationResolver struct {
 	profiles     ProfileStore
 	availability Availability
@@ -44,7 +32,7 @@ func NewGenerationResolver(profiles ProfileStore, availability Availability) *Ge
 	return &GenerationResolver{profiles: profiles, availability: availability}
 }
 
-func (resolver *GenerationResolver) Resolve(ctx context.Context, group string, request dto.GenerationRequest) (*ExecutionSpec, error) {
+func (resolver *GenerationResolver) Resolve(ctx context.Context, group string, request dto.GenerationRequest) (*execution.Spec, error) {
 	request.Model = strings.TrimSpace(request.Model)
 	request.Type = strings.TrimSpace(request.Type)
 	request.Mode = strings.TrimSpace(request.Mode)
@@ -77,7 +65,7 @@ func (resolver *GenerationResolver) Resolve(ctx context.Context, group string, r
 	if err != nil {
 		return nil, err
 	}
-	spec := &ExecutionSpec{
+	spec := &execution.Spec{
 		PublicModelID: profile.PublicModelID, ModelType: profile.ModelType, ConfigVersion: profile.ConfigVersion, Request: request,
 	}
 	switch capability.ModelType(profile.ModelType) {
@@ -96,7 +84,7 @@ func (resolver *GenerationResolver) Resolve(ctx context.Context, group string, r
 	return spec, nil
 }
 
-func resolveTextGeneration(spec *ExecutionSpec, config *capability.TextConfig, available map[string]bool) error {
+func resolveTextGeneration(spec *execution.Spec, config *capability.TextConfig, available map[string]bool) error {
 	if spec.Request.Mode != "" && spec.Request.Mode != "text" {
 		return generationError(http.StatusBadRequest, "MODEL_MODE_NOT_SUPPORTED", "text model does not support the requested mode", false)
 	}
@@ -109,7 +97,7 @@ func resolveTextGeneration(spec *ExecutionSpec, config *capability.TextConfig, a
 	return requireAvailable(spec.UpstreamModelID, available)
 }
 
-func resolveImageGeneration(spec *ExecutionSpec, config *capability.ImageConfig, available map[string]bool) error {
+func resolveImageGeneration(spec *execution.Spec, config *capability.ImageConfig, available map[string]bool) error {
 	mode := spec.Request.Mode
 	if mode == "" {
 		if len(spec.Request.Inputs.Images) == 0 {
@@ -149,7 +137,7 @@ func resolveImageGeneration(spec *ExecutionSpec, config *capability.ImageConfig,
 	return requireAvailable(spec.UpstreamModelID, available)
 }
 
-func resolveVideoGeneration(spec *ExecutionSpec, config *capability.VideoConfig, available map[string]bool) error {
+func resolveVideoGeneration(spec *execution.Spec, config *capability.VideoConfig, available map[string]bool) error {
 	mode := spec.Request.Mode
 	configured, ok := config.Modes[mode]
 	if mode == "" || !ok {
@@ -194,7 +182,7 @@ func resolveVideoGeneration(spec *ExecutionSpec, config *capability.VideoConfig,
 	return nil
 }
 
-func resolveMusicGeneration(spec *ExecutionSpec, config *capability.MusicConfig, available map[string]bool) error {
+func resolveMusicGeneration(spec *execution.Spec, config *capability.MusicConfig, available map[string]bool) error {
 	mode := spec.Request.Mode
 	if mode == "" {
 		mode = "text_to_music"
@@ -389,8 +377,4 @@ func intIn(values []int, target int) bool {
 
 func generationError(status int, code, message string, retryable bool) *GenerationError {
 	return &GenerationError{HTTPStatus: status, Code: code, Message: message, Retryable: retryable}
-}
-
-func (spec ExecutionSpec) String() string {
-	return fmt.Sprintf("%s/%s -> %s", spec.ModelType, spec.Mode, spec.UpstreamModelID)
 }

@@ -24,6 +24,13 @@ func (stub *requestStoreStub) CreateOrGetRequest(_ context.Context, request *ent
 	return &copy, true, nil
 }
 
+func (stub *requestStoreStub) GetRequestByUserRequestID(_ context.Context, userID int, requestID string) (*entity.AigcRequest, error) {
+	if stub.stored == nil || stub.stored.UserID != userID || stub.stored.RequestID != requestID {
+		return nil, entity.ErrGenerationNotFound
+	}
+	return stub.stored, nil
+}
+
 func TestIdempotencyBeginCreatesThenReplaysSameRequest(t *testing.T) {
 	store := &requestStoreStub{}
 	service := NewIdempotencyService(store, func() (string, error) { return "aigc_gen_fixed", nil })

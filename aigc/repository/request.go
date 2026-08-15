@@ -31,6 +31,9 @@ func (repository *Repository) CreateOrGetRequest(ctx context.Context, request *e
 	if strings.TrimSpace(request.ResultJSON) == "" {
 		request.ResultJSON = "{}"
 	}
+	if strings.TrimSpace(request.ExecutionJSON) == "" {
+		request.ExecutionJSON = "{}"
+	}
 	result := repository.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(request)
 	if result.Error != nil {
 		return nil, false, result.Error
@@ -47,6 +50,34 @@ func (repository *Repository) CreateOrGetRequest(ctx context.Context, request *e
 	return &existing, false, nil
 }
 
+func (repository *Repository) UpdateRequestState(ctx context.Context, id int64, expectedStatus string, update entity.RequestStateUpdate) (*entity.AigcRequest, error) {
+	if repository == nil || repository.db == nil {
+		return nil, fmt.Errorf("AIGC repository is not configured")
+	}
+	now := common.GetTimestamp()
+	values := map[string]any{
+		"status": update.Status, "progress": update.Progress, "native_task_id": update.NativeTaskID,
+		"result_json": update.ResultJSON, "error_code": update.ErrorCode, "error_message": update.ErrorMessage,
+		"updated_time": now,
+	}
+	if update.Status == entity.RequestStatusCompleted || update.Status == entity.RequestStatusFailed || update.Status == entity.RequestStatusCanceled {
+		values["finished_time"] = now
+	}
+	result := repository.db.WithContext(ctx).Model(&entity.AigcRequest{}).
+		Where("id = ? AND status = ?", id, expectedStatus).Updates(values)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected != 1 {
+		return nil, entity.ErrRequestStateConflict
+	}
+	var request entity.AigcRequest
+	if err := repository.db.WithContext(ctx).First(&request, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &request, nil
+}
+
 func (repository *Repository) GetRequestByGenerationID(ctx context.Context, userID int, generationID string) (*entity.AigcRequest, error) {
 	if repository == nil || repository.db == nil {
 		return nil, fmt.Errorf("AIGC repository is not configured")
@@ -55,6 +86,25 @@ func (repository *Repository) GetRequestByGenerationID(ctx context.Context, user
 	if err := repository.db.WithContext(ctx).
 		Where("user_id = ? AND generation_id = ?", userID, strings.TrimSpace(generationID)).
 		First(&request).Error; err != nil {
+		if IsNotFound(err) {
+			return nil, entity.ErrGenerationNotFound
+		}
+		return nil, err
+	}
+	return &request, nil
+}
+
+func (repository *Repository) GetRequestByUserRequestID(ctx context.Context, userID int, requestID string) (*entity.AigcRequest, error) {
+	if repository == nil || repository.db == nil {
+		return nil, fmt.Errorf("AIGC repository is not configured")
+	}
+	var request entity.AigcRequest
+	if err := repository.db.WithContext(ctx).
+		Where("user_id = ? AND request_id = ?", userID, strings.TrimSpace(requestID)).
+		First(&request).Error; err != nil {
+		if IsNotFound(err) {
+			return nil, entity.ErrGenerationNotFound
+		}
 		return nil, err
 	}
 	return &request, nil

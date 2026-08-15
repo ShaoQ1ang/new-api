@@ -250,6 +250,7 @@ aigc/router.SetRelayRouter(router)
 | `native_task_id` | varchar(191) | New API 原生异步 Task ID，可空 |
 | `request_digest` | varchar(64) | 规范化请求摘要 |
 | `request_json` | text | 规范化请求快照，用于故障恢复和审计 |
+| `execution_json` | text | 解析后的执行目标快照，运行中任务不随 Profile 更新漂移 |
 | `result_json` | text | 结果描述，不保存永久作品二进制 |
 | `error_code` | varchar(64) | 标准错误码 |
 | `error_message` | text | 安全的用户错误信息 |

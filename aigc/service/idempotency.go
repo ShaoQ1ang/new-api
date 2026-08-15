@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -15,6 +16,21 @@ var ErrIdempotencyConflict = entity.ErrIdempotencyConflict
 
 type RequestStore interface {
 	CreateOrGetRequest(ctx context.Context, request *entity.AigcRequest) (*entity.AigcRequest, bool, error)
+	GetRequestByUserRequestID(ctx context.Context, userID int, requestID string) (*entity.AigcRequest, error)
+}
+
+func (service *IdempotencyService) Replay(ctx context.Context, userID int, requestID, requestDigest string) (*entity.AigcRequest, bool, error) {
+	stored, err := service.requests.GetRequestByUserRequestID(ctx, userID, strings.TrimSpace(requestID))
+	if errors.Is(err, entity.ErrGenerationNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if stored.RequestDigest != strings.TrimSpace(requestDigest) {
+		return nil, false, ErrIdempotencyConflict
+	}
+	return stored, true, nil
 }
 
 type GenerationIDGenerator func() (string, error)
@@ -31,6 +47,7 @@ type BeginRequest struct {
 	ConfigVersion   int
 	RequestDigest   string
 	RequestJSON     string
+	ExecutionJSON   string
 }
 
 type IdempotencyService struct {
@@ -64,6 +81,7 @@ func (service *IdempotencyService) Begin(ctx context.Context, input BeginRequest
 		UpstreamModelID: strings.TrimSpace(input.UpstreamModelID), ModelType: strings.TrimSpace(input.ModelType),
 		Mode: strings.TrimSpace(input.Mode), ConfigVersion: input.ConfigVersion, Status: entity.RequestStatusSubmitted,
 		RequestDigest: input.RequestDigest, RequestJSON: input.RequestJSON,
+		ExecutionJSON: input.ExecutionJSON,
 	}
 	stored, created, err := service.requests.CreateOrGetRequest(ctx, request)
 	if err != nil {
