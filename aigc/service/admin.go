@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -12,10 +13,13 @@ import (
 	"github.com/QuantumNous/new-api/common"
 )
 
+var ErrOnlyDraftCanBeDeleted = errors.New("only draft AIGC models can be deleted")
+
 type AdminProfileStore interface {
 	CreateProfile(ctx context.Context, profile *entity.ModelProfile) error
 	GetProfileByID(ctx context.Context, id int64) (*entity.ModelProfile, error)
 	UpdateProfile(ctx context.Context, profile *entity.ModelProfile, expectedVersion int) error
+	DeleteDraftProfile(ctx context.Context, id int64, expectedVersion int) error
 	SearchProfiles(ctx context.Context, modelType string, status *int, offset, limit int) ([]entity.ModelProfile, int64, error)
 }
 
@@ -116,6 +120,17 @@ func (service *AdminService) Disable(ctx context.Context, id int64, expectedVers
 	}
 	profile.Status = entity.ModelStatusDisabled
 	return service.profiles.UpdateProfile(ctx, profile, expectedVersion)
+}
+
+func (service *AdminService) Delete(ctx context.Context, id int64, expectedVersion int) error {
+	profile, err := service.profiles.GetProfileByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if profile.Status != entity.ModelStatusDraft {
+		return ErrOnlyDraftCanBeDeleted
+	}
+	return service.profiles.DeleteDraftProfile(ctx, id, expectedVersion)
 }
 
 func (service *AdminService) List(ctx context.Context, filter ProfileFilter) ([]AdminProfile, int64, error) {

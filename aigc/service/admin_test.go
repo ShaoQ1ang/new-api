@@ -105,3 +105,29 @@ func TestAdminListReturnsPaginatedProfiles(t *testing.T) {
 	assert.Equal(t, "model-a", items[0].PublicModelID)
 	assert.Equal(t, "model-b", items[1].PublicModelID)
 }
+
+func TestAdminDeleteOnlyAllowsDrafts(t *testing.T) {
+	admin, _ := newAdminService(t)
+	draft, err := admin.Create(context.Background(), ProfileInput{
+		PublicModelID: "draft-delete", DisplayName: "Draft", ModelType: "text",
+		Config: json.RawMessage(`{"text":{"upstream_model_id":"gpt-5"}}`),
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, admin.Delete(context.Background(), draft.ID, draft.ConfigVersion))
+	_, err = admin.Get(context.Background(), draft.ID)
+	require.Error(t, err)
+
+	published, err := admin.Create(context.Background(), ProfileInput{
+		PublicModelID: "published-keep", DisplayName: "Published", ModelType: "text",
+		Config: json.RawMessage(`{"text":{"upstream_model_id":"gpt-5"}}`),
+	})
+	require.NoError(t, err)
+	stored, err := admin.profiles.GetProfileByID(context.Background(), published.ID)
+	require.NoError(t, err)
+	stored.Status = entity.ModelStatusPublished
+	require.NoError(t, admin.profiles.UpdateProfile(context.Background(), stored, stored.ConfigVersion))
+
+	err = admin.Delete(context.Background(), published.ID, stored.ConfigVersion)
+	assert.ErrorIs(t, err, ErrOnlyDraftCanBeDeleted)
+}

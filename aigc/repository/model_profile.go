@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var ErrVersionConflict = errors.New("AIGC model configuration version conflict")
+var ErrVersionConflict = entity.ErrConfigVersionConflict
 
 func (repository *Repository) CreateProfile(ctx context.Context, profile *entity.ModelProfile) error {
 	if repository == nil || repository.db == nil {
@@ -86,6 +86,25 @@ func (repository *Repository) UpdateProfile(ctx context.Context, profile *entity
 	}
 	profile.ConfigVersion = nextVersion
 	profile.UpdatedTime = now
+	return nil
+}
+
+func (repository *Repository) DeleteDraftProfile(ctx context.Context, id int64, expectedVersion int) error {
+	if repository == nil || repository.db == nil {
+		return fmt.Errorf("AIGC repository is not configured")
+	}
+	if id <= 0 || expectedVersion < 1 {
+		return fmt.Errorf("profile id and expected version are required")
+	}
+	result := repository.db.WithContext(ctx).
+		Where("id = ? AND status = ? AND config_version = ?", id, entity.ModelStatusDraft, expectedVersion).
+		Delete(&entity.ModelProfile{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrVersionConflict
+	}
 	return nil
 }
 

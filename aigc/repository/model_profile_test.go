@@ -96,3 +96,21 @@ func TestListPublishedProfilesFiltersType(t *testing.T) {
 	require.Len(t, items, 1)
 	assert.Equal(t, "image-published", items[0].PublicModelID)
 }
+
+func TestDeleteDraftProfileRequiresDraftStatusAndCurrentVersion(t *testing.T) {
+	repository := newProfileRepository(t)
+	draft := &entity.ModelProfile{PublicModelID: "draft-delete", DisplayName: "Draft", ModelType: "text", Status: entity.ModelStatusDraft, ConfigJSON: `{"text":{}}`}
+	published := &entity.ModelProfile{PublicModelID: "published-keep", DisplayName: "Published", ModelType: "text", Status: entity.ModelStatusPublished, ConfigJSON: `{"text":{}}`}
+	require.NoError(t, repository.CreateProfile(context.Background(), draft))
+	require.NoError(t, repository.CreateProfile(context.Background(), published))
+
+	err := repository.DeleteDraftProfile(context.Background(), draft.ID, draft.ConfigVersion+1)
+	assert.ErrorIs(t, err, ErrVersionConflict)
+
+	err = repository.DeleteDraftProfile(context.Background(), published.ID, published.ConfigVersion)
+	assert.ErrorIs(t, err, ErrVersionConflict)
+
+	require.NoError(t, repository.DeleteDraftProfile(context.Background(), draft.ID, draft.ConfigVersion))
+	_, err = repository.GetProfileByID(context.Background(), draft.ID)
+	assert.True(t, IsNotFound(err))
+}

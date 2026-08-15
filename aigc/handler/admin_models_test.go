@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/aigc/repository"
 	"github.com/QuantumNous/new-api/aigc/service"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/gin-gonic/gin"
@@ -16,8 +17,13 @@ import (
 )
 
 type adminCatalogStub struct {
-	created service.ProfileInput
-	item    *service.AdminProfile
+	created   service.ProfileInput
+	item      *service.AdminProfile
+	updateErr error
+	deleted   struct {
+		id      int64
+		version int
+	}
 }
 
 func (stub *adminCatalogStub) Create(_ context.Context, input service.ProfileInput) (*service.AdminProfile, error) {
@@ -30,11 +36,16 @@ func (stub *adminCatalogStub) Get(_ context.Context, _ int64) (*service.AdminPro
 }
 
 func (stub *adminCatalogStub) Update(_ context.Context, _ int64, input service.ProfileInput) (*service.AdminProfile, error) {
-	return stub.item, nil
+	return stub.item, stub.updateErr
 }
 
 func (stub *adminCatalogStub) Validate(_ context.Context, _ int64) error       { return nil }
 func (stub *adminCatalogStub) Disable(_ context.Context, _ int64, _ int) error { return nil }
+func (stub *adminCatalogStub) Delete(_ context.Context, id int64, version int) error {
+	stub.deleted.id = id
+	stub.deleted.version = version
+	return nil
+}
 func (stub *adminCatalogStub) List(_ context.Context, _ service.ProfileFilter) ([]service.AdminProfile, int64, error) {
 	return []service.AdminProfile{*stub.item}, 1, nil
 }
@@ -99,4 +110,46 @@ func TestAdminProfileJSONKeepsConfigAsObject(t *testing.T) {
 	contents, err := common.Marshal(item)
 	require.NoError(t, err)
 	assert.Contains(t, string(contents), `"config":{"text"`)
+}
+
+func TestAdminDeleteRequiresVersion(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	admin := &adminCatalogStub{item: &service.AdminProfile{ID: 10, ConfigVersion: 3}}
+	handler := NewAdminModelHandler(admin, &publisherStub{})
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Params = gin.Params{{Key: "id", Value: "10"}}
+	c.Request = httptest.NewRequest(http.MethodDelete, "/api/aigc/models/10", strings.NewReader(`{"config_version":3}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.Delete(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	assert.Equal(t, int64(10), admin.deleted.id)
+	assert.Equal(t, 3, admin.deleted.version)
+}
+
+func TestAdminUpdateReturnsConflictForStaleVersion(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	admin := &adminCatalogStub{updateErr: repository.ErrVersionConflict}
+	handler := NewAdminModelHandler(admin, &publisherStub{})
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Params = gin.Params{{Key: "id", Value: "10"}}
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/aigc/models/10", strings.NewReader(`{
+		"public_model_id":"writer-pro","display_name":"Writer Pro","model_type":"text",
+		"config_version":2,"groups":[],"config":{"text":{"upstream_model_id":"gpt-5"}}
+	}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.Update(c)
+
+	require.Equal(t, http.StatusConflict, recorder.Code)
+	var response struct {
+		Success bool   `json:"success"`
+		Code    string `json:"code"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.False(t, response.Success)
+	assert.Equal(t, "CONFIG_VERSION_CONFLICT", response.Code)
 }

@@ -2,8 +2,11 @@ package handler
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"strconv"
 
+	"github.com/QuantumNous/new-api/aigc/entity"
 	"github.com/QuantumNous/new-api/aigc/service"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/gin-gonic/gin"
@@ -15,6 +18,7 @@ type AdminCatalog interface {
 	Update(ctx context.Context, id int64, input service.ProfileInput) (*service.AdminProfile, error)
 	Validate(ctx context.Context, id int64) error
 	Disable(ctx context.Context, id int64, expectedVersion int) error
+	Delete(ctx context.Context, id int64, expectedVersion int) error
 	List(ctx context.Context, filter service.ProfileFilter) ([]service.AdminProfile, int64, error)
 }
 
@@ -88,7 +92,7 @@ func (handler *AdminModelHandler) Update(c *gin.Context) {
 	}
 	item, err := handler.admin.Update(c.Request.Context(), id, input)
 	if err != nil {
-		common.ApiError(c, err)
+		adminAPIError(c, err)
 		return
 	}
 	common.ApiSuccess(c, item)
@@ -121,7 +125,7 @@ func (handler *AdminModelHandler) Publish(c *gin.Context) {
 		return
 	}
 	if err := handler.publisher.Publish(c.Request.Context(), profile.PublicModelID, version); err != nil {
-		common.ApiError(c, err)
+		adminAPIError(c, err)
 		return
 	}
 	common.ApiSuccess(c, gin.H{"published": true})
@@ -137,10 +141,45 @@ func (handler *AdminModelHandler) Disable(c *gin.Context) {
 		return
 	}
 	if err := handler.admin.Disable(c.Request.Context(), id, version); err != nil {
-		common.ApiError(c, err)
+		adminAPIError(c, err)
 		return
 	}
 	common.ApiSuccess(c, gin.H{"disabled": true})
+}
+
+func (handler *AdminModelHandler) Delete(c *gin.Context) {
+	id, ok := profileID(c)
+	if !ok {
+		return
+	}
+	version, ok := requestedVersion(c)
+	if !ok {
+		return
+	}
+	if err := handler.admin.Delete(c.Request.Context(), id, version); err != nil {
+		adminAPIError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"deleted": true})
+}
+
+func adminAPIError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, entity.ErrConfigVersionConflict):
+		c.JSON(http.StatusConflict, gin.H{
+			"success": false,
+			"message": err.Error(),
+			"code":    "CONFIG_VERSION_CONFLICT",
+		})
+	case errors.Is(err, service.ErrOnlyDraftCanBeDeleted):
+		c.JSON(http.StatusConflict, gin.H{
+			"success": false,
+			"message": err.Error(),
+			"code":    "MODEL_NOT_DRAFT",
+		})
+	default:
+		common.ApiError(c, err)
+	}
 }
 
 func profileID(c *gin.Context) (int64, bool) {

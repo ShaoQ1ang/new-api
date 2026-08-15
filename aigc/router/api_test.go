@@ -46,6 +46,7 @@ func TestRegisterAPIRoutes(t *testing.T) {
 		http.MethodPost + " /api/aigc/models/:id/validate",
 		http.MethodPost + " /api/aigc/models/:id/publish",
 		http.MethodPost + " /api/aigc/models/:id/disable",
+		http.MethodDelete + " /api/aigc/models/:id",
 		http.MethodGet + " /api/aigc/upstream-models",
 		http.MethodGet + " /api/aigc/upstream-models/*path",
 	} {
