@@ -62,7 +62,7 @@ func TestGenerationResolverRejectsInvalidInputRole(t *testing.T) {
 	assertGenerationErrorCode(t, err, "INVALID_INPUT_ROLE")
 }
 
-func TestGenerationResolverRequiresDeclaredVideoInputCapability(t *testing.T) {
+func TestGenerationResolverTreatsFirstFrameAsIntrinsicModeInput(t *testing.T) {
 	profile := entity.ModelProfile{
 		PublicModelID: "bad-video", DisplayName: "Bad Video", ModelType: "video", Status: entity.ModelStatusPublished,
 		GroupsJSON: `[]`, ConfigVersion: 1, ConfigJSON: `{
@@ -75,13 +75,15 @@ func TestGenerationResolverRequiresDeclaredVideoInputCapability(t *testing.T) {
 	store := &profileStoreStub{profiles: map[string]*entity.ModelProfile{profile.PublicModelID: &profile}}
 	resolver := NewGenerationResolver(store, &availabilityStub{byGroup: map[string]map[string]bool{"default": {"video-i2v": true}}})
 
-	_, err := resolver.Resolve(context.Background(), "default", dto.GenerationRequest{
+	spec, err := resolver.Resolve(context.Background(), "default", dto.GenerationRequest{
 		IdempotencyKey: "turn-bad", Model: profile.PublicModelID, Type: "video", Prompt: "move", Mode: "first_frame",
 		Inputs: dto.GenerationInputs{Images: []dto.MediaInput{{Role: "first_frame", URL: "https://aigc.test/first.png"}}},
 		Output: dto.GenerationOutput{Resolution: "720p", AspectRatio: "16:9", Duration: 5},
 	})
 
-	assertGenerationErrorCode(t, err, "INVALID_INPUT_ROLE")
+	require.NoError(t, err)
+	assert.Equal(t, "first_frame", spec.Mode)
+	assert.Equal(t, "video-i2v", spec.UpstreamModelID)
 }
 
 func TestGenerationResolverRejectsUnavailableOrHiddenModel(t *testing.T) {

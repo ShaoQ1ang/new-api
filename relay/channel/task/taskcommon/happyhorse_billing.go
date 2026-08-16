@@ -28,6 +28,9 @@ func convertAliHappyHorseVideoBillingParams(req relaycommon.TaskSubmitReq) (*typ
 }
 
 func resolveHappyHorseBillingTier(req relaycommon.TaskSubmitReq) string {
+	if tier, ok := normalizeHappyHorseTier(req.Resolution); ok {
+		return tier
+	}
 	if resolution, ok := resolveMetadataString(req.Metadata, "resolution"); ok {
 		if tier, ok := normalizeHappyHorseTier(resolution); ok {
 			return tier

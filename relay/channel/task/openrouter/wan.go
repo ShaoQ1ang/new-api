@@ -111,6 +111,7 @@ func (h *Wan27Handler) BuildUpstreamRequest(info *relaycommon.RelayInfo, req *re
 		resolution = "1080p"
 	}
 	body := map[string]any{"model": info.UpstreamModelName, "duration": duration, "resolution": resolution, "generate_audio": *requestAudioWithDefault(req, true)}
+	body["prompt_extend"] = true
 	if prompt := strings.TrimSpace(req.Prompt); prompt != "" {
 		body["prompt"] = prompt
 	}

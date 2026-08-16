@@ -31,7 +31,8 @@ func TestConvertToAliRequestWan27I2VBuildsMediaFromImage(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "wan2.7-i2v", aliReq.Model)
 	require.Equal(t, "720P", aliReq.Parameters.Resolution)
-	require.Equal(t, 10, aliReq.Parameters.Duration)
+	require.NotNil(t, aliReq.Parameters.Duration)
+	require.Equal(t, 10, *aliReq.Parameters.Duration)
 	require.Equal(t, []AliVideoMedia{
 		{Type: "first_frame", URL: "https://example.com/first.png"},
 	}, aliReq.Input.Media)
@@ -186,7 +187,8 @@ func TestWan27T2VUsesNativeResolutionRatioAudioAndFlatParameters(t *testing.T) {
 	assert.Equal(t, "720P", aliReq.Parameters.Resolution)
 	require.NotNil(t, aliReq.Parameters.Ratio)
 	assert.Equal(t, "4:3", *aliReq.Parameters.Ratio)
-	assert.Equal(t, 15, aliReq.Parameters.Duration)
+	require.NotNil(t, aliReq.Parameters.Duration)
+	assert.Equal(t, 15, *aliReq.Parameters.Duration)
 	assert.False(t, aliReq.Parameters.PromptExtend)
 	require.NotNil(t, aliReq.Parameters.Watermark)
 	assert.False(t, *aliReq.Parameters.Watermark)
@@ -233,7 +235,11 @@ func TestWan27VideoEditUsesSourceAndReferences(t *testing.T) {
 	assert.Equal(t, []AliVideoMedia{{Type: "video", URL: "source"}, {Type: "reference_image", URL: "coat"}}, aliReq.Input.Media)
 	require.NotNil(t, aliReq.Parameters.AudioSetting)
 	assert.Equal(t, "origin", *aliReq.Parameters.AudioSetting)
-	assert.Equal(t, 0, aliReq.Parameters.Duration)
+	require.NotNil(t, aliReq.Parameters.Duration)
+	assert.Equal(t, 0, *aliReq.Parameters.Duration)
+	body, err := common.Marshal(aliReq)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"duration":0`)
 }
 
 func TestWan27BillingConverter(t *testing.T) {
@@ -274,7 +280,7 @@ func TestHappyHorseMapsUnifiedVideoOptions(t *testing.T) {
 				Model:         test.model,
 				Prompt:        "generate a video",
 				Images:        test.images,
-				Size:          "720p",
+				Resolution:    "720p",
 				AspectRatio:   "16:9",
 				Duration:      5,
 				GenerateAudio: &generateAudio,
@@ -305,6 +311,25 @@ func TestHappyHorseMapsUnifiedVideoOptions(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestKlingMapsCanonicalVideoOptions(t *testing.T) {
+	audio := false
+	req := relaycommon.TaskSubmitReq{
+		Model: "kling/kling-v3-video-generation", Mode: "text_to_video", Prompt: "move",
+		Resolution: "720p", AspectRatio: "9:16", Duration: 3, GenerateAudio: &audio,
+		Metadata: map[string]any{"aspect_ratio": "1:1", "audio": true},
+	}
+
+	aliReq, err := (&TaskAdaptor{}).buildKlingRequest(req.Model, req)
+
+	require.NoError(t, err)
+	require.NotNil(t, aliReq.Parameters.Mode)
+	assert.Equal(t, "pro", *aliReq.Parameters.Mode)
+	require.NotNil(t, aliReq.Parameters.AspectRatio)
+	assert.Equal(t, "9:16", *aliReq.Parameters.AspectRatio)
+	require.NotNil(t, aliReq.Parameters.Audio)
+	assert.False(t, *aliReq.Parameters.Audio)
 }
 
 func TestHappyHorseUnifiedOptionsOverrideLegacyMetadata(t *testing.T) {

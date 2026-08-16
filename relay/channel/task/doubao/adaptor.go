@@ -242,8 +242,11 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	if err != nil {
 		return nil
 	}
-	hasVideo := hasVideoInMetadata(req.Metadata)
-	resolution, _ := req.Metadata["resolution"].(string)
+	hasVideo := len(req.Videos) > 0 || hasVideoInMetadata(req.Metadata)
+	resolution := req.Resolution
+	if resolution == "" {
+		resolution, _ = req.Metadata["resolution"].(string)
+	}
 	if conditionalPrice, ok := ratio_setting.GetTaskConditionalInputPrice(info.OriginModelName, resolution, hasVideo); ok {
 		info.PriceData.ConditionalInputPrice = conditionalPrice
 	}
@@ -380,23 +383,32 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 		Content: []ContentItem{},
 	}
 
-	// Add images if present
-	if req.HasImage() {
-		for _, imgURL := range req.Images {
-			r.Content = append(r.Content, ContentItem{
-				Type: "image_url",
-				ImageURL: &MediaURL{
-					URL: imgURL,
-				},
-			})
-		}
-	}
-
 	metadata := req.Metadata
 	if err := taskcommon.UnmarshalMetadata(metadata, &r); err != nil {
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
 	}
 	r.Model = req.Model
+	if req.Resolution != "" {
+		r.Resolution = req.Resolution
+	}
+	if req.AspectRatio != "" {
+		r.Ratio = req.AspectRatio
+	}
+	if req.GenerateAudio != nil {
+		r.GenerateAudio = lo.ToPtr(dto.BoolValue(*req.GenerateAudio))
+	}
+	if r.Watermark == nil {
+		r.Watermark = lo.ToPtr(dto.BoolValue(false))
+	}
+	for index, url := range req.Images {
+		r.Content = append(r.Content, ContentItem{Type: "image_url", ImageURL: &MediaURL{URL: url}, Role: seedanceImageRole(req, index)})
+	}
+	for index, url := range req.Videos {
+		r.Content = append(r.Content, ContentItem{Type: "video_url", VideoURL: &MediaURL{URL: url}, Role: seedanceMediaRole(req.VideoRoles, index, "reference_video")})
+	}
+	for index, url := range req.Audios {
+		r.Content = append(r.Content, ContentItem{Type: "audio_url", AudioURL: &MediaURL{URL: url}, Role: seedanceMediaRole(req.AudioRoles, index, "reference_audio")})
+	}
 
 	if sec, _ := strconv.Atoi(req.Seconds); sec > 0 {
 		r.Duration = lo.ToPtr(dto.IntValue(sec))
@@ -416,6 +428,21 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	}
 
 	return &r, nil
+}
+
+func seedanceImageRole(req *relaycommon.TaskSubmitReq, index int) string {
+	role := seedanceMediaRole(req.ImageRoles, index, "reference_image")
+	if role == "general_reference" {
+		return "reference_image"
+	}
+	return role
+}
+
+func seedanceMediaRole(roles []string, index int, fallback string) string {
+	if index >= len(roles) || roles[index] == "" || roles[index] == "general_reference" {
+		return fallback
+	}
+	return roles[index]
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {

@@ -44,10 +44,21 @@ func TestWan27BuildsEverySupportedMode(t *testing.T) {
 			assert.Equal(t, int64(7), body["seed"])
 			assert.Equal(t, true, body["generate_audio"])
 			assert.Equal(t, "blur", body["negative_prompt"])
+			assert.Equal(t, false, body["prompt_extend"])
 			assert.NotContains(t, body, "mode")
 			tt.check(t, body)
 		})
 	}
+}
+
+func TestWan27DefaultsPromptExtend(t *testing.T) {
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "alibaba/wan-2.7"}}
+	req := relaycommon.TaskSubmitReq{Model: "alibaba/wan-2.7", Mode: "text_to_video", Prompt: "test", Duration: 5, Resolution: "720p"}
+
+	body, err := (&Wan27Handler{BaseHandler: NewBaseHandler("wan27")}).BuildUpstreamRequest(info, &req)
+
+	require.NoError(t, err)
+	assert.Equal(t, true, body["prompt_extend"])
 }
 
 func TestWan27RejectsUnsupportedModeAndDuration(t *testing.T) {

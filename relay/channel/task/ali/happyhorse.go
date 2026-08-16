@@ -14,7 +14,7 @@ func (a *TaskAdaptor) buildHappyHorseRequest(upstreamModel string, req relaycomm
 			Prompt: req.Prompt,
 		},
 		Parameters: &AliVideoParameters{
-			Resolution: normalizeHappyHorseResolution(req.Size, "1080P"),
+			Resolution: normalizeHappyHorseResolution(firstNonEmptyString(req.Resolution, req.Size), "1080P"),
 			Watermark:  lo.ToPtr(false),
 		},
 	}
@@ -34,10 +34,10 @@ func (a *TaskAdaptor) buildHappyHorseRequest(upstreamModel string, req relaycomm
 			aliReq.Input.Media = append(aliReq.Input.Media, AliMediaItem{Type: "reference_image", URL: url})
 		}
 	default:
-		aliReq.Parameters.Duration = resolveTaskDuration(req, 5)
+		aliReq.Parameters.Duration = lo.ToPtr(resolveTaskDuration(req, 5))
 	}
 	if !strings.Contains(upstreamModel, "-video-edit") {
-		aliReq.Parameters.Duration = resolveTaskDuration(req, 5)
+		aliReq.Parameters.Duration = lo.ToPtr(resolveTaskDuration(req, 5))
 	}
 	ratio := strings.TrimSpace(req.AspectRatio)
 	if ratio == "" && req.Metadata != nil {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/aigc/service"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/pkg/tracelog"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -95,4 +98,32 @@ func TestGenerationHandlerWritesProtocolErrors(t *testing.T) {
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	assert.Equal(t, "IDEMPOTENCY_CONFLICT", response.Error.Code)
 	assert.Equal(t, "turn-1", response.Error.IdempotencyKey)
+}
+
+func TestGenerationHandlerTracesResolverErrors(t *testing.T) {
+	directory := t.TempDir()
+	client := tracelog.New("newapi", directory, 8)
+	previous := tracelog.Default
+	tracelog.Default = client
+	t.Cleanup(func() { tracelog.Default = previous })
+
+	handler := NewGenerationHandler(&generationCatalogStub{err: &service.GenerationError{
+		HTTPStatus: http.StatusBadRequest, Code: "INVALID_INPUT_ROLE", Message: "invalid role",
+	}})
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/aigc/generations", strings.NewReader(`{"idempotency_key":"turn-trace","model":"video","type":"video","prompt":"move"}`))
+	c.Request = c.Request.WithContext(client.WithTraceID(c.Request.Context(), "turn-trace"))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("id", 7)
+	c.Set("token_id", 11)
+
+	handler.Submit(c)
+	client.Close()
+
+	content, err := os.ReadFile(filepath.Join(directory, "newapi.jsonl"))
+	require.NoError(t, err)
+	assert.Contains(t, string(content), `"name":"newapi.input"`)
+	assert.Contains(t, string(content), `"name":"newapi.output"`)
+	assert.Contains(t, string(content), `INVALID_INPUT_ROLE`)
 }

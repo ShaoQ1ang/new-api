@@ -214,11 +214,11 @@ func validateVideoRequestInputs(mode string, config capability.VideoModeConfig, 
 			return invalid("text-to-video inputs are invalid")
 		}
 	case "first_frame":
-		if !mediaHaveExactRoles(inputs.Images, []string{"first_frame"}) || !mediaCountAllowed(1, config.Inputs.FirstFrame) || len(inputs.Videos) != 0 || !mediaHaveOnlyRole(inputs.Audios, "driving_audio") || !mediaCountAllowed(len(inputs.Audios), config.Inputs.DrivingAudio) {
+		if !mediaHaveExactRoles(inputs.Images, []string{"first_frame"}) || len(inputs.Videos) != 0 || !mediaHaveOnlyRole(inputs.Audios, "driving_audio") || !mediaCountAllowed(len(inputs.Audios), config.Inputs.DrivingAudio) {
 			return invalid("first-frame video requires one first_frame image")
 		}
 	case "first_last_frame":
-		if !mediaHaveExactRoles(inputs.Images, []string{"first_frame", "last_frame"}) || !mediaCountAllowed(1, config.Inputs.FirstFrame) || !mediaCountAllowed(1, config.Inputs.LastFrame) || len(inputs.Videos) != 0 || !mediaHaveOnlyRole(inputs.Audios, "driving_audio") || !mediaCountAllowed(len(inputs.Audios), config.Inputs.DrivingAudio) {
+		if !mediaHaveExactRoles(inputs.Images, []string{"first_frame", "last_frame"}) || len(inputs.Videos) != 0 || !mediaHaveOnlyRole(inputs.Audios, "driving_audio") || !mediaCountAllowed(len(inputs.Audios), config.Inputs.DrivingAudio) {
 			return invalid("first-last-frame video requires first_frame and last_frame images")
 		}
 	case "video_extension":

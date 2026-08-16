@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 
@@ -80,6 +81,8 @@ func (executor *TaskExecutor) Execute(ctx context.Context, identity Identity, sp
 	}
 
 	taskContext := source.Copy()
+	internalContext, _ := gin.CreateTestContext(httptest.NewRecorder())
+	taskContext.Writer = internalContext.Writer
 	taskContext.Set(common.KeyBodyStorage, nil)
 	taskContext.Set(common.KeyRequestBody, nil)
 	defer common.CleanupBodyStorage(taskContext)

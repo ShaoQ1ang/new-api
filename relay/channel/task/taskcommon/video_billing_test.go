@@ -69,6 +69,15 @@ func TestAliHappyHorseConverterResolves720PFromResolutionSizeEnum(t *testing.T) 
 	}
 }
 
+func TestAliHappyHorseConverterPrefersCanonicalResolution(t *testing.T) {
+	req := relaycommon.TaskSubmitReq{Model: "happyhorse-1.1-r2v", Duration: 5, Resolution: "720p", Size: "1080p"}
+
+	params, err := ConvertVideoBillingParams(nil, req)
+
+	require.NoError(t, err)
+	assert.Equal(t, "720p", params.Tier)
+}
+
 func TestAliHappyHorseConverterUsesExplicitGenerateAudio(t *testing.T) {
 	generateAudio := false
 	req := relaycommon.TaskSubmitReq{
@@ -161,6 +170,20 @@ func TestAliKlingConverterResolvesSilentFromAudioFalse(t *testing.T) {
 	if params.AudioEnabled {
 		t.Fatalf("expected audio disabled")
 	}
+}
+
+func TestAliKlingConverterPrefersCanonicalOutput(t *testing.T) {
+	audio := false
+	req := relaycommon.TaskSubmitReq{
+		Model: "kling/kling-v3-video-generation", Mode: "text_to_video", Resolution: "720p", Duration: 3, GenerateAudio: &audio,
+		Metadata: map[string]any{"mode": "pro", "audio": true},
+	}
+
+	params, err := ConvertVideoBillingParams(nil, req)
+
+	require.NoError(t, err)
+	assert.Equal(t, "720p", params.Tier)
+	assert.False(t, params.AudioEnabled)
 }
 
 func TestAliKlingConverterUsesMappedUpstreamModel(t *testing.T) {

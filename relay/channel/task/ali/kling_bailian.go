@@ -16,11 +16,15 @@ func (a *TaskAdaptor) buildKlingRequest(upstreamModel string, req relaycommon.Ta
 		},
 		Parameters: &AliVideoParameters{
 			Watermark:   lo.ToPtr(false),
-			Mode:        lo.ToPtr(normalizeKlingMode(req.Mode, req.Size)),
-			Duration:    resolveTaskDuration(req, 5),
+			Mode:        lo.ToPtr(normalizeKlingMode(req.Mode, firstNonEmptyString(req.Resolution, req.Size))),
+			Duration:    lo.ToPtr(resolveTaskDuration(req, 5)),
 			AspectRatio: lo.ToPtr("16:9"),
 		},
 	}
+	if ratio := strings.TrimSpace(req.AspectRatio); ratio != "" {
+		aliReq.Parameters.AspectRatio = lo.ToPtr(ratio)
+	}
+	aliReq.Parameters.Audio = req.GenerateAudio
 
 	if req.Metadata != nil {
 		if mediaValue, ok := req.Metadata["media"]; ok {
@@ -47,12 +51,12 @@ func (a *TaskAdaptor) buildKlingRequest(upstreamModel string, req relaycommon.Ta
 		if mode, ok := getStringMetadata(req.Metadata, "mode"); ok {
 			aliReq.Parameters.Mode = lo.ToPtr(normalizeKlingMode(mode, ""))
 		}
-		if aspectRatio, ok := getStringMetadata(req.Metadata, "aspect_ratio"); ok {
+		if aspectRatio, ok := getStringMetadata(req.Metadata, "aspect_ratio"); ok && strings.TrimSpace(req.AspectRatio) == "" {
 			aliReq.Parameters.AspectRatio = lo.ToPtr(aspectRatio)
-		} else if ratio, ok := getStringMetadata(req.Metadata, "ratio"); ok {
+		} else if ratio, ok := getStringMetadata(req.Metadata, "ratio"); ok && strings.TrimSpace(req.AspectRatio) == "" {
 			aliReq.Parameters.AspectRatio = lo.ToPtr(ratio)
 		}
-		if audio, ok := getBoolMetadata(req.Metadata, "audio"); ok {
+		if audio, ok := getBoolMetadata(req.Metadata, "audio"); ok && req.GenerateAudio == nil {
 			aliReq.Parameters.Audio = lo.ToPtr(audio)
 		}
 		if watermark, ok := getBoolMetadata(req.Metadata, "watermark"); ok {

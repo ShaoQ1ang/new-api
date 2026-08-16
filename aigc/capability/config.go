@@ -194,8 +194,8 @@ func validateVideo(config VideoConfig) error {
 			for _, resolution := range spec.Resolutions {
 				for _, ratio := range spec.AspectRatios {
 					for _, duration := range spec.Durations {
-						if duration <= 0 {
-							return fmt.Errorf("video output spec %s duration must be positive", spec.ID)
+						if duration < 0 || duration == 0 && modeName != "video_edit" {
+							return fmt.Errorf("video output spec %s duration must be positive except for video_edit", spec.ID)
 						}
 						audioValues := []bool{false}
 						if spec.GenerateAudio.Supported {

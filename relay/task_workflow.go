@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime/debug"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -33,14 +34,19 @@ type TaskWorkflowResult struct {
 }
 
 func (workflow TaskWorkflow) Submit(c *gin.Context, relayInfo *relaycommon.RelayInfo) (workflowResult *TaskWorkflowResult, taskErr *dto.TaskError) {
-	if taskErr = ResolveOriginTask(c, relayInfo); taskErr != nil {
-		return nil, taskErr
-	}
 	defer func() {
+		if recovered := recover(); recovered != nil {
+			logger.LogError(c, fmt.Sprintf("task workflow panic: %v\n%s", recovered, debug.Stack()))
+			workflowResult = nil
+			taskErr = service.TaskErrorWrapperLocal(fmt.Errorf("task workflow panic: %v", recovered), "task_workflow_panic", http.StatusInternalServerError)
+		}
 		if taskErr != nil && relayInfo.Billing != nil {
 			relayInfo.Billing.Refund(c)
 		}
 	}()
+	if taskErr = ResolveOriginTask(c, relayInfo); taskErr != nil {
+		return nil, taskErr
+	}
 
 	retryParam := &service.RetryParam{
 		Ctx: c, TokenGroup: relayInfo.TokenGroup, ModelName: relayInfo.OriginModelName,

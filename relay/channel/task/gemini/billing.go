@@ -68,8 +68,11 @@ func ResolveVeoDuration(metadata map[string]any, stdDuration int, stdSeconds str
 }
 
 // ResolveVeoResolution returns the effective resolution string (lowercase).
-// Priority: metadata["resolution"] > SizeToVeoResolution(stdSize) > default ("720p").
-func ResolveVeoResolution(metadata map[string]any, stdSize string) string {
+// Priority: canonical resolution > metadata["resolution"] > size > default ("720p").
+func ResolveVeoResolution(metadata map[string]any, resolution string, stdSize string) string {
+	if resolution = strings.TrimSpace(resolution); resolution != "" {
+		return strings.ToLower(resolution)
+	}
 	if metadata != nil {
 		if _, exists := metadata["resolution"]; exists {
 			if r := ParseVeoResolution(metadata); r != "" {

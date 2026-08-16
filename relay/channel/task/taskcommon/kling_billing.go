@@ -10,7 +10,9 @@ import (
 func convertAliKlingVideoBillingParams(req relaycommon.TaskSubmitReq) (*types.VideoBillingParams, error) {
 	tier := resolveKlingBillingTier(req)
 	audioEnabled := false
-	if audio, ok := resolveMetadataBool(req.Metadata, "audio"); ok {
+	if req.GenerateAudio != nil {
+		audioEnabled = *req.GenerateAudio
+	} else if audio, ok := resolveMetadataBool(req.Metadata, "audio"); ok {
 		audioEnabled = audio
 	}
 	return &types.VideoBillingParams{
@@ -21,13 +23,19 @@ func convertAliKlingVideoBillingParams(req relaycommon.TaskSubmitReq) (*types.Vi
 }
 
 func resolveKlingBillingTier(req relaycommon.TaskSubmitReq) string {
+	if strings.EqualFold(strings.TrimSpace(req.Resolution), "720p") {
+		return "720p"
+	}
+	if strings.TrimSpace(req.Resolution) != "" {
+		return "1080p"
+	}
 	if mode, ok := resolveMetadataString(req.Metadata, "mode"); ok {
 		if strings.EqualFold(mode, "std") {
 			return "720p"
 		}
 		return "1080p"
 	}
-	if mode := strings.TrimSpace(req.Mode); mode != "" {
+	if mode := strings.TrimSpace(req.Mode); mode == "std" || mode == "pro" {
 		if strings.EqualFold(mode, "std") {
 			return "720p"
 		}

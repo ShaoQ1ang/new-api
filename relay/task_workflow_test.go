@@ -3,6 +3,7 @@ package relay
 import (
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -11,7 +12,18 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+type billingSettlerStub struct {
+	refunded bool
+}
+
+func (stub *billingSettlerStub) Settle(int) error         { return nil }
+func (stub *billingSettlerStub) NeedsRefund() bool        { return true }
+func (stub *billingSettlerStub) GetPreConsumedQuota() int { return 1 }
+func (stub *billingSettlerStub) Reserve(int) error        { return nil }
+func (stub *billingSettlerStub) Refund(*gin.Context)      { stub.refunded = true }
 
 func TestShouldRetryTaskSubmission(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -87,4 +99,19 @@ func TestTaskWorkflowChannelSelectionMode(t *testing.T) {
 
 	info.ChannelMeta = &relaycommon.ChannelMeta{ChannelId: 12}
 	assert.True(t, taskWorkflowNeedsChannelSelection(context, info))
+}
+
+func TestTaskWorkflowRecoversPanicAndRefundsBilling(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	context, _ := gin.CreateTestContext(httptest.NewRecorder())
+	billing := &billingSettlerStub{}
+	info := &relaycommon.RelayInfo{Billing: billing}
+
+	result, taskErr := (TaskWorkflow{}).Submit(context, info)
+
+	assert.Nil(t, result)
+	require.NotNil(t, taskErr)
+	assert.Equal(t, http.StatusInternalServerError, taskErr.StatusCode)
+	assert.Contains(t, taskErr.Message, "task workflow panic")
+	assert.True(t, billing.refunded)
 }

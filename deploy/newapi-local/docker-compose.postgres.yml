@@ -64,6 +64,9 @@ services:
       TZ: Asia/Shanghai
       ERROR_LOG_ENABLED: "true"
       MEMORY_CACHE_ENABLED: "true"
+      TRACE_LOG_ENABLED: "true"
+      TRACE_LOG_DIR: /trace-logs
+      TRACE_LOG_BUFFER_SIZE: 256
       OPTION_CRYPT_KEY: "${OPTION_CRYPT_KEY:-}"
       SYNC_UPSTREAM_BASE: "http://metadata"
       SQL_DSN: "postgresql://${NEWAPI_POSTGRES_USER:-root}:${NEWAPI_POSTGRES_PASSWORD:-123456}@postgres:5432/${NEWAPI_POSTGRES_DB:-new-api}?sslmode=disable"
@@ -83,6 +86,7 @@ services:
     volumes:
       - ../../data:/data
       - ../../logs:/app/logs
+      - ../../../trace-console/data/traces:/trace-logs
     depends_on:
       postgres:
         condition: service_healthy

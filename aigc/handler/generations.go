@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/aigc/service"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/pkg/tracelog"
 	"github.com/gin-gonic/gin"
 )
 
@@ -30,9 +31,13 @@ func NewGenerationHandler(catalog GenerationCatalog) *GenerationHandler {
 func (handler *GenerationHandler) Submit(c *gin.Context) {
 	var request dto.GenerationRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
+		tracelog.Default.LogValue(c.Request.Context(), "newapi.input", "server-request", func() any {
+			return gin.H{"error": "invalid JSON body"}
+		})
 		writeGenerationError(c, request.IdempotencyKey, serviceError(http.StatusBadRequest, "INVALID_REQUEST", "invalid AIGC generation request", false))
 		return
 	}
+	tracelog.Default.LogValue(c.Request.Context(), "newapi.input", "server-request", func() any { return request })
 	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
 	if request.IdempotencyKey == "" || len(request.IdempotencyKey) > 200 {
 		writeGenerationError(c, request.IdempotencyKey, serviceError(http.StatusBadRequest, "INVALID_REQUEST", "idempotency_key must contain 1 to 200 characters", false))
@@ -48,10 +53,14 @@ func (handler *GenerationHandler) Submit(c *gin.Context) {
 		writeGenerationError(c, request.IdempotencyKey, err)
 		return
 	}
+	tracelog.Default.LogResponseValue(c.Request.Context(), "newapi.output", "server-response", func() any { return response })
 	c.JSON(http.StatusOK, response)
 }
 
 func (handler *GenerationHandler) Get(c *gin.Context) {
+	tracelog.Default.LogValue(c.Request.Context(), "newapi.input", "server-request", func() any {
+		return gin.H{"generation_id": strings.TrimSpace(c.Param("id"))}
+	})
 	identity, ok := generationIdentity(c)
 	if !ok {
 		writeGenerationError(c, "", serviceError(http.StatusUnauthorized, "UNAUTHORIZED", "authenticated token identity is required", false))
@@ -62,6 +71,7 @@ func (handler *GenerationHandler) Get(c *gin.Context) {
 		writeGenerationError(c, "", err)
 		return
 	}
+	tracelog.Default.LogResponseValue(c.Request.Context(), "newapi.output", "server-response", func() any { return response })
 	c.JSON(http.StatusOK, response)
 }
 
@@ -82,10 +92,12 @@ func writeGenerationError(c *gin.Context, idempotencyKey string, err error) {
 	if !errors.As(err, &protocolErr) {
 		protocolErr = serviceError(http.StatusInternalServerError, "AIGC_INTERNAL_ERROR", "AIGC request failed", true)
 	}
-	c.JSON(protocolErr.HTTPStatus, gin.H{"error": gin.H{
+	response := gin.H{"error": gin.H{
 		"code": protocolErr.Code, "message": protocolErr.Message,
 		"retryable": protocolErr.Retryable, "idempotency_key": idempotencyKey,
-	}})
+	}}
+	tracelog.Default.LogResponseValue(c.Request.Context(), "newapi.output", "server-response", func() any { return response })
+	c.JSON(protocolErr.HTTPStatus, response)
 }
 
 func serviceError(status int, code, message string, retryable bool) *service.GenerationError {

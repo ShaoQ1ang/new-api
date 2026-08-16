@@ -144,7 +144,7 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	req := v.(relaycommon.TaskSubmitReq)
 
 	seconds := geminitask.ResolveVeoDuration(req.Metadata, req.Duration, req.Seconds)
-	resolution := geminitask.ResolveVeoResolution(req.Metadata, req.Size)
+	resolution := geminitask.ResolveVeoResolution(req.Metadata, req.Resolution, req.Size)
 	resRatio := geminitask.VeoResolutionRatio(info.UpstreamModelName, resolution)
 
 	return map[string]float64{
@@ -184,10 +184,14 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if params.DurationSeconds == 0 && req.Duration > 0 {
 		params.DurationSeconds = req.Duration
 	}
-	if params.Resolution == "" && req.Size != "" {
+	if req.Resolution != "" {
+		params.Resolution = req.Resolution
+	} else if params.Resolution == "" && req.Size != "" {
 		params.Resolution = geminitask.SizeToVeoResolution(req.Size)
 	}
-	if params.AspectRatio == "" && req.Size != "" {
+	if req.AspectRatio != "" {
+		params.AspectRatio = req.AspectRatio
+	} else if params.AspectRatio == "" && req.Size != "" {
 		params.AspectRatio = geminitask.SizeToVeoAspectRatio(req.Size)
 	}
 	params.Resolution = strings.ToLower(params.Resolution)

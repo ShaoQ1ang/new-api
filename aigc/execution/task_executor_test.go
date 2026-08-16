@@ -27,10 +27,13 @@ type taskWorkflowStub struct {
 	result  *relay.TaskWorkflowResult
 	err     *relaydto.TaskError
 	storage bool
+	header  string
 }
 
 func (stub *taskWorkflowStub) Submit(c *gin.Context, info *relaycommon.RelayInfo) (*relay.TaskWorkflowResult, *relaydto.TaskError) {
 	stub.context, stub.info = c, info
+	c.Header("X-Internal-Task-Test", "set")
+	stub.header = c.Writer.Header().Get("X-Internal-Task-Test")
 	var contents []byte
 	if stub.storage {
 		body, _ := common.GetBodyStorage(c)
@@ -130,6 +133,8 @@ func TestTaskExecutorSubmitsResolvedVideoThroughSharedWorkflow(t *testing.T) {
 	assert.Equal(t, 7, workflow.info.UserId)
 	assert.Equal(t, 11, workflow.info.TokenId)
 	assert.Equal(t, "vip", workflow.info.UsingGroup)
+	assert.Equal(t, "set", workflow.header)
+	assert.Empty(t, requestContext.Writer.Header().Get("X-Internal-Task-Test"))
 }
 
 func TestTaskExecutorRequiresAuthenticatedGinContext(t *testing.T) {
