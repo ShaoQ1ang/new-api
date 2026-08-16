@@ -56,6 +56,7 @@ import Pricing from './pages/Pricing';
 import Rankings from './pages/Rankings';
 import Task from './pages/Task';
 import ModelPage from './pages/Model';
+import AigcModelsPage from './pages/AigcModels';
 import ModelDeploymentPage from './pages/ModelDeployment';
 import SkillHub from './pages/SkillHub';
 import SkillHubList from './pages/SkillHub/SkillHubList';
@@ -156,6 +157,14 @@ function App() {
             >
               <ModelPage />
             </ManagementPermissionRoute>
+          }
+        />
+        <Route
+          path='/console/aigc-models'
+          element={
+            <AdminRoute>
+              <AigcModelsPage />
+            </AdminRoute>
           }
         />
         <Route

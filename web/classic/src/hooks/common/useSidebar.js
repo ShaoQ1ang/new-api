@@ -53,6 +53,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     enabled: true,
     channel: true,
     models: true,
+    aigcModels: true,
     deployment: true,
     skillHub: true,
     clientRelease: true,
