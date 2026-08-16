@@ -14,8 +14,8 @@ func (repository *Repository) CreateOrGetRequest(ctx context.Context, request *e
 	if repository == nil || repository.db == nil {
 		return nil, false, fmt.Errorf("AIGC repository is not configured")
 	}
-	if request == nil || request.UserID <= 0 || strings.TrimSpace(request.RequestID) == "" || strings.TrimSpace(request.GenerationID) == "" {
-		return nil, false, fmt.Errorf("user id, request id and generation id are required")
+	if request == nil || request.UserID <= 0 || strings.TrimSpace(request.IdempotencyKey) == "" || strings.TrimSpace(request.GenerationID) == "" {
+		return nil, false, fmt.Errorf("user id, idempotency key and generation id are required")
 	}
 	now := common.GetTimestamp()
 	if request.CreatedTime == 0 {
@@ -31,9 +31,6 @@ func (repository *Repository) CreateOrGetRequest(ctx context.Context, request *e
 	if strings.TrimSpace(request.ResultJSON) == "" {
 		request.ResultJSON = "{}"
 	}
-	if strings.TrimSpace(request.ExecutionJSON) == "" {
-		request.ExecutionJSON = "{}"
-	}
 	result := repository.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(request)
 	if result.Error != nil {
 		return nil, false, result.Error
@@ -43,7 +40,7 @@ func (repository *Repository) CreateOrGetRequest(ctx context.Context, request *e
 	}
 	var existing entity.AigcRequest
 	if err := repository.db.WithContext(ctx).
-		Where("user_id = ? AND request_id = ?", request.UserID, request.RequestID).
+		Where("user_id = ? AND idempotency_key = ?", request.UserID, request.IdempotencyKey).
 		First(&existing).Error; err != nil {
 		return nil, false, err
 	}
@@ -94,13 +91,13 @@ func (repository *Repository) GetRequestByGenerationID(ctx context.Context, user
 	return &request, nil
 }
 
-func (repository *Repository) GetRequestByUserRequestID(ctx context.Context, userID int, requestID string) (*entity.AigcRequest, error) {
+func (repository *Repository) GetRequestByUserIdempotencyKey(ctx context.Context, userID int, idempotencyKey string) (*entity.AigcRequest, error) {
 	if repository == nil || repository.db == nil {
 		return nil, fmt.Errorf("AIGC repository is not configured")
 	}
 	var request entity.AigcRequest
 	if err := repository.db.WithContext(ctx).
-		Where("user_id = ? AND request_id = ?", userID, strings.TrimSpace(requestID)).
+		Where("user_id = ? AND idempotency_key = ?", userID, strings.TrimSpace(idempotencyKey)).
 		First(&request).Error; err != nil {
 		if IsNotFound(err) {
 			return nil, entity.ErrGenerationNotFound

@@ -105,7 +105,7 @@ Upstream providers
 两边可以各有一条任务记录，但含义必须不同：
 
 - AIGC Job 是产品业务任务，关联 Conversation、Turn 和最终 Asset，驱动前端 SSE。
-- New API AIGC Request 是模型调用信封，负责幂等、路由快照、真实用户计费归属和上游任务引用。
+- New API AIGC Request 是模型调用信封，负责幂等、真实用户计费归属和上游任务引用。
 
 AIGC Job 不保存供应商私有字段。New API Request 不保存 Conversation 业务内容，也不成为作品系统。
 
@@ -235,7 +235,7 @@ aigc/router.SetRelayRouter(router)
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `id` | bigint/int | 内部主键 |
-| `request_id` | varchar(191) | AIGC Turn ID/幂等键 |
+| `idempotency_key` | varchar(191) | AIGC Turn ID/幂等键 |
 | `generation_id` | varchar(191) | New API 对外任务 ID，唯一 |
 | `user_id` | int | 真实 New API 用户 |
 | `token_id` | int | 实际调用 Token |
@@ -249,8 +249,7 @@ aigc/router.SetRelayRouter(router)
 | `progress` | int | 标准化进度，范围 `0-100` |
 | `native_task_id` | varchar(191) | New API 原生异步 Task ID，可空 |
 | `request_digest` | varchar(64) | 规范化请求摘要 |
-| `request_json` | text | 规范化请求快照，用于故障恢复和审计 |
-| `execution_json` | text | 解析后的执行目标快照，运行中任务不随 Profile 更新漂移 |
+| `request_json` | text | 规范化请求，用于幂等审计和排障 |
 | `result_json` | text | 结果描述，不保存永久作品二进制 |
 | `error_code` | varchar(64) | 标准错误码 |
 | `error_message` | text | 安全的用户错误信息 |
@@ -258,12 +257,12 @@ aigc/router.SetRelayRouter(router)
 | `updated_time` | bigint | 更新时间 |
 | `finished_time` | bigint | 完成时间 |
 
-唯一索引：`(user_id, request_id)`。相同用户和幂等键只能对应一个逻辑调用。
+唯一索引：`(user_id, idempotency_key)`。相同用户和幂等键只能对应一个逻辑调用。
 
 幂等规则：
 
-- 相同 `request_id` 和相同 `request_digest` 返回原任务。
-- 相同 `request_id` 但请求内容不同返回 `409 IDEMPOTENCY_CONFLICT`。
+- 相同 `idempotency_key` 和相同 `request_digest` 返回原任务。
+- 相同 `idempotency_key` 但请求内容不同返回 `409 IDEMPOTENCY_CONFLICT`。
 - 已完成任务不得重新经过计费和 Relay。
 - 失败是否允许重新执行由明确的 Retry API 或新的 Turn ID 决定，不能靠重复 POST 隐式重跑。
 
@@ -282,7 +281,7 @@ reference     -> happyhorse-1.1-r2v
 
 New API 负责将前台业务模式解析为真实模型。AIGC 后端和前端都不得知道上述真实 ID。
 
-每份配置必须具备版本号。提交生成请求时保存所使用的配置版本和真实模型快照，管理员后续修改配置不能改变进行中的任务。
+每份配置必须具备版本号。提交生成请求时记录所使用的配置版本和真实模型用于审计；Task 创建后按 `native_task_id` 查询，管理员后续修改 Profile 不影响原 Task。业务重试使用新的幂等键并重新解析当前 Profile。
 
 ### 7.2 图片配置
 
@@ -367,26 +366,24 @@ New API 负责将前台业务模式解析为真实模型。AIGC 后端和前端�
 
 - 管理后台显示“上游不可用”。
 - 用户目录立即隐藏。
-- 已提交任务继续按快照执行或进入明确失败状态。
+- 已创建 Task 继续按 `native_task_id` 查询；尚未创建 Task 的新请求使用当前 Profile。
 - 上游恢复后，无需重新发布即可恢复可见，除非管理员已停用 Profile。
 
 ## 9. 服务间 API
 
-### 9.1 鉴权和公共 Header
+### 9.1 鉴权和幂等字段
 
 所有 `/v1/aigc/*` 接口使用 New API `TokenAuth`。
 
 ```http
 Authorization: Bearer <user-newapi-token>
-X-Request-ID: <aigc-turn-id>
-Idempotency-Key: <aigc-turn-id>
 Content-Type: application/json
 ```
 
 规则：
 
-- `X-Request-ID` 用于全链路日志，不承担唯一性。
-- `Idempotency-Key` 用于业务幂等，必须与 Body 中 `request_id` 一致。
+- Body `idempotency_key` 是唯一的业务幂等字段，长度为 1 到 200 个字符。
+- 不使用 `Idempotency-Key` Header。可选的 `X-Request-ID` 只用于单次 HTTP 链路追踪，不参与幂等。
 - AIGC 不使用管理员或公共服务 Token 替用户调用，否则会破坏用户组、额度和日志归属。
 - New API 不信任 AIGC 传入的 `user_id`、`group`、`quota` 或价格字段。
 
@@ -428,7 +425,7 @@ POST /v1/aigc/generations
 
 ```json
 {
-  "request_id": "turn-01J...",
+  "idempotency_key": "turn-01J...",
   "model": "happyhorse-1.1",
   "type": "video",
   "prompt": "A train moving through snow",
@@ -457,7 +454,7 @@ POST /v1/aigc/generations
 
 处理顺序固定为：
 
-1. 校验 Header 和 Body 幂等键。
+1. 校验 Body `idempotency_key`。
 2. 根据 Token 获取用户、Token 和实际使用组。
 3. 加载已发布 Profile。
 4. 校验请求能力和输入数量。
@@ -469,7 +466,7 @@ POST /v1/aigc/generations
 ```json
 {
   "id": "aigc_gen_01J...",
-  "request_id": "turn-01J...",
+  "idempotency_key": "turn-01J...",
   "status": "submitted",
   "progress": 0,
   "model": "happyhorse-1.1",
@@ -502,7 +499,7 @@ submitted -> queued -> processing -> completed
 ```json
 {
   "id": "aigc_gen_01J...",
-  "request_id": "turn-01J...",
+  "idempotency_key": "turn-01J...",
   "status": "completed",
   "progress": 100,
   "model": "happyhorse-1.1",
@@ -649,7 +646,7 @@ Client 职责仅包括：
 
 - 使用当前用户对应的 New API Token。
 - 发送模型目录和生成请求。
-- 透传 `X-Request-ID` 和幂等键。
+- 在生成请求 Body 中发送 AIGC Turn ID 作为 `idempotency_key`。
 - 解码标准错误和任务状态。
 - 设置连接、请求和空闲超时。
 - 不在 Client 内判断具体供应商或真实模型 ID。
@@ -770,7 +767,7 @@ New API 根据 Token 和用户配置计算实际组。Profile 的 `groups_json` 
     "code": "MODEL_MODE_NOT_SUPPORTED",
     "message": "该模型不支持首尾帧生成",
     "retryable": false,
-    "request_id": "turn-01J..."
+    "idempotency_key": "turn-01J..."
   }
 }
 ```
@@ -799,20 +796,19 @@ AIGC Client 将这些错误映射为现有 Job 的 `error_code`、`error` 和 `r
 
 ## 16. 可观测性
 
-全链路统一使用 AIGC Turn ID：
+业务幂等统一使用 AIGC Turn ID：
 
 ```text
 AIGC turn_id
-  -> X-Request-ID
-  -> Idempotency-Key
-  -> New API AigcRequest.request_id
+  -> body.idempotency_key
+  -> New API AigcRequest.idempotency_key
   -> Relay log request id
   -> upstream task metadata when supported
 ```
 
 New API 日志至少包含：
 
-- `request_id`
+- `idempotency_key`
 - `generation_id`
 - `user_id`、`token_id`、`group`
 - `public_model_id`
@@ -840,7 +836,7 @@ New API 日志至少包含：
 - 模型目录缓存 Key 必须至少包含用户组和模型类型。
 - Ability/渠道状态变化后，目录可见性必须跟随 New API 现有缓存刷新机制。
 - AIGC BFF 可以短缓存目录，但不得缓存生成权限判断；New API 每次提交仍需重新校验。
-- 任务提交保存路由快照，配置更新不影响运行中任务。
+- Task 创建后按 `native_task_id` 查询，配置更新不影响原 Task；新的业务重试重新读取当前 Profile。
 
 ## 18. 分阶段实施计划
 
@@ -1060,7 +1056,7 @@ AIGC_MUSIC_EXECUTION=local|newapi
 | 图片内联结果不可重放 | 网络失败后无法恢复 | 图片切流 Gate，确认 URL、直返或短期存储方案 |
 | 临时媒体 URL 过期 | Asset 转存失败 | 完成后立即转存，只重试下载不重跑生成 |
 | 视频任务状态重复维护 | 状态漂移 | New API Task 为上游真相，AigcRequest 仅投影 |
-| 配置更新影响运行中任务 | 请求行为漂移 | 保存配置版本和真实模型快照 |
+| 配置更新影响原任务查询 | 状态查询错误 | Task 创建后只按 `native_task_id` 查询，不重新解析 Profile |
 | 管理员并发覆盖 | 配置丢失 | `config_version` 乐观锁 |
 | New API 单目录形成耦合 | 后续难维护 | 明确包依赖，供应商差异留在 `relay/` |
 | 多数据库迁移差异 | 部署失败 | TEXT JSON、GORM、三库集成测试 |

@@ -16,11 +16,11 @@ var ErrIdempotencyConflict = entity.ErrIdempotencyConflict
 
 type RequestStore interface {
 	CreateOrGetRequest(ctx context.Context, request *entity.AigcRequest) (*entity.AigcRequest, bool, error)
-	GetRequestByUserRequestID(ctx context.Context, userID int, requestID string) (*entity.AigcRequest, error)
+	GetRequestByUserIdempotencyKey(ctx context.Context, userID int, idempotencyKey string) (*entity.AigcRequest, error)
 }
 
-func (service *IdempotencyService) Replay(ctx context.Context, userID int, requestID, requestDigest string) (*entity.AigcRequest, bool, error) {
-	stored, err := service.requests.GetRequestByUserRequestID(ctx, userID, strings.TrimSpace(requestID))
+func (service *IdempotencyService) Replay(ctx context.Context, userID int, idempotencyKey, requestDigest string) (*entity.AigcRequest, bool, error) {
+	stored, err := service.requests.GetRequestByUserIdempotencyKey(ctx, userID, strings.TrimSpace(idempotencyKey))
 	if errors.Is(err, entity.ErrGenerationNotFound) {
 		return nil, false, nil
 	}
@@ -36,7 +36,7 @@ func (service *IdempotencyService) Replay(ctx context.Context, userID int, reque
 type GenerationIDGenerator func() (string, error)
 
 type BeginRequest struct {
-	RequestID       string
+	IdempotencyKey  string
 	UserID          int
 	TokenID         int
 	GroupName       string
@@ -47,7 +47,6 @@ type BeginRequest struct {
 	ConfigVersion   int
 	RequestDigest   string
 	RequestJSON     string
-	ExecutionJSON   string
 }
 
 type IdempotencyService struct {
@@ -63,10 +62,10 @@ func NewIdempotencyService(requests RequestStore, generateID GenerationIDGenerat
 }
 
 func (service *IdempotencyService) Begin(ctx context.Context, input BeginRequest) (*entity.AigcRequest, bool, error) {
-	input.RequestID = strings.TrimSpace(input.RequestID)
+	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
 	input.RequestDigest = strings.TrimSpace(input.RequestDigest)
-	if input.RequestID == "" || input.UserID <= 0 || input.TokenID <= 0 {
-		return nil, false, fmt.Errorf("request id, user id and token id are required")
+	if input.IdempotencyKey == "" || input.UserID <= 0 || input.TokenID <= 0 {
+		return nil, false, fmt.Errorf("idempotency key, user id and token id are required")
 	}
 	if len(input.RequestDigest) != sha256.Size*2 {
 		return nil, false, fmt.Errorf("request digest must be a SHA-256 hex digest")
@@ -76,12 +75,11 @@ func (service *IdempotencyService) Begin(ctx context.Context, input BeginRequest
 		return nil, false, err
 	}
 	request := &entity.AigcRequest{
-		RequestID: input.RequestID, GenerationID: generationID, UserID: input.UserID, TokenID: input.TokenID,
+		IdempotencyKey: input.IdempotencyKey, GenerationID: generationID, UserID: input.UserID, TokenID: input.TokenID,
 		GroupName: strings.TrimSpace(input.GroupName), PublicModelID: strings.TrimSpace(input.PublicModelID),
 		UpstreamModelID: strings.TrimSpace(input.UpstreamModelID), ModelType: strings.TrimSpace(input.ModelType),
 		Mode: strings.TrimSpace(input.Mode), ConfigVersion: input.ConfigVersion, Status: entity.RequestStatusSubmitted,
 		RequestDigest: input.RequestDigest, RequestJSON: input.RequestJSON,
-		ExecutionJSON: input.ExecutionJSON,
 	}
 	stored, created, err := service.requests.CreateOrGetRequest(ctx, request)
 	if err != nil {

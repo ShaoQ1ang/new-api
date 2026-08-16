@@ -20,7 +20,7 @@ func (stub *executorStub) Execute(context.Context, Identity, Spec) (Result, erro
 	return stub.result, stub.err
 }
 
-func (stub *executorStub) Poll(context.Context, Identity, Spec, string) (Result, error) {
+func (stub *executorStub) Poll(context.Context, Identity, string, string) (Result, error) {
 	stub.polls++
 	return stub.result, stub.err
 }
@@ -47,7 +47,7 @@ func TestCompositeExecutorRoutesSyncAndTaskModelTypes(t *testing.T) {
 func TestCompositeExecutorRejectsPollingSyncGeneration(t *testing.T) {
 	executor := NewCompositeExecutor(&executorStub{}, &executorStub{})
 
-	_, err := executor.Poll(context.Background(), Identity{}, Spec{ModelType: "image"}, "native")
+	_, err := executor.Poll(context.Background(), Identity{}, "image", "native")
 
 	protocolErr, ok := err.(*Error)
 	require.True(t, ok)

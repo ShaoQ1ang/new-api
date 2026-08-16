@@ -38,13 +38,12 @@ func (stub *generationCatalogStub) Get(_ context.Context, identity execution.Ide
 
 func TestGenerationSubmitUsesAuthenticatedIdentity(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	catalog := &generationCatalogStub{response: &dto.GenerationResponse{ID: "aigc_gen_1", RequestID: "turn-1", Status: "queued", Outputs: []dto.GenerationOutputItem{}}}
+	catalog := &generationCatalogStub{response: &dto.GenerationResponse{ID: "aigc_gen_1", IdempotencyKey: "turn-1", Status: "queued", Outputs: []dto.GenerationOutputItem{}}}
 	handler := NewGenerationHandler(catalog)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/aigc/generations", strings.NewReader(`{"request_id":"turn-1","model":"writer-pro","type":"text","prompt":"hello"}`))
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/aigc/generations", strings.NewReader(`{"idempotency_key":"turn-1","model":"writer-pro","type":"text","prompt":"hello"}`))
 	c.Request.Header.Set("Content-Type", "application/json")
-	c.Request.Header.Set("Idempotency-Key", "turn-1")
 	c.Set("id", 7)
 	c.Set("token_id", 11)
 	common.SetContextKey(c, constant.ContextKeyUsingGroup, "vip")
@@ -53,20 +52,19 @@ func TestGenerationSubmitUsesAuthenticatedIdentity(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	assert.Equal(t, execution.Identity{UserID: 7, TokenID: 11, Group: "vip"}, catalog.identity)
-	assert.Equal(t, "turn-1", catalog.request.RequestID)
+	assert.Equal(t, "turn-1", catalog.request.IdempotencyKey)
 	received, ok := execution.GinContextFrom(catalog.context)
 	require.True(t, ok)
 	assert.Same(t, c, received)
 }
 
-func TestGenerationSubmitRejectsMismatchedIdempotencyKey(t *testing.T) {
+func TestGenerationSubmitRequiresBodyIdempotencyKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler := NewGenerationHandler(&generationCatalogStub{})
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/aigc/generations", strings.NewReader(`{"request_id":"turn-body","model":"writer-pro","type":"text","prompt":"hello"}`))
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/aigc/generations", strings.NewReader(`{"model":"writer-pro","type":"text","prompt":"hello"}`))
 	c.Request.Header.Set("Content-Type", "application/json")
-	c.Request.Header.Set("Idempotency-Key", "turn-header")
 
 	handler.Submit(c)
 
@@ -80,9 +78,8 @@ func TestGenerationHandlerWritesProtocolErrors(t *testing.T) {
 	handler := NewGenerationHandler(catalog)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/aigc/generations", strings.NewReader(`{"request_id":"turn-1","model":"writer-pro","type":"text","prompt":"hello"}`))
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/aigc/generations", strings.NewReader(`{"idempotency_key":"turn-1","model":"writer-pro","type":"text","prompt":"hello"}`))
 	c.Request.Header.Set("Content-Type", "application/json")
-	c.Request.Header.Set("Idempotency-Key", "turn-1")
 	c.Set("id", 7)
 	c.Set("token_id", 11)
 
@@ -91,11 +88,11 @@ func TestGenerationHandlerWritesProtocolErrors(t *testing.T) {
 	require.Equal(t, http.StatusConflict, recorder.Code)
 	var response struct {
 		Error struct {
-			Code      string `json:"code"`
-			RequestID string `json:"request_id"`
+			Code           string `json:"code"`
+			IdempotencyKey string `json:"idempotency_key"`
 		} `json:"error"`
 	}
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	assert.Equal(t, "IDEMPOTENCY_CONFLICT", response.Error.Code)
-	assert.Equal(t, "turn-1", response.Error.RequestID)
+	assert.Equal(t, "turn-1", response.Error.IdempotencyKey)
 }

@@ -46,5 +46,5 @@ func (err *Error) Error() string { return err.Message }
 
 type Executor interface {
 	Execute(ctx context.Context, identity Identity, spec Spec) (Result, error)
-	Poll(ctx context.Context, identity Identity, spec Spec, nativeTaskID string) (Result, error)
+	Poll(ctx context.Context, identity Identity, modelType, nativeTaskID string) (Result, error)
 }

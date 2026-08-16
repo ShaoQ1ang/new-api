@@ -26,12 +26,12 @@ func (executor *CompositeExecutor) Execute(ctx context.Context, identity Identit
 	}
 }
 
-func (executor *CompositeExecutor) Poll(ctx context.Context, identity Identity, spec Spec, nativeTaskID string) (Result, error) {
-	switch strings.TrimSpace(spec.ModelType) {
+func (executor *CompositeExecutor) Poll(ctx context.Context, identity Identity, modelType, nativeTaskID string) (Result, error) {
+	switch strings.TrimSpace(modelType) {
 	case "text", "image":
 		return Result{}, executionError(http.StatusBadRequest, "AIGC_SYNC_POLL_NOT_SUPPORTED", "synchronous AIGC generation cannot be polled", false)
 	case "video", "music":
-		return executor.task.Poll(ctx, identity, spec, nativeTaskID)
+		return executor.task.Poll(ctx, identity, modelType, nativeTaskID)
 	default:
 		return Result{}, executionError(http.StatusBadRequest, "AIGC_MODEL_TYPE_NOT_SUPPORTED", "AIGC model type is not supported", false)
 	}

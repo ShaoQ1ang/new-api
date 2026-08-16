@@ -24,8 +24,8 @@ func (stub *requestStoreStub) CreateOrGetRequest(_ context.Context, request *ent
 	return &copy, true, nil
 }
 
-func (stub *requestStoreStub) GetRequestByUserRequestID(_ context.Context, userID int, requestID string) (*entity.AigcRequest, error) {
-	if stub.stored == nil || stub.stored.UserID != userID || stub.stored.RequestID != requestID {
+func (stub *requestStoreStub) GetRequestByUserIdempotencyKey(_ context.Context, userID int, idempotencyKey string) (*entity.AigcRequest, error) {
+	if stub.stored == nil || stub.stored.UserID != userID || stub.stored.IdempotencyKey != idempotencyKey {
 		return nil, entity.ErrGenerationNotFound
 	}
 	return stub.stored, nil
@@ -35,7 +35,7 @@ func TestIdempotencyBeginCreatesThenReplaysSameRequest(t *testing.T) {
 	store := &requestStoreStub{}
 	service := NewIdempotencyService(store, func() (string, error) { return "aigc_gen_fixed", nil })
 	input := BeginRequest{
-		RequestID: "turn-1", UserID: 7, TokenID: 11, GroupName: "default",
+		IdempotencyKey: "turn-1", UserID: 7, TokenID: 11, GroupName: "default",
 		PublicModelID: "writer-pro", UpstreamModelID: "gpt-5", ModelType: "text", Mode: "text",
 		ConfigVersion: 3, RequestDigest: strings.Repeat("a", 64),
 	}
@@ -54,12 +54,12 @@ func TestIdempotencyBeginCreatesThenReplaysSameRequest(t *testing.T) {
 
 func TestIdempotencyBeginRejectsDigestMismatch(t *testing.T) {
 	store := &requestStoreStub{stored: &entity.AigcRequest{
-		RequestID: "turn-1", GenerationID: "aigc_gen_existing", UserID: 7, RequestDigest: strings.Repeat("a", 64),
+		IdempotencyKey: "turn-1", GenerationID: "aigc_gen_existing", UserID: 7, RequestDigest: strings.Repeat("a", 64),
 	}}
 	service := NewIdempotencyService(store, func() (string, error) { return "unused", nil })
 
 	_, _, err := service.Begin(context.Background(), BeginRequest{
-		RequestID: "turn-1", UserID: 7, TokenID: 11, PublicModelID: "writer-pro",
+		IdempotencyKey: "turn-1", UserID: 7, TokenID: 11, PublicModelID: "writer-pro",
 		UpstreamModelID: "gpt-5", ModelType: "text", Mode: "text", RequestDigest: strings.Repeat("b", 64),
 	})
 

@@ -11,9 +11,9 @@ const (
 
 type AigcRequest struct {
 	ID              int64  `json:"-" gorm:"primaryKey"`
-	RequestID       string `json:"request_id" gorm:"type:varchar(191);not null;uniqueIndex:uk_aigc_request_user_request,priority:2"`
+	IdempotencyKey  string `json:"idempotency_key" gorm:"type:varchar(191);not null;uniqueIndex:uk_aigc_request_user_key,priority:2"`
 	GenerationID    string `json:"generation_id" gorm:"type:varchar(191);not null;uniqueIndex"`
-	UserID          int    `json:"-" gorm:"not null;uniqueIndex:uk_aigc_request_user_request,priority:1;index"`
+	UserID          int    `json:"-" gorm:"not null;uniqueIndex:uk_aigc_request_user_key,priority:1;index"`
 	TokenID         int    `json:"-" gorm:"not null;index"`
 	GroupName       string `json:"-" gorm:"type:varchar(64);not null"`
 	PublicModelID   string `json:"model" gorm:"type:varchar(128);not null;index"`
@@ -26,7 +26,6 @@ type AigcRequest struct {
 	NativeTaskID    string `json:"-" gorm:"type:varchar(191);not null"`
 	RequestDigest   string `json:"-" gorm:"type:varchar(64);not null"`
 	RequestJSON     string `json:"-" gorm:"type:text;not null"`
-	ExecutionJSON   string `json:"-" gorm:"type:text;not null"`
 	ResultJSON      string `json:"-" gorm:"type:text;not null"`
 	ErrorCode       string `json:"error_code,omitempty" gorm:"type:varchar(64);not null"`
 	ErrorMessage    string `json:"error_message,omitempty" gorm:"type:text;not null"`

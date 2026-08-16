@@ -32,15 +32,15 @@ type GenerationParameters struct {
 }
 
 type GenerationRequest struct {
-	RequestID  string               `json:"request_id"`
-	Model      string               `json:"model"`
-	Type       string               `json:"type"`
-	Prompt     string               `json:"prompt"`
-	Mode       string               `json:"mode,omitempty"`
-	Inputs     GenerationInputs     `json:"inputs,omitempty"`
-	Output     GenerationOutput     `json:"output,omitempty"`
-	Options    GenerationOptions    `json:"options,omitempty"`
-	Parameters GenerationParameters `json:"parameters,omitempty"`
+	IdempotencyKey string               `json:"idempotency_key"`
+	Model          string               `json:"model"`
+	Type           string               `json:"type"`
+	Prompt         string               `json:"prompt"`
+	Mode           string               `json:"mode,omitempty"`
+	Inputs         GenerationInputs     `json:"inputs,omitempty"`
+	Output         GenerationOutput     `json:"output,omitempty"`
+	Options        GenerationOptions    `json:"options,omitempty"`
+	Parameters     GenerationParameters `json:"parameters,omitempty"`
 }
 
 type GenerationOutputItem struct {
@@ -67,14 +67,14 @@ type GenerationFailure struct {
 }
 
 type GenerationResponse struct {
-	ID        string                 `json:"id"`
-	RequestID string                 `json:"request_id"`
-	Status    string                 `json:"status"`
-	Progress  int                    `json:"progress"`
-	Model     string                 `json:"model"`
-	Type      string                 `json:"type"`
-	CreatedAt int64                  `json:"created_at"`
-	Outputs   []GenerationOutputItem `json:"outputs"`
-	Usage     *GenerationUsage       `json:"usage,omitempty"`
-	Error     *GenerationFailure     `json:"error,omitempty"`
+	ID             string                 `json:"id"`
+	IdempotencyKey string                 `json:"idempotency_key"`
+	Status         string                 `json:"status"`
+	Progress       int                    `json:"progress"`
+	Model          string                 `json:"model"`
+	Type           string                 `json:"type"`
+	CreatedAt      int64                  `json:"created_at"`
+	Outputs        []GenerationOutputItem `json:"outputs"`
+	Usage          *GenerationUsage       `json:"usage,omitempty"`
+	Error          *GenerationFailure     `json:"error,omitempty"`
 }

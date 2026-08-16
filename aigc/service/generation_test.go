@@ -40,7 +40,7 @@ func newGenerationRequestStoreStub() *generationRequestStoreStub {
 }
 
 func (stub *generationRequestStoreStub) CreateOrGetRequest(_ context.Context, request *entity.AigcRequest) (*entity.AigcRequest, bool, error) {
-	key := requestKey(request.UserID, request.RequestID)
+	key := requestKey(request.UserID, request.IdempotencyKey)
 	if existing := stub.byKey[key]; existing != nil {
 		return existing, false, nil
 	}
@@ -75,8 +75,8 @@ func (stub *generationRequestStoreStub) GetRequestByGenerationID(_ context.Conte
 	return request, nil
 }
 
-func (stub *generationRequestStoreStub) GetRequestByUserRequestID(_ context.Context, userID int, requestID string) (*entity.AigcRequest, error) {
-	request := stub.byKey[requestKey(userID, requestID)]
+func (stub *generationRequestStoreStub) GetRequestByUserIdempotencyKey(_ context.Context, userID int, idempotencyKey string) (*entity.AigcRequest, error) {
+	request := stub.byKey[requestKey(userID, idempotencyKey)]
 	if request == nil {
 		return nil, entity.ErrGenerationNotFound
 	}
@@ -88,6 +88,7 @@ type executorStub struct {
 	pollResult    execution.Result
 	executeCalls  int
 	pollCalls     int
+	pollModelType string
 }
 
 func (stub *executorStub) Execute(_ context.Context, _ execution.Identity, _ execution.Spec) (execution.Result, error) {
@@ -95,8 +96,9 @@ func (stub *executorStub) Execute(_ context.Context, _ execution.Identity, _ exe
 	return stub.executeResult, nil
 }
 
-func (stub *executorStub) Poll(_ context.Context, _ execution.Identity, _ execution.Spec, _ string) (execution.Result, error) {
+func (stub *executorStub) Poll(_ context.Context, _ execution.Identity, modelType, _ string) (execution.Result, error) {
 	stub.pollCalls++
+	stub.pollModelType = modelType
 	return stub.pollResult, nil
 }
 
@@ -112,7 +114,7 @@ func TestGenerationServiceExecutesOnceAndReplaysCompletedResult(t *testing.T) {
 	}}
 	service := NewGenerationService(resolver, idempotency, store, executor)
 	identity := execution.Identity{UserID: 7, TokenID: 11, Group: "default"}
-	request := dto.GenerationRequest{RequestID: "turn-1", Model: "writer-pro", Type: "text", Prompt: "write"}
+	request := dto.GenerationRequest{IdempotencyKey: "turn-1", Model: "writer-pro", Type: "text", Prompt: "write"}
 
 	first, err := service.Submit(context.Background(), identity, request)
 	require.NoError(t, err)
@@ -135,23 +137,61 @@ func TestGenerationServicePollsQueuedExecution(t *testing.T) {
 		executeResult: execution.Result{Status: entity.RequestStatusQueued, Progress: 0, NativeTaskID: "task-native"},
 		pollResult:    execution.Result{Status: entity.RequestStatusCompleted, Progress: 100, NativeTaskID: "task-native", Outputs: []dto.GenerationOutputItem{{ID: "video-1", Type: "video", URL: "https://result.test/video.mp4"}}},
 	}
-	service := NewGenerationService(&generationResolverStub{spec: &execution.Spec{
+	resolver := &generationResolverStub{spec: &execution.Spec{
 		PublicModelID: "video-pro", UpstreamModelID: "video-upstream", ModelType: "video", Mode: "text_to_video", ConfigVersion: 2,
-	}}, idempotency, store, executor)
+	}}
+	service := NewGenerationService(resolver, idempotency, store, executor)
 	identity := execution.Identity{UserID: 7, TokenID: 11, Group: "default"}
 
-	queued, err := service.Submit(context.Background(), identity, dto.GenerationRequest{RequestID: "turn-2", Model: "video-pro", Type: "video", Prompt: "move", Mode: "text_to_video"})
+	queued, err := service.Submit(context.Background(), identity, dto.GenerationRequest{IdempotencyKey: "turn-2", Model: "video-pro", Type: "video", Prompt: "move", Mode: "text_to_video"})
 	require.NoError(t, err)
 	assert.Equal(t, entity.RequestStatusQueued, queued.Status)
 
+	resolver.err = assert.AnError
 	completed, err := service.Get(context.Background(), identity, queued.ID)
 	require.NoError(t, err)
 	assert.Equal(t, entity.RequestStatusCompleted, completed.Status)
 	assert.Equal(t, 1, executor.pollCalls)
+	assert.Equal(t, "video", executor.pollModelType)
 }
 
-func requestKey(userID int, requestID string) string {
-	return fmt.Sprintf("%d:%s", userID, requestID)
+func TestGenerationServiceNewIdempotencyKeyResolvesCurrentProfile(t *testing.T) {
+	store := newGenerationRequestStoreStub()
+	nextID := 0
+	idempotency := NewIdempotencyService(store, func() (string, error) {
+		nextID++
+		return fmt.Sprintf("aigc_gen_%d", nextID), nil
+	})
+	executor := &executorStub{executeResult: execution.Result{Status: entity.RequestStatusCompleted, Progress: 100}}
+	resolver := &generationResolverStub{spec: &execution.Spec{
+		PublicModelID: "video-pro", UpstreamModelID: "video-v7", ModelType: "video", Mode: "text_to_video", ConfigVersion: 7,
+	}}
+	service := NewGenerationService(resolver, idempotency, store, executor)
+	identity := execution.Identity{UserID: 7, TokenID: 11, Group: "default"}
+
+	first, err := service.Submit(context.Background(), identity, dto.GenerationRequest{
+		IdempotencyKey: "turn-1", Model: "video-pro", Type: "video", Prompt: "move", Mode: "text_to_video",
+	})
+	require.NoError(t, err)
+
+	resolver.spec.UpstreamModelID = "video-v8"
+	resolver.spec.ConfigVersion = 8
+	second, err := service.Submit(context.Background(), identity, dto.GenerationRequest{
+		IdempotencyKey: "turn-2", Model: "video-pro", Type: "video", Prompt: "move", Mode: "text_to_video",
+	})
+	require.NoError(t, err)
+
+	assert.NotEqual(t, first.ID, second.ID)
+	assert.Equal(t, 2, resolver.calls)
+	assert.Equal(t, 2, executor.executeCalls)
+	assert.Equal(t, "video-v7", store.byGeneration[first.ID].UpstreamModelID)
+	assert.Equal(t, "video-v8", store.byGeneration[second.ID].UpstreamModelID)
+	assert.Equal(t, 7, store.byGeneration[first.ID].ConfigVersion)
+	assert.Equal(t, 8, store.byGeneration[second.ID].ConfigVersion)
+}
+
+func requestKey(userID int, idempotencyKey string) string {
+	return fmt.Sprintf("%d:%s", userID, idempotencyKey)
 }
 
 func TestPersistResultRejectsProgressRegressionAndIncompleteCompletion(t *testing.T) {

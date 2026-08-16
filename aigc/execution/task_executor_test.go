@@ -73,7 +73,7 @@ func TestTaskExecutorPollMapsCompletedMusicTracks(t *testing.T) {
 	store := &taskStoreStub{found: true, task: &model.Task{TaskID: "task_music", Status: model.TaskStatusSuccess, Progress: "100%", Data: data}}
 	executor := NewTaskExecutor(&taskWorkflowStub{}, store)
 
-	result, err := executor.Poll(context.Background(), Identity{UserID: 7}, Spec{ModelType: "music"}, "task_music")
+	result, err := executor.Poll(context.Background(), Identity{UserID: 7}, "music", "task_music")
 
 	require.NoError(t, err)
 	require.Len(t, result.Outputs, 2)
@@ -149,7 +149,7 @@ func TestTaskExecutorPollMapsCompletedVideoTask(t *testing.T) {
 	store := &taskStoreStub{task: task, found: true}
 	executor := NewTaskExecutor(&taskWorkflowStub{}, store)
 
-	result, err := executor.Poll(context.Background(), Identity{UserID: 7}, Spec{ModelType: "video"}, "task_public")
+	result, err := executor.Poll(context.Background(), Identity{UserID: 7}, "video", "task_public")
 
 	require.NoError(t, err)
 	assert.Equal(t, "completed", result.Status)

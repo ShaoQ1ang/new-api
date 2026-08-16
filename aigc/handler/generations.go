@@ -30,22 +30,22 @@ func NewGenerationHandler(catalog GenerationCatalog) *GenerationHandler {
 func (handler *GenerationHandler) Submit(c *gin.Context) {
 	var request dto.GenerationRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		writeGenerationError(c, request.RequestID, serviceError(http.StatusBadRequest, "INVALID_REQUEST", "invalid AIGC generation request", false))
+		writeGenerationError(c, request.IdempotencyKey, serviceError(http.StatusBadRequest, "INVALID_REQUEST", "invalid AIGC generation request", false))
 		return
 	}
-	request.RequestID = strings.TrimSpace(request.RequestID)
-	if key := strings.TrimSpace(c.GetHeader("Idempotency-Key")); key == "" || key != request.RequestID {
-		writeGenerationError(c, request.RequestID, serviceError(http.StatusBadRequest, "INVALID_REQUEST", "Idempotency-Key must match request_id", false))
+	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
+	if request.IdempotencyKey == "" || len(request.IdempotencyKey) > 200 {
+		writeGenerationError(c, request.IdempotencyKey, serviceError(http.StatusBadRequest, "INVALID_REQUEST", "idempotency_key must contain 1 to 200 characters", false))
 		return
 	}
 	identity, ok := generationIdentity(c)
 	if !ok {
-		writeGenerationError(c, request.RequestID, serviceError(http.StatusUnauthorized, "UNAUTHORIZED", "authenticated token identity is required", false))
+		writeGenerationError(c, request.IdempotencyKey, serviceError(http.StatusUnauthorized, "UNAUTHORIZED", "authenticated token identity is required", false))
 		return
 	}
 	response, err := handler.catalog.Submit(execution.WithGinContext(c.Request.Context(), c), identity, request)
 	if err != nil {
-		writeGenerationError(c, request.RequestID, err)
+		writeGenerationError(c, request.IdempotencyKey, err)
 		return
 	}
 	c.JSON(http.StatusOK, response)
@@ -77,14 +77,14 @@ func generationIdentity(c *gin.Context) (execution.Identity, bool) {
 	return identity, identity.UserID > 0 && identity.TokenID > 0
 }
 
-func writeGenerationError(c *gin.Context, requestID string, err error) {
+func writeGenerationError(c *gin.Context, idempotencyKey string, err error) {
 	var protocolErr *service.GenerationError
 	if !errors.As(err, &protocolErr) {
 		protocolErr = serviceError(http.StatusInternalServerError, "AIGC_INTERNAL_ERROR", "AIGC request failed", true)
 	}
 	c.JSON(protocolErr.HTTPStatus, gin.H{"error": gin.H{
 		"code": protocolErr.Code, "message": protocolErr.Message,
-		"retryable": protocolErr.Retryable, "request_id": requestID,
+		"retryable": protocolErr.Retryable, "idempotency_key": idempotencyKey,
 	}})
 }
 

@@ -114,7 +114,7 @@ func (executor *TaskExecutor) Execute(ctx context.Context, identity Identity, sp
 	return taskResult(spec, workflowResult.Task), nil
 }
 
-func (executor *TaskExecutor) Poll(_ context.Context, identity Identity, spec Spec, nativeTaskID string) (Result, error) {
+func (executor *TaskExecutor) Poll(_ context.Context, identity Identity, modelType, nativeTaskID string) (Result, error) {
 	task, found, err := executor.tasks.Get(identity.UserID, strings.TrimSpace(nativeTaskID))
 	if err != nil {
 		return Result{}, executionError(http.StatusInternalServerError, "AIGC_TASK_LOOKUP_FAILED", "failed to load AIGC task", true)
@@ -122,7 +122,7 @@ func (executor *TaskExecutor) Poll(_ context.Context, identity Identity, spec Sp
 	if !found || task == nil {
 		return Result{}, executionError(http.StatusNotFound, "AIGC_TASK_NOT_FOUND", "AIGC task was not found", false)
 	}
-	return taskResult(spec, task), nil
+	return taskResult(Spec{ModelType: strings.TrimSpace(modelType)}, task), nil
 }
 
 func taskResult(spec Spec, task *model.Task) Result {

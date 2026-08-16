@@ -35,17 +35,19 @@ func NewGenerationService(resolver Resolver, idempotency *IdempotencyService, re
 
 func (service *GenerationService) Submit(ctx context.Context, identity execution.Identity, request dto.GenerationRequest) (*dto.GenerationResponse, error) {
 	request = normalizeGenerationRequest(request)
-	if request.RequestID == "" {
-		return nil, generationError(http.StatusBadRequest, "INVALID_REQUEST", "request_id is required", false)
+	if request.IdempotencyKey == "" {
+		return nil, generationError(http.StatusBadRequest, "INVALID_REQUEST", "idempotency_key is required", false)
 	}
-	digest, err := DigestGenerationRequest(request)
+	digestInput := request
+	digestInput.IdempotencyKey = ""
+	digest, err := DigestGenerationRequest(digestInput)
 	if err != nil {
 		return nil, err
 	}
-	replayed, found, err := service.idempotency.Replay(ctx, identity.UserID, request.RequestID, digest)
+	replayed, found, err := service.idempotency.Replay(ctx, identity.UserID, request.IdempotencyKey, digest)
 	if err != nil {
 		if errors.Is(err, entity.ErrIdempotencyConflict) {
-			return nil, generationError(http.StatusConflict, "IDEMPOTENCY_CONFLICT", "request_id was already used with different input", false)
+			return nil, generationError(http.StatusConflict, "IDEMPOTENCY_CONFLICT", "idempotency_key was already used with different input", false)
 		}
 		return nil, err
 	}
@@ -60,19 +62,15 @@ func (service *GenerationService) Submit(ctx context.Context, identity execution
 	if err != nil {
 		return nil, err
 	}
-	executionJSON, err := common.Marshal(spec)
-	if err != nil {
-		return nil, err
-	}
 	stored, created, err := service.idempotency.Begin(ctx, BeginRequest{
-		RequestID: request.RequestID, UserID: identity.UserID, TokenID: identity.TokenID, GroupName: identity.Group,
+		IdempotencyKey: request.IdempotencyKey, UserID: identity.UserID, TokenID: identity.TokenID, GroupName: identity.Group,
 		PublicModelID: spec.PublicModelID, UpstreamModelID: spec.UpstreamModelID, ModelType: spec.ModelType,
 		Mode: spec.Mode, ConfigVersion: spec.ConfigVersion, RequestDigest: digest,
-		RequestJSON: string(requestJSON), ExecutionJSON: string(executionJSON),
+		RequestJSON: string(requestJSON),
 	})
 	if err != nil {
 		if errors.Is(err, entity.ErrIdempotencyConflict) {
-			return nil, generationError(http.StatusConflict, "IDEMPOTENCY_CONFLICT", "request_id was already used with different input", false)
+			return nil, generationError(http.StatusConflict, "IDEMPOTENCY_CONFLICT", "idempotency_key was already used with different input", false)
 		}
 		return nil, err
 	}
@@ -91,7 +89,7 @@ func (service *GenerationService) Submit(ctx context.Context, identity execution
 }
 
 func normalizeGenerationRequest(request dto.GenerationRequest) dto.GenerationRequest {
-	request.RequestID = strings.TrimSpace(request.RequestID)
+	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
 	request.Model = strings.TrimSpace(request.Model)
 	request.Type = strings.TrimSpace(request.Type)
 	request.Prompt = strings.TrimSpace(request.Prompt)
@@ -119,11 +117,7 @@ func (service *GenerationService) Get(ctx context.Context, identity execution.Id
 	if terminalRequestStatus(request.Status) || request.NativeTaskID == "" {
 		return generationResponse(request)
 	}
-	var spec execution.Spec
-	if err := common.Unmarshal([]byte(request.ExecutionJSON), &spec); err != nil {
-		return nil, fmt.Errorf("decode AIGC execution snapshot: %w", err)
-	}
-	result, pollErr := service.executor.Poll(ctx, identity, spec, request.NativeTaskID)
+	result, pollErr := service.executor.Poll(ctx, identity, request.ModelType, request.NativeTaskID)
 	if pollErr != nil {
 		return nil, generationErrorFromExecution(pollErr)
 	}
@@ -204,7 +198,7 @@ func generationResponse(request *entity.AigcRequest) (*dto.GenerationResponse, e
 		result.Outputs = make([]dto.GenerationOutputItem, 0)
 	}
 	response := &dto.GenerationResponse{
-		ID: request.GenerationID, RequestID: request.RequestID, Status: request.Status, Progress: request.Progress,
+		ID: request.GenerationID, IdempotencyKey: request.IdempotencyKey, Status: request.Status, Progress: request.Progress,
 		Model: request.PublicModelID, Type: request.ModelType, CreatedAt: request.CreatedTime,
 		Outputs: result.Outputs, Usage: result.Usage,
 	}

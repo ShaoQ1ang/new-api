@@ -28,10 +28,10 @@ func newRequestRepository(t *testing.T) *Repository {
 	return New(db)
 }
 
-func TestCreateOrGetRequestIsIdempotentPerUserAndRequestID(t *testing.T) {
+func TestCreateOrGetRequestIsIdempotentPerUserAndIdempotencyKey(t *testing.T) {
 	repository := newRequestRepository(t)
 	first := &entity.AigcRequest{
-		RequestID: "turn-1", GenerationID: "aigc_gen_first", UserID: 7, TokenID: 11,
+		IdempotencyKey: "turn-1", GenerationID: "aigc_gen_first", UserID: 7, TokenID: 11,
 		GroupName: "default", PublicModelID: "writer-pro", UpstreamModelID: "gpt-5",
 		ModelType: "text", Mode: "text", Status: entity.RequestStatusSubmitted, RequestDigest: strings.Repeat("a", 64),
 	}
@@ -60,7 +60,7 @@ func TestCreateOrGetRequestIsIdempotentPerUserAndRequestID(t *testing.T) {
 func TestGetRequestByGenerationIDIsScopedToUser(t *testing.T) {
 	repository := newRequestRepository(t)
 	request := &entity.AigcRequest{
-		RequestID: "turn-private", GenerationID: "aigc_gen_private", UserID: 7, TokenID: 11,
+		IdempotencyKey: "turn-private", GenerationID: "aigc_gen_private", UserID: 7, TokenID: 11,
 		GroupName: "default", PublicModelID: "writer-pro", UpstreamModelID: "gpt-5",
 		ModelType: "text", Mode: "text", Status: entity.RequestStatusSubmitted, RequestDigest: strings.Repeat("b", 64),
 	}
@@ -69,10 +69,10 @@ func TestGetRequestByGenerationIDIsScopedToUser(t *testing.T) {
 
 	loaded, err := repository.GetRequestByGenerationID(context.Background(), 7, request.GenerationID)
 	require.NoError(t, err)
-	assert.Equal(t, request.RequestID, loaded.RequestID)
-	byRequestID, err := repository.GetRequestByUserRequestID(context.Background(), 7, request.RequestID)
+	assert.Equal(t, request.IdempotencyKey, loaded.IdempotencyKey)
+	byIdempotencyKey, err := repository.GetRequestByUserIdempotencyKey(context.Background(), 7, request.IdempotencyKey)
 	require.NoError(t, err)
-	assert.Equal(t, request.GenerationID, byRequestID.GenerationID)
+	assert.Equal(t, request.GenerationID, byIdempotencyKey.GenerationID)
 
 	_, err = repository.GetRequestByGenerationID(context.Background(), 8, request.GenerationID)
 	assert.ErrorIs(t, err, entity.ErrGenerationNotFound)

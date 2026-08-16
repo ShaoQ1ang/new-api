@@ -26,7 +26,7 @@ func TestGenerationResolverSelectsVideoOutputTarget(t *testing.T) {
 	audio := true
 
 	spec, err := resolver.Resolve(context.Background(), "vip", dto.GenerationRequest{
-		RequestID: "turn-1", Model: "video-pro", Type: "video", Prompt: "move",
+		IdempotencyKey: "turn-1", Model: "video-pro", Type: "video", Prompt: "move",
 		Mode: "first_frame", Inputs: dto.GenerationInputs{Images: []dto.MediaInput{{Role: "first_frame", URL: "https://aigc.test/first.png"}}},
 		Output: dto.GenerationOutput{Resolution: "1080p", AspectRatio: "16:9", Duration: 5, GenerateAudio: &audio},
 	})
@@ -54,7 +54,7 @@ func TestGenerationResolverRejectsInvalidInputRole(t *testing.T) {
 	resolver := NewGenerationResolver(store, availability)
 
 	_, err := resolver.Resolve(context.Background(), "default", dto.GenerationRequest{
-		RequestID: "turn-2", Model: "image-edit", Type: "image", Prompt: "edit", Mode: "image_edit",
+		IdempotencyKey: "turn-2", Model: "image-edit", Type: "image", Prompt: "edit", Mode: "image_edit",
 		Inputs: dto.GenerationInputs{Images: []dto.MediaInput{{Role: "first_frame", URL: "https://aigc.test/image.png"}}},
 		Output: dto.GenerationOutput{Size: "1024x1024", Count: 1},
 	})
@@ -76,7 +76,7 @@ func TestGenerationResolverRequiresDeclaredVideoInputCapability(t *testing.T) {
 	resolver := NewGenerationResolver(store, &availabilityStub{byGroup: map[string]map[string]bool{"default": {"video-i2v": true}}})
 
 	_, err := resolver.Resolve(context.Background(), "default", dto.GenerationRequest{
-		RequestID: "turn-bad", Model: profile.PublicModelID, Type: "video", Prompt: "move", Mode: "first_frame",
+		IdempotencyKey: "turn-bad", Model: profile.PublicModelID, Type: "video", Prompt: "move", Mode: "first_frame",
 		Inputs: dto.GenerationInputs{Images: []dto.MediaInput{{Role: "first_frame", URL: "https://aigc.test/first.png"}}},
 		Output: dto.GenerationOutput{Resolution: "720p", AspectRatio: "16:9", Duration: 5},
 	})
@@ -89,7 +89,7 @@ func TestGenerationResolverRejectsUnavailableOrHiddenModel(t *testing.T) {
 	profile.GroupsJSON = `["vip"]`
 	store := &profileStoreStub{profiles: map[string]*entity.ModelProfile{profile.PublicModelID: profile}}
 	resolver := NewGenerationResolver(store, &availabilityStub{byGroup: map[string]map[string]bool{"vip": {"gpt-5": false}}})
-	request := dto.GenerationRequest{RequestID: "turn-3", Model: profile.PublicModelID, Type: "text", Prompt: "hello"}
+	request := dto.GenerationRequest{IdempotencyKey: "turn-3", Model: profile.PublicModelID, Type: "text", Prompt: "hello"}
 
 	_, err := resolver.Resolve(context.Background(), "default", request)
 	assertGenerationErrorCode(t, err, "MODEL_NOT_AVAILABLE_FOR_GROUP")

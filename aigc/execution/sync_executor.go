@@ -70,7 +70,7 @@ func (executor *SyncExecutor) Execute(ctx context.Context, identity Identity, sp
 	return syncResult(spec, workflowResult.ResponseBody)
 }
 
-func (executor *SyncExecutor) Poll(context.Context, Identity, Spec, string) (Result, error) {
+func (executor *SyncExecutor) Poll(context.Context, Identity, string, string) (Result, error) {
 	return Result{}, executionError(http.StatusBadRequest, "AIGC_SYNC_POLL_NOT_SUPPORTED", "synchronous AIGC generation cannot be polled", false)
 }
 
