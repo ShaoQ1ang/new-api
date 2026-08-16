@@ -31,8 +31,7 @@ func TestConvertToAliRequestWan27I2VBuildsMediaFromImage(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "wan2.7-i2v", aliReq.Model)
 	require.Equal(t, "720P", aliReq.Parameters.Resolution)
-	require.NotNil(t, aliReq.Parameters.Duration)
-	require.Equal(t, 10, *aliReq.Parameters.Duration)
+	require.Equal(t, 10, aliReq.Parameters.Duration)
 	require.Equal(t, []AliVideoMedia{
 		{Type: "first_frame", URL: "https://example.com/first.png"},
 	}, aliReq.Input.Media)
@@ -187,8 +186,7 @@ func TestWan27T2VUsesNativeResolutionRatioAudioAndFlatParameters(t *testing.T) {
 	assert.Equal(t, "720P", aliReq.Parameters.Resolution)
 	require.NotNil(t, aliReq.Parameters.Ratio)
 	assert.Equal(t, "4:3", *aliReq.Parameters.Ratio)
-	require.NotNil(t, aliReq.Parameters.Duration)
-	assert.Equal(t, 15, *aliReq.Parameters.Duration)
+	assert.Equal(t, 15, aliReq.Parameters.Duration)
 	assert.False(t, aliReq.Parameters.PromptExtend)
 	require.NotNil(t, aliReq.Parameters.Watermark)
 	assert.False(t, *aliReq.Parameters.Watermark)
@@ -235,11 +233,10 @@ func TestWan27VideoEditUsesSourceAndReferences(t *testing.T) {
 	assert.Equal(t, []AliVideoMedia{{Type: "video", URL: "source"}, {Type: "reference_image", URL: "coat"}}, aliReq.Input.Media)
 	require.NotNil(t, aliReq.Parameters.AudioSetting)
 	assert.Equal(t, "origin", *aliReq.Parameters.AudioSetting)
-	require.NotNil(t, aliReq.Parameters.Duration)
-	assert.Equal(t, 0, *aliReq.Parameters.Duration)
+	assert.Equal(t, 0, aliReq.Parameters.Duration)
 	body, err := common.Marshal(aliReq)
 	require.NoError(t, err)
-	assert.Contains(t, string(body), `"duration":0`)
+	assert.NotContains(t, string(body), `"duration"`)
 }
 
 func TestWan27BillingConverter(t *testing.T) {

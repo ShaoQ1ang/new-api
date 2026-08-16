@@ -17,7 +17,7 @@ func (a *TaskAdaptor) buildKlingRequest(upstreamModel string, req relaycommon.Ta
 		Parameters: &AliVideoParameters{
 			Watermark:   lo.ToPtr(false),
 			Mode:        lo.ToPtr(normalizeKlingMode(req.Mode, firstNonEmptyString(req.Resolution, req.Size))),
-			Duration:    lo.ToPtr(resolveTaskDuration(req, 5)),
+			Duration:    resolveTaskDuration(req, 5),
 			AspectRatio: lo.ToPtr("16:9"),
 		},
 	}

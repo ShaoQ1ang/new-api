@@ -68,7 +68,7 @@ type AliVideoInput struct {
 type AliVideoParameters struct {
 	Resolution   string  `json:"resolution,omitempty"`
 	Size         string  `json:"size,omitempty"`
-	Duration     *int    `json:"duration,omitempty"`
+	Duration     int     `json:"duration,omitempty"`
 	Ratio        *string `json:"ratio,omitempty"`
 	Mode         *string `json:"mode,omitempty"`
 	AspectRatio  *string `json:"aspect_ratio,omitempty"`
@@ -328,7 +328,7 @@ func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relay
 		}
 	}
 
-	aliReq.Parameters.Duration = lo.ToPtr(resolveTaskDuration(req, 5))
+	aliReq.Parameters.Duration = resolveTaskDuration(req, 5)
 
 	if req.Metadata != nil {
 		if metadataBytes, err := common.Marshal(req.Metadata); err == nil {
@@ -360,7 +360,7 @@ func (a *TaskAdaptor) buildWan27Request(upstreamModel string, req relaycommon.Ta
 		Input: AliVideoInput{Prompt: req.Prompt},
 		Parameters: &AliVideoParameters{
 			Resolution: defaultAliResolution(firstNonEmptyString(req.Resolution, req.Size), "1080P"),
-			Duration:   lo.ToPtr(resolveTaskDurationAllowZero(req, defaultDuration)), PromptExtend: true, Watermark: lo.ToPtr(false),
+			Duration:   resolveTaskDurationAllowZero(req, defaultDuration), PromptExtend: true, Watermark: lo.ToPtr(false),
 		},
 	}
 	if req.Metadata != nil {
@@ -412,10 +412,7 @@ func validateWan27Parameters(req *AliVideoRequest) error {
 			return fmt.Errorf("unsupported wan2.7 ratio: %s", ratio)
 		}
 	}
-	if req.Parameters.Duration == nil {
-		return fmt.Errorf("wan2.7 duration is required")
-	}
-	duration := *req.Parameters.Duration
+	duration := req.Parameters.Duration
 	switch {
 	case isWan27VideoEditModel(req.Model):
 		if duration != 0 && (duration < 2 || duration > 10) {
@@ -481,7 +478,7 @@ func normalizeWan27Input(aliReq *AliVideoRequest, req relaycommon.TaskSubmitReq)
 				return err
 			}
 		}
-		if err := validateWan27R2VMedia(aliReq.Input.Media, *aliReq.Parameters.Duration); err != nil {
+		if err := validateWan27R2VMedia(aliReq.Input.Media, aliReq.Parameters.Duration); err != nil {
 			return err
 		}
 	case isWan27VideoEditModel(aliReq.Model):
@@ -722,11 +719,9 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		return nil
 	}
 
-	duration := 0
-	if aliReq.Parameters.Duration != nil {
-		duration = *aliReq.Parameters.Duration
+	otherRatios := map[string]float64{
+		"seconds": float64(aliReq.Parameters.Duration),
 	}
-	otherRatios := map[string]float64{"seconds": float64(duration)}
 	ratios, err := ProcessAliOtherRatios(aliReq)
 	if err != nil {
 		return otherRatios
