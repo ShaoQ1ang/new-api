@@ -45,6 +45,7 @@ type mockConfig struct {
 	CompleteAfterPoll int
 	CompletionDelay   time.Duration
 	PublicBaseURL     string
+	HistoryFile       string
 }
 
 type mockTask struct {
@@ -67,6 +68,10 @@ type mockTask struct {
 	WatermarkURL  string
 	Ratio         string
 	Seed          int
+	Prompt        string
+	Instrumental  bool
+	AudioURL      string
+	PosterURL     string
 }
 
 type seedanceRequest struct {
@@ -172,13 +177,15 @@ func newMockServerWithConfig(cfg mockConfig) *mockServer {
 	if err != nil {
 		panic(fmt.Sprintf("decode embedded mock video: %v", err))
 	}
-	return &mockServer{
+	server := &mockServer{
 		tasks:         make(map[string]*mockTask),
 		history:       make([]mockRequestRecord, 0, mockHistoryLimit),
 		config:        cfg,
 		rng:           rand.New(rand.NewSource(time.Now().UnixNano())),
 		videoRenderer: newMockVideoRenderer(videoBytes),
 	}
+	server.loadRequestHistory()
+	return server
 }
 
 func main() {
@@ -218,7 +225,13 @@ func (s *mockServer) routes() http.Handler {
 	mux.HandleFunc("/v1/videos", s.handleOpenRouterVideoSubmit)
 	mux.HandleFunc("/v1/videos/models", s.handleOpenRouterVideoModels)
 	mux.HandleFunc("/v1/videos/", s.handleOpenRouterVideoFetch)
+	mux.HandleFunc("/v1/images/generations", s.handleImageGeneration)
+	mux.HandleFunc("/v1/images/edits", s.handleImageEdit)
+	mux.HandleFunc("/suno/submit/", s.handleSunoSubmit)
+	mux.HandleFunc("/suno/fetch", s.handleSunoFetch)
 	mux.HandleFunc("/mock-assets/videos/", s.handleMockVideo)
+	mux.HandleFunc("/mock-assets/images/", s.handleMockImage)
+	mux.HandleFunc("/mock-assets/music/", s.handleMockMusic)
 	mux.HandleFunc("/", s.handleVeo)
 	return s.captureRequests(mux)
 }
@@ -228,8 +241,8 @@ func (s *mockServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":             true,
 		"video_bytes":    len(s.videoRenderer.cache[1]),
-		"model_families": []string{"wan", "happyhorse", "kling", "minimax", "seedance", "veo"},
-		"providers":      []string{"alibaba", "doubao", "gemini", "vertex", "openrouter"},
+		"model_families": []string{"wan", "happyhorse", "kling", "minimax", "seedance", "veo", "image", "music"},
+		"providers":      []string{"alibaba", "doubao", "gemini", "vertex", "openrouter", "openai-images", "suno"},
 	})
 }
 
@@ -1354,11 +1367,18 @@ func loadMockConfig() mockConfig {
 			completionDelay = time.Duration(parsed * float64(time.Second))
 		}
 	}
+	historyFile := strings.TrimSpace(os.Getenv("ALI_VIDEO_MOCK_HISTORY_FILE"))
+	if historyFile == "" {
+		if traceDirectory := strings.TrimSpace(os.Getenv("TRACE_LOG_DIR")); traceDirectory != "" {
+			historyFile = path.Join(traceDirectory, "mock-history.json")
+		}
+	}
 	return mockConfig{
 		FailRate:          failRate,
 		CompleteAfterPoll: completeAfterPoll,
 		CompletionDelay:   completionDelay,
 		PublicBaseURL:     strings.TrimRight(strings.TrimSpace(os.Getenv("ALI_VIDEO_MOCK_PUBLIC_BASE_URL")), "/"),
+		HistoryFile:       historyFile,
 	}
 }
 

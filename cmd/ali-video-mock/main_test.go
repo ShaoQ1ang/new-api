@@ -292,6 +292,20 @@ func TestRequestHistoryKeepsNewestRecordsWithinCapacity(t *testing.T) {
 	assert.Equal(t, int64(mockHistoryLimit+2), server.history[mockHistoryLimit-1].ID)
 }
 
+func TestRequestHistoryPersistsAcrossServerRestart(t *testing.T) {
+	historyFile := filepath.Join(t.TempDir(), "mock-history.json")
+	config := mockConfig{CompleteAfterPoll: 1, HistoryFile: historyFile}
+	first := newMockServerWithConfig(config)
+	response := performRequest(t, first.routes(), http.MethodPost, "/v1/videos", `{"model":"google/veo-3.1-lite","prompt":"persist me"}`)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	restored := newMockServerWithConfig(config)
+	require.Len(t, restored.history, 1)
+	assert.Equal(t, int64(1), restored.nextHistoryID)
+	assert.Equal(t, "/v1/videos", restored.history[0].Path)
+	assert.Contains(t, restored.history[0].Body, "persist me")
+}
+
 func TestInvalidModelRequestsAreRejected(t *testing.T) {
 	tests := []struct {
 		name string

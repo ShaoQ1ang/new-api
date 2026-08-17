@@ -196,15 +196,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 			info.PriceData.AddOtherRatio(k, v)
 		}
 	}
-	taskRequest, err := relaycommon.GetTaskRequest(c)
-	if err != nil {
-		return nil, service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	if taskErr := applyTaskInputImagePricing(c, info, platform); taskErr != nil {
+		return nil, taskErr
 	}
-	inputImageTiers, err := relaycommon.TaskInputImageTiers(taskRequest)
-	if err != nil {
-		return nil, service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
-	}
-	helper.ApplyImageInputPricing(info, &info.PriceData, inputImageTiers)
 	if info.PriceData.InputImageCost > 0 {
 		info.PriceData.FreeModel = false
 	}
@@ -285,6 +279,22 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		Platform:       platform,
 		Quota:          finalQuota,
 	}, nil
+}
+
+func applyTaskInputImagePricing(c *gin.Context, info *relaycommon.RelayInfo, platform constant.TaskPlatform) *dto.TaskError {
+	if platform == constant.TaskPlatformSuno {
+		return nil
+	}
+	taskRequest, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	inputImageTiers, err := relaycommon.TaskInputImageTiers(taskRequest)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	helper.ApplyImageInputPricing(info, &info.PriceData, inputImageTiers)
+	return nil
 }
 
 // recalcQuotaFromRatios 根据 adjustedRatios 重新计算 quota。

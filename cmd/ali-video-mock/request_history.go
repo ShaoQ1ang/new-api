@@ -4,10 +4,13 @@ import (
 	"bytes"
 	_ "embed"
 	"io"
+	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/tracelog"
 )
 
@@ -108,7 +111,7 @@ func shouldCaptureMockRequest(requestPath string) bool {
 		requestPath != "/api/mock/history" &&
 		requestPath != "/favicon.ico" &&
 		requestPath != "/healthz" &&
-		!strings.HasPrefix(requestPath, "/mock-assets/videos/")
+		!strings.HasPrefix(requestPath, "/mock-assets/")
 }
 
 func mockProtocolForPath(requestPath string) string {
@@ -119,6 +122,10 @@ func mockProtocolForPath(requestPath string) string {
 		return "Seedance"
 	case strings.HasPrefix(requestPath, "/v1/videos"):
 		return "OpenRouter"
+	case strings.HasPrefix(requestPath, "/v1/images"):
+		return "OpenAI Images"
+	case strings.HasPrefix(requestPath, "/suno/"):
+		return "Suno"
 	case strings.Contains(requestPath, "/projects/"):
 		return "Vertex AI"
 	case strings.Contains(requestPath, "/models/veo-"):
@@ -136,9 +143,65 @@ func (s *mockServer) storeRequestRecord(record mockRequestRecord) {
 	if len(s.history) == mockHistoryLimit {
 		copy(s.history, s.history[1:])
 		s.history[len(s.history)-1] = record
+		s.persistRequestHistoryLocked()
 		return
 	}
 	s.history = append(s.history, record)
+	s.persistRequestHistoryLocked()
+}
+
+func (s *mockServer) loadRequestHistory() {
+	if strings.TrimSpace(s.config.HistoryFile) == "" {
+		return
+	}
+	body, err := os.ReadFile(s.config.HistoryFile)
+	if os.IsNotExist(err) {
+		return
+	}
+	if err != nil {
+		log.Printf("load mock request history: %v", err)
+		return
+	}
+	var persisted mockHistoryResponse
+	if err := common.Unmarshal(body, &persisted); err != nil {
+		log.Printf("decode mock request history: %v", err)
+		return
+	}
+	count := len(persisted.Records)
+	if count > mockHistoryLimit {
+		count = mockHistoryLimit
+	}
+	for index := count - 1; index >= 0; index-- {
+		record := persisted.Records[index]
+		s.history = append(s.history, record)
+		if record.ID > s.nextHistoryID {
+			s.nextHistoryID = record.ID
+		}
+	}
+	log.Printf("restored %d mock request history records from %s", len(s.history), s.config.HistoryFile)
+}
+
+func (s *mockServer) persistRequestHistoryLocked() {
+	if strings.TrimSpace(s.config.HistoryFile) == "" {
+		return
+	}
+	records := make([]mockRequestRecord, len(s.history))
+	for index := range s.history {
+		records[len(s.history)-1-index] = s.history[index]
+	}
+	body, err := common.Marshal(mockHistoryResponse{Records: records, Count: len(records), Capacity: mockHistoryLimit})
+	if err != nil {
+		log.Printf("encode mock request history: %v", err)
+		return
+	}
+	temporary := s.config.HistoryFile + ".tmp"
+	if err := os.WriteFile(temporary, body, 0o600); err != nil {
+		log.Printf("write mock request history: %v", err)
+		return
+	}
+	if err := os.Rename(temporary, s.config.HistoryFile); err != nil {
+		log.Printf("replace mock request history: %v", err)
+	}
 }
 
 func (s *mockServer) handleHistoryPage(w http.ResponseWriter, r *http.Request) {
@@ -164,6 +227,7 @@ func (s *mockServer) handleRequestHistory(w http.ResponseWriter, r *http.Request
 	case http.MethodDelete:
 		s.mu.Lock()
 		s.history = s.history[:0]
+		s.persistRequestHistoryLocked()
 		s.mu.Unlock()
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	default:
