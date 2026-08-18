@@ -38,7 +38,6 @@ import {
 import {
   CheckCircle2,
   CircleOff,
-  Code2,
   FileText,
   Image,
   Music2,
@@ -51,6 +50,8 @@ import {
 } from 'lucide-react';
 import { API, showError, showSuccess, timestamp2string } from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
+import CapabilityEditor from './CapabilityEditor';
+import { configTemplate, profileConfigAssignments } from './capabilityConfig';
 
 const { Text, Title } = Typography;
 
@@ -75,79 +76,6 @@ const EMPTY_PROFILE = {
   groups: ['default'],
   config_version: 0,
 };
-
-function configTemplate(type) {
-  switch (type) {
-    case 'image':
-      return {
-        image: {
-          adapter: 'openai-image',
-          modes: {
-            text_to_image: {
-              upstream_model_id: '',
-              output: {
-                sizes: ['1024x1024'],
-                counts: [1],
-                default_size: '1024x1024',
-                default_count: 1,
-              },
-            },
-          },
-        },
-      };
-    case 'video':
-      return {
-        video: {
-          adapter: 'openai-video',
-          task_protocol: 'newapi-video',
-          modes: { text_to_video: { upstream_model_id: '' } },
-          output_specs: [
-            {
-              id: 'default',
-              modes: ['text_to_video'],
-              resolutions: ['720p'],
-              aspect_ratios: ['16:9'],
-              durations: [5],
-              generate_audio: { supported: false, default: false },
-            },
-          ],
-        },
-      };
-    case 'music':
-      return {
-        music: {
-          adapter: 'suno',
-          modes: {
-            text_to_music: {
-              upstream_model_id: '',
-              parameters: {
-                instrumental: { supported: true, default: false },
-              },
-              output: { min_tracks: 1, max_tracks: 2 },
-            },
-          },
-        },
-      };
-    default:
-      return { text: { upstream_model_id: '', max_output_tokens: 0 } };
-  }
-}
-
-function profileConfigAssignments(type, config) {
-  if (type === 'text') {
-    return config?.text
-      ? [{ mode: 'default', upstream: config.text.upstream_model_id || '' }]
-      : [];
-  }
-  const modes = config?.[type]?.modes;
-  if (!modes || typeof modes !== 'object') return [];
-  return Object.entries(modes)
-    .map(([mode, value]) => ({
-      mode,
-      upstream: value?.upstream_model_id || '',
-    }))
-    .sort((a, b) => a.mode.localeCompare(b.mode));
-}
 
 function upstreamIDs(profile) {
   try {
@@ -178,89 +106,60 @@ function AigcProfileEditor({
   const isMobile = useIsMobile();
   const editing = Boolean(profile?.id);
   const [form, setForm] = useState(EMPTY_PROFILE);
-  const [configText, setConfigText] = useState('');
+  const [config, setConfig] = useState(() => configTemplate('text'));
   const [saving, setSaving] = useState(false);
-  const [jsonError, setJsonError] = useState('');
 
   useEffect(() => {
     if (!visible) return;
-    const next = profile ? { ...profile } : { ...EMPTY_PROFILE };
-    const config = profile?.config || configTemplate(next.model_type);
+    const next = profile
+      ? { ...EMPTY_PROFILE, ...profile }
+      : { ...EMPTY_PROFILE };
+    const nextConfig = profile?.config || configTemplate(next.model_type);
     setForm({ ...next, groups: next.groups || [] });
-    setConfigText(JSON.stringify(config, null, 2));
-    setJsonError('');
+    setConfig(structuredClone(nextConfig));
   }, [profile, visible]);
 
-  const parsedConfig = useMemo(() => {
-    try {
-      return JSON.parse(configText);
-    } catch {
-      return null;
-    }
-  }, [configText]);
-
   const assignments = useMemo(
-    () => profileConfigAssignments(form.model_type, parsedConfig),
-    [form.model_type, parsedConfig],
+    () => profileConfigAssignments(form.model_type, config),
+    [form.model_type, config],
   );
+  const availableUpstreamModels = Array.isArray(upstreamModels)
+    ? upstreamModels
+    : [];
 
   const updateAssignment = (mode, upstream) => {
-    if (!parsedConfig) {
-      setJsonError(t('请先修正配置 JSON'));
-      return;
-    }
-    const next = structuredClone(parsedConfig);
+    const next = structuredClone(config);
     if (form.model_type === 'text') {
       next.text.upstream_model_id = upstream;
     } else {
       next[form.model_type].modes[mode].upstream_model_id = upstream;
     }
-    setConfigText(JSON.stringify(next, null, 2));
-    setJsonError('');
+    setConfig(next);
   };
 
   const changeType = (modelType) => {
     setForm((current) => ({ ...current, model_type: modelType }));
-    setConfigText(JSON.stringify(configTemplate(modelType), null, 2));
-    setJsonError('');
-  };
-
-  const formatJSON = () => {
-    if (!parsedConfig) {
-      setJsonError(t('配置不是有效的 JSON 对象'));
-      return;
-    }
-    setConfigText(JSON.stringify(parsedConfig, null, 2));
-    setJsonError('');
+    setConfig(configTemplate(modelType));
   };
 
   const save = async () => {
-    const publicModelID = form.public_model_id.trim();
-    const displayName = form.display_name.trim();
+    const publicModelID = String(form.public_model_id || '').trim();
+    const displayName = String(form.display_name || '').trim();
     if (!publicModelID || !displayName) {
       showError(t('请填写公共模型 ID 和显示名称'));
       return;
     }
-    let config;
-    try {
-      config = JSON.parse(configText);
-      if (!config || Array.isArray(config) || typeof config !== 'object')
-        throw new Error();
-    } catch {
-      setJsonError(t('配置不是有效的 JSON 对象'));
-      return;
-    }
-    const payload = {
-      public_model_id: publicModelID,
-      display_name: displayName,
-      model_type: form.model_type,
-      description: form.description.trim(),
-      groups: form.groups || [],
-      config,
-      ...(editing ? { config_version: form.config_version } : {}),
-    };
     setSaving(true);
     try {
+      const payload = {
+        public_model_id: publicModelID,
+        display_name: displayName,
+        model_type: form.model_type,
+        description: String(form.description || '').trim(),
+        groups: Array.isArray(form.groups) ? form.groups : [],
+        config,
+        ...(editing ? { config_version: form.config_version } : {}),
+      };
       const response = editing
         ? await API.put(`/api/aigc/models/${profile.id}`, payload)
         : await API.post('/api/aigc/models', payload);
@@ -379,7 +278,7 @@ function AigcProfileEditor({
                     updateAssignment(assignment.mode, value || '')
                   }
                 >
-                  {upstreamModels.map((model) => (
+                  {availableUpstreamModels.map((model) => (
                     <Select.Option key={model.id} value={model.id}>
                       {model.id} ({model.channel_count} {t('个渠道')})
                     </Select.Option>
@@ -394,7 +293,7 @@ function AigcProfileEditor({
       </div>
 
       <div className='mt-6 border-t border-semi-color-border pt-5'>
-        <div className='mb-3 flex items-center justify-between gap-3'>
+        <div className='mb-4'>
           <div>
             <Text strong>{t('能力配置')}</Text>
             <div>
@@ -403,26 +302,13 @@ function AigcProfileEditor({
               </Text>
             </div>
           </div>
-          <Button icon={<Code2 size={16} />} onClick={formatJSON}>
-            {t('格式化')}
-          </Button>
         </div>
-        <TextArea
-          value={configText}
-          autosize={{ minRows: 14, maxRows: 24 }}
-          style={{
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-          }}
-          onChange={(value) => {
-            setConfigText(value);
-            setJsonError('');
-          }}
+        <CapabilityEditor
+          modelType={form.model_type}
+          config={config}
+          upstreamModels={availableUpstreamModels}
+          onChange={setConfig}
         />
-        {jsonError ? (
-          <div className='mt-2'>
-            <Text type='danger'>{jsonError}</Text>
-          </div>
-        ) : null}
       </div>
     </Modal>
   );
@@ -469,7 +355,11 @@ export default function AigcModelsPage() {
   const loadUpstreams = useCallback(async () => {
     try {
       const response = await API.get('/api/aigc/upstream-models');
-      if (response.data.success) setUpstreamModels(response.data.data || []);
+      if (response.data.success) {
+        setUpstreamModels(
+          Array.isArray(response.data.data) ? response.data.data : [],
+        );
+      }
     } catch (error) {
       showError(
         error.response?.data?.message || error.message || t('获取上游模型失败'),
