@@ -33,6 +33,7 @@ func (stub *generationResolverStub) Resolve(_ context.Context, _ string, request
 type generationRequestStoreStub struct {
 	byKey        map[string]*entity.AigcRequest
 	byGeneration map[string]*entity.AigcRequest
+	updateCtxErr error
 }
 
 func newGenerationRequestStoreStub() *generationRequestStoreStub {
@@ -52,7 +53,8 @@ func (stub *generationRequestStoreStub) CreateOrGetRequest(_ context.Context, re
 	return &copy, true, nil
 }
 
-func (stub *generationRequestStoreStub) UpdateRequestState(_ context.Context, id int64, expectedStatus string, update entity.RequestStateUpdate) (*entity.AigcRequest, error) {
+func (stub *generationRequestStoreStub) UpdateRequestState(ctx context.Context, id int64, expectedStatus string, update entity.RequestStateUpdate) (*entity.AigcRequest, error) {
+	stub.updateCtxErr = ctx.Err()
 	for _, request := range stub.byGeneration {
 		if request.ID == id && request.Status == expectedStatus {
 			request.Status = update.Status
@@ -85,6 +87,8 @@ func (stub *generationRequestStoreStub) GetRequestByUserIdempotencyKey(_ context
 
 type executorStub struct {
 	executeResult execution.Result
+	executeErr    error
+	cancelExecute context.CancelFunc
 	pollResult    execution.Result
 	executeCalls  int
 	pollCalls     int
@@ -93,7 +97,10 @@ type executorStub struct {
 
 func (stub *executorStub) Execute(_ context.Context, _ execution.Identity, _ execution.Spec) (execution.Result, error) {
 	stub.executeCalls++
-	return stub.executeResult, nil
+	if stub.cancelExecute != nil {
+		stub.cancelExecute()
+	}
+	return stub.executeResult, stub.executeErr
 }
 
 func (stub *executorStub) Poll(_ context.Context, _ execution.Identity, modelType, _ string) (execution.Result, error) {
@@ -128,6 +135,29 @@ func TestGenerationServiceExecutesOnceAndReplaysCompletedResult(t *testing.T) {
 	assert.Equal(t, first.ID, replayed.ID)
 	assert.Equal(t, 1, executor.executeCalls)
 	assert.Equal(t, 1, resolver.calls)
+}
+
+func TestGenerationServicePersistsFailureAfterRequestContextCanceled(t *testing.T) {
+	store := newGenerationRequestStoreStub()
+	idempotency := NewIdempotencyService(store, func() (string, error) { return "aigc_gen_canceled", nil })
+	requestContext, cancel := context.WithCancel(context.Background())
+	executor := &executorStub{
+		executeErr:    &execution.Error{HTTPStatus: 504, Code: "UPSTREAM_TIMEOUT", Message: "upstream timed out", Retryable: true},
+		cancelExecute: cancel,
+	}
+	resolver := &generationResolverStub{spec: &execution.Spec{
+		PublicModelID: "image-public", UpstreamModelID: "image-upstream", ModelType: "image", Mode: "text_to_image", ConfigVersion: 1,
+	}}
+	service := NewGenerationService(resolver, idempotency, store, executor)
+	request := dto.GenerationRequest{IdempotencyKey: "turn-canceled", Model: "image-public", Type: "image", Prompt: "draw"}
+
+	_, err := service.Submit(requestContext, execution.Identity{UserID: 7, TokenID: 11, Group: "default"}, request)
+	require.Error(t, err)
+	require.NoError(t, store.updateCtxErr)
+	stored := store.byGeneration["aigc_gen_canceled"]
+	require.NotNil(t, stored)
+	assert.Equal(t, entity.RequestStatusFailed, stored.Status)
+	assert.Equal(t, "UPSTREAM_TIMEOUT", stored.ErrorCode)
 }
 
 func TestGenerationServicePollsQueuedExecution(t *testing.T) {

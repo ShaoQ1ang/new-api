@@ -60,3 +60,18 @@ func TestEnabledClientWritesRequestAndResponse(t *testing.T) {
 	assert.Equal(t, "turn-test", event.TraceID)
 	assert.Equal(t, `{"model":"video-test"}`, event.Request.Body)
 }
+
+func TestResponseTraceOmitsInlineImageData(t *testing.T) {
+	directory := t.TempDir()
+	client := New("newapi", directory, 8)
+	ctx := client.WithTraceID(context.Background(), "turn-image")
+	client.LogHTTPResponse(ctx, "newapi.upstream.response", &http.Response{StatusCode: http.StatusOK, Header: http.Header{}}, []byte(`{"data":[{"b64_json":"large-image-data"}]}`))
+	client.Close()
+
+	content, err := os.ReadFile(filepath.Join(directory, "newapi.jsonl"))
+	require.NoError(t, err)
+	var event Event
+	require.NoError(t, common.Unmarshal([]byte(strings.TrimSpace(string(content))), &event))
+	assert.NotContains(t, event.Response.Body, "large-image-data")
+	assert.Contains(t, event.Response.Body, `"response_bytes":`)
+}

@@ -49,6 +49,7 @@ type GenerationOutputItem struct {
 	Title       string `json:"title,omitempty"`
 	Text        string `json:"text,omitempty"`
 	URL         string `json:"url,omitempty"`
+	B64JSON     string `json:"b64_json,omitempty"`
 	ContentType string `json:"content_type,omitempty"`
 	Width       int    `json:"width,omitempty"`
 	Height      int    `json:"height,omitempty"`

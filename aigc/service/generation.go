@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/aigc/dto"
 	"github.com/QuantumNous/new-api/aigc/entity"
 	"github.com/QuantumNous/new-api/aigc/execution"
 	"github.com/QuantumNous/new-api/common"
 )
+
+const generationPersistenceTimeout = 10 * time.Second
 
 type Resolver interface {
 	Resolve(ctx context.Context, group string, request dto.GenerationRequest) (*execution.Spec, error)
@@ -78,10 +81,12 @@ func (service *GenerationService) Submit(ctx context.Context, identity execution
 		return generationResponse(stored)
 	}
 	result, executeErr := service.executor.Execute(ctx, identity, *spec)
+	persistContext, cancelPersist := context.WithTimeout(context.WithoutCancel(ctx), generationPersistenceTimeout)
+	defer cancelPersist()
 	if executeErr != nil {
-		return nil, service.persistExecutionError(ctx, stored, executeErr)
+		return nil, service.persistExecutionError(persistContext, stored, executeErr)
 	}
-	updated, err := service.persistResult(ctx, stored, result)
+	updated, err := service.persistResult(persistContext, stored, result)
 	if err != nil {
 		return nil, err
 	}

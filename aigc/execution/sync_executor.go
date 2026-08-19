@@ -94,10 +94,13 @@ func syncResult(spec Spec, body []byte) (Result, error) {
 		}
 		for index, item := range response.Data {
 			url := strings.TrimSpace(item.Url)
-			if url == "" {
-				return Result{}, executionError(http.StatusBadGateway, "AIGC_IMAGE_RESULT_NOT_REPLAYABLE", "AIGC image execution must return replayable URLs", false)
+			b64JSON := strings.TrimSpace(item.B64Json)
+			if url == "" && b64JSON == "" {
+				return Result{}, executionError(http.StatusBadGateway, "AIGC_EXECUTION_EMPTY_RESULT", "AIGC image execution returned an empty image", false)
 			}
-			result.Outputs = append(result.Outputs, aigcdto.GenerationOutputItem{ID: fmt.Sprintf("image-%d", index+1), Type: "image", URL: url})
+			result.Outputs = append(result.Outputs, aigcdto.GenerationOutputItem{
+				ID: fmt.Sprintf("image-%d", index+1), Type: "image", URL: url, B64JSON: b64JSON,
+			})
 		}
 	default:
 		return Result{}, executionError(http.StatusBadRequest, "AIGC_MODEL_TYPE_NOT_SUPPORTED", "AIGC model type is not supported", false)

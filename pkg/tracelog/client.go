@@ -2,10 +2,12 @@ package tracelog
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -145,7 +147,7 @@ func (client *Client) LogResponseValue(ctx context.Context, name, kind string, v
 		event.Status = "error"
 		event.Error = err.Error()
 	} else {
-		event.Response.Body = string(body)
+		event.Response.Body = encodeResponseBody(body)
 	}
 	client.emit(event)
 }
@@ -174,7 +176,7 @@ func (client *Client) LogHTTPResponse(ctx context.Context, name string, response
 		return
 	}
 	event := client.newEvent(ctx, name, "client-response")
-	event.Response = Payload{Status: response.StatusCode, Headers: response.Header.Clone(), Body: encodeBody(body)}
+	event.Response = Payload{Status: response.StatusCode, Headers: response.Header.Clone(), Body: encodeResponseBody(body)}
 	if response.StatusCode >= http.StatusBadRequest {
 		event.Status = "error"
 	}
@@ -186,7 +188,7 @@ func (client *Client) LogHTTPServerResponse(ctx context.Context, name string, st
 		return
 	}
 	event := client.newEvent(ctx, name, "server-response")
-	event.Response = Payload{Status: status, Headers: headers.Clone(), Body: encodeBody(body)}
+	event.Response = Payload{Status: status, Headers: headers.Clone(), Body: encodeResponseBody(body)}
 	if status >= http.StatusBadRequest {
 		event.Status = "error"
 	}
@@ -278,6 +280,13 @@ func encodeBody(body []byte) string {
 		return string(body)
 	}
 	return "base64:" + base64.StdEncoding.EncodeToString(body)
+}
+
+func encodeResponseBody(body []byte) string {
+	if bytes.Contains(body, []byte(`"b64_json"`)) {
+		return fmt.Sprintf(`{"trace_note":"response contains b64_json; body omitted","response_bytes":%d}`, len(body))
+	}
+	return encodeBody(body)
 }
 
 func newID() string {

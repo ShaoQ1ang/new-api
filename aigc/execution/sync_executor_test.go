@@ -120,17 +120,18 @@ func TestSyncExecutorReturnsReplayableImageURLs(t *testing.T) {
 	assert.Equal(t, "https://cdn.test/two.png", result.Outputs[1].URL)
 }
 
-func TestSyncExecutorRejectsInlineOnlyImageResult(t *testing.T) {
+func TestSyncExecutorReturnsInlineImageBase64(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	source, _ := gin.CreateTestContext(httptest.NewRecorder())
 	source.Request = httptest.NewRequest(http.MethodPost, "/v1/aigc/generations", nil)
 	executor := NewSyncExecutor(&syncWorkflowStub{result: &relay.SyncWorkflowResult{ResponseBody: []byte(`{"data":[{"b64_json":"large-inline-data"}]}`)}})
 
-	_, err := executor.Execute(WithGinContext(context.Background(), source), Identity{UserID: 7, TokenID: 11, Group: "vip"}, Spec{
+	result, err := executor.Execute(WithGinContext(context.Background(), source), Identity{UserID: 7, TokenID: 11, Group: "vip"}, Spec{
 		UpstreamModelID: "image-upstream", ModelType: "image", Mode: "text_to_image", Request: aigcdto.GenerationRequest{Prompt: "draw"},
 	})
 
-	protocolErr, ok := err.(*Error)
-	require.True(t, ok)
-	assert.Equal(t, "AIGC_IMAGE_RESULT_NOT_REPLAYABLE", protocolErr.Code)
+	require.NoError(t, err)
+	require.Len(t, result.Outputs, 1)
+	assert.Empty(t, result.Outputs[0].URL)
+	assert.Equal(t, "large-inline-data", result.Outputs[0].B64JSON)
 }
