@@ -16,6 +16,7 @@ import (
 type aigcHandlers struct {
 	models        *aigchandler.ModelHandler
 	generations   *aigchandler.GenerationHandler
+	pricing       *aigchandler.PricingHandler
 	admin         *aigchandler.AdminModelHandler
 	upstream      *aigchandler.UpstreamModelHandler
 	profileImport *aigchandler.ProfileImportHandler
@@ -30,6 +31,8 @@ func buildAigcHandlers(db *gorm.DB) aigcHandlers {
 	adminHandler := aigchandler.NewAdminModelHandler(admin, catalog)
 	upstreamModels := aigcservice.NewUpstreamModelService(aigcservice.NewModelUpstreamSource())
 	upstreamHandler := aigchandler.NewUpstreamModelHandler(upstreamModels)
+	pricing := aigcservice.NewPricingService(profiles, availability, aigcservice.NewModelUpstreamSource())
+	pricingHandler := aigchandler.NewPricingHandler(pricing)
 	profileImporter := aigcservice.NewProfileImportService(profiles, upstreamModels)
 	importHandler := aigchandler.NewProfileImportHandler(profileImporter)
 
@@ -44,7 +47,7 @@ func buildAigcHandlers(db *gorm.DB) aigcHandlers {
 	generationHandler := aigchandler.NewGenerationHandler(generations)
 
 	return aigcHandlers{
-		models: modelHandler, generations: generationHandler, admin: adminHandler,
+		models: modelHandler, generations: generationHandler, pricing: pricingHandler, admin: adminHandler,
 		upstream: upstreamHandler, profileImport: importHandler,
 	}
 }
@@ -52,5 +55,6 @@ func buildAigcHandlers(db *gorm.DB) aigcHandlers {
 func SetAigcRouter(engine *gin.Engine) {
 	handlers := buildAigcHandlers(model.DB)
 	aigcrouter.RegisterRelayRoutes(engine, handlers.models, handlers.generations)
+	aigcrouter.RegisterPricingRoute(engine, handlers.pricing)
 	aigcrouter.RegisterAPIRoutes(engine, handlers.admin, handlers.upstream, handlers.profileImport)
 }

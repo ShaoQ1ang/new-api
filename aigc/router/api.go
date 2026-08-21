@@ -52,3 +52,17 @@ func RegisterAPIRoutes(engine *gin.Engine, adminHandler *handler.AdminModelHandl
 	aigcRouter.GET("/upstream-models", invokeUpstream(func(h *handler.UpstreamModelHandler, c *gin.Context) { h.List(c) }))
 	aigcRouter.GET("/upstream-models/*path", invokeUpstream(func(h *handler.UpstreamModelHandler, c *gin.Context) { h.Get(c) }))
 }
+
+func RegisterPricingRoute(engine *gin.Engine, pricingHandler *handler.PricingHandler) {
+	pricingRouter := engine.Group("/api/aigc")
+	pricingRouter.Use(middleware.RouteTag("api"))
+	pricingRouter.Use(middleware.GlobalAPIRateLimit())
+	pricingRouter.Use(middleware.UserAuth())
+	pricingRouter.GET("/pricing", func(c *gin.Context) {
+		if pricingHandler == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "AIGC is not configured"})
+			return
+		}
+		pricingHandler.List(c)
+	})
+}

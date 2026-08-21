@@ -55,6 +55,18 @@ func TestRegisterAPIRoutes(t *testing.T) {
 	}
 }
 
+func TestRegisterPricingRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	RegisterPricingRoute(engine, nil)
+
+	routes := make(map[string]bool)
+	for _, route := range engine.Routes() {
+		routes[route.Method+" "+route.Path] = true
+	}
+	assert.True(t, routes[http.MethodGet+" /api/aigc/pricing"])
+}
+
 func TestUpstreamModelRouteAcceptsIDsContainingSlashes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
