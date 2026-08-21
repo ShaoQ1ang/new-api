@@ -135,6 +135,7 @@ func main() {
 	// Product whitelist: Alipay pending top-up reconciliation + auto-renew due charge.
 	service.StartAlipayPendingTopUpTask()
 	service.StartAlipayAutoRenewChargeTask()
+	service.StartWalletCallbackTask()
 
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.

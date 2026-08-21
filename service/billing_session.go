@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -32,6 +33,7 @@ type BillingSession struct {
 	fundingSettled   bool // funding.Settle 已成功，资金来源已提交
 	settled          bool // Settle 全部完成（资金 + 令牌）
 	refunded         bool // Refund 已调用
+	walletCallback   *walletUsageCallbackSession
 	mu               sync.Mutex
 }
 
@@ -45,14 +47,12 @@ func (s *BillingSession) Settle(actualQuota int) error {
 		return nil
 	}
 	delta := actualQuota - s.preConsumedQuota
-	if delta == 0 {
-		s.settled = true
-		return nil
-	}
 	// 1) 调整资金来源（仅在尚未提交时执行，防止重复调用）
 	if !s.fundingSettled {
-		if err := s.funding.Settle(delta); err != nil {
-			return err
+		if delta != 0 {
+			if err := s.funding.Settle(delta); err != nil {
+				return err
+			}
 		}
 		s.fundingSettled = true
 	}
@@ -61,7 +61,7 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	if !s.relayInfo.IsPlayground {
 		if delta > 0 {
 			tokenErr = model.DecreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, delta)
-		} else {
+		} else if delta < 0 {
 			tokenErr = model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, -delta)
 		}
 		if tokenErr != nil {
@@ -75,6 +75,9 @@ func (s *BillingSession) Settle(actualQuota int) error {
 		s.relayInfo.SubscriptionPostDelta += int64(delta)
 	}
 	s.settled = true
+	if err := s.walletCallback.Confirm(actualQuota); err != nil {
+		common.SysLog(fmt.Sprintf("wallet confirm callback pending retry (request_id=%s): %v", s.relayInfo.RequestId, err))
+	}
 	return tokenErr
 }
 
@@ -86,7 +89,11 @@ func (s *BillingSession) Refund(c *gin.Context) {
 		return
 	}
 	s.refunded = true
+	walletCallback := s.walletCallback
 	s.mu.Unlock()
+	if err := walletCallback.Cancel(); err != nil {
+		common.SysLog(fmt.Sprintf("wallet cancel callback pending retry (request_id=%s): %v", s.relayInfo.RequestId, err))
+	}
 
 	logger.LogInfo(c, fmt.Sprintf("用户 %d 请求失败, 返还预扣费（token_quota=%s, funding=%s）",
 		s.relayInfo.UserId,
@@ -137,11 +144,38 @@ func (s *BillingSession) needsRefundLocked() bool {
 	if s.tokenConsumed > 0 {
 		return true
 	}
+	if s.walletCallback != nil {
+		return true
+	}
 	// 订阅可能在 tokenConsumed=0 时仍预扣了额度
 	if sub, ok := s.funding.(*SubscriptionFunding); ok && sub.preConsumed > 0 {
 		return true
 	}
 	return false
+}
+
+func (s *BillingSession) rollbackPreConsume() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.settled || s.refunded {
+		return nil
+	}
+	s.refunded = true
+	var rollbackErrors []error
+	if err := s.funding.Refund(); err != nil {
+		rollbackErrors = append(rollbackErrors, fmt.Errorf("refund local funding: %w", err))
+	}
+	if s.extraReserved > 0 && s.funding.Source() == BillingSourceSubscription && s.relayInfo.SubscriptionId > 0 {
+		if err := model.PostConsumeUserSubscriptionDelta(s.relayInfo.SubscriptionId, -int64(s.extraReserved)); err != nil {
+			rollbackErrors = append(rollbackErrors, fmt.Errorf("refund subscription reserve: %w", err))
+		}
+	}
+	if s.tokenConsumed > 0 && !s.relayInfo.IsPlayground {
+		if err := model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, s.tokenConsumed); err != nil {
+			rollbackErrors = append(rollbackErrors, fmt.Errorf("refund token quota: %w", err))
+		}
+	}
+	return errors.Join(rollbackErrors...)
 }
 
 // GetPreConsumedQuota 返回实际预扣的额度。

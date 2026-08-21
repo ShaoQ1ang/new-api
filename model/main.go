@@ -313,6 +313,7 @@ func migrateDB() error {
 		&ClientRelease{},
 		&ChatModelOption{},
 		&AlipayPendingTask{},
+		&WalletUsageCallback{},
 		&PlaygroundConversation{},
 		&entity.ModelProfile{},
 		&entity.AigcRequest{},
@@ -385,6 +386,7 @@ func migrateDBFast() error {
 		{&ClientRelease{}, "ClientRelease"},
 		{&ChatModelOption{}, "ChatModelOption"},
 		{&AlipayPendingTask{}, "AlipayPendingTask"},
+		{&WalletUsageCallback{}, "WalletUsageCallback"},
 		{&PlaygroundConversation{}, "PlaygroundConversation"},
 		{&entity.ModelProfile{}, "AigcModelProfile"},
 	}
