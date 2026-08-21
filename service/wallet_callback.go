@@ -3,7 +3,6 @@ package service
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -343,7 +342,7 @@ func sendWalletCallback(ctx context.Context, config walletCallbackConfig, path s
 		Code    int    `json:"code"`
 		Message string `json:"message"`
 	}
-	if json.Unmarshal(responseBody, &errorPayload) == nil && errorPayload.Message != "" {
+	if common.Unmarshal(responseBody, &errorPayload) == nil && errorPayload.Message != "" {
 		message = errorPayload.Message
 	}
 	return &walletCallbackHTTPError{StatusCode: response.StatusCode, Code: errorPayload.Code, Message: message}
