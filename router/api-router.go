@@ -86,6 +86,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/alipay/notify", controller.AlipayNotify)
 		apiRouter.POST("/creem/webhook", controller.CreemWebhook)
 		apiRouter.POST("/waffo/webhook", controller.WaffoWebhook)
+		apiRouter.POST("/sunoapi/callback", controller.SunoAPICallback)
 		//apiRouter.POST("/waffo-pancake/webhook", controller.WaffoPancakeWebhook)
 
 		// Universal secure verification routes

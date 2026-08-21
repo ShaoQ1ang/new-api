@@ -105,12 +105,37 @@ type VideoConfig struct {
 }
 
 type BooleanCapability struct {
+	Supported    bool `json:"supported"`
+	Default      bool `json:"default"`
+	Configurable bool `json:"configurable,omitempty"`
+}
+
+type StringCapability struct {
 	Supported bool `json:"supported"`
-	Default   bool `json:"default"`
+	MaxLength int  `json:"max_length,omitempty"`
+}
+
+type IntegerRangeCapability struct {
+	Supported bool `json:"supported"`
+	Min       int  `json:"min,omitempty"`
+	Max       int  `json:"max,omitempty"`
+}
+
+type PersonaCapability struct {
+	Supported             bool `json:"supported"`
+	VoicePersonaSupported bool `json:"voice_persona_supported,omitempty"`
 }
 
 type MusicParameters struct {
-	Instrumental BooleanCapability `json:"instrumental"`
+	Instrumental    BooleanCapability      `json:"instrumental"`
+	ExactLyrics     StringCapability       `json:"exact_lyrics,omitempty"`
+	Style           StringCapability       `json:"style,omitempty"`
+	Title           StringCapability       `json:"title,omitempty"`
+	Persona         PersonaCapability      `json:"persona,omitempty"`
+	Duration        IntegerRangeCapability `json:"duration,omitempty"`
+	NegativeTags    StringCapability       `json:"negative_tags,omitempty"`
+	VocalGender     BooleanCapability      `json:"vocal_gender,omitempty"`
+	AdvancedWeights BooleanCapability      `json:"advanced_weights,omitempty"`
 }
 
 type MusicOutputSpec struct {
@@ -125,6 +150,7 @@ type MusicModeConfig struct {
 }
 
 type MusicConfig struct {
-	Adapter string                     `json:"adapter"`
-	Modes   map[string]MusicModeConfig `json:"modes"`
+	Adapter      string                     `json:"adapter"`
+	TaskProtocol string                     `json:"task_protocol,omitempty"`
+	Modes        map[string]MusicModeConfig `json:"modes"`
 }

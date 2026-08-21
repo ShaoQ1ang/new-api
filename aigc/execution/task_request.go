@@ -10,6 +10,7 @@ import (
 )
 
 const TaskProtocolNewAPIVideo = "newapi-video"
+const TaskProtocolSunoAPIV1 = "sunoapi-v1"
 
 func BuildTaskRequest(spec Spec) (relaycommon.TaskSubmitReq, error) {
 	if strings.TrimSpace(spec.ModelType) != "video" {
@@ -48,6 +49,48 @@ func BuildMusicTaskRequest(spec Spec) (relaydto.SunoSubmitReq, error) {
 	return relaydto.SunoSubmitReq{
 		GptDescriptionPrompt: strings.TrimSpace(spec.Request.Prompt), Mv: upstreamModelID,
 		MakeInstrumental: spec.Request.Parameters.Instrumental,
+	}, nil
+}
+
+func BuildSunoAPIV1TaskRequest(spec Spec, callbackURL string) (relaycommon.TaskSubmitReq, error) {
+	if strings.TrimSpace(spec.ModelType) != "music" || strings.TrimSpace(spec.Mode) != "text_to_music" {
+		return relaycommon.TaskSubmitReq{}, fmt.Errorf("unsupported AIGC SunoAPI music spec")
+	}
+	if strings.TrimSpace(spec.TaskProtocol) != TaskProtocolSunoAPIV1 {
+		return relaycommon.TaskSubmitReq{}, fmt.Errorf("unsupported AIGC music task protocol %q", spec.TaskProtocol)
+	}
+	if strings.TrimSpace(spec.UpstreamModelID) == "" {
+		return relaycommon.TaskSubmitReq{}, fmt.Errorf("AIGC music task execution requires an upstream model")
+	}
+	p := spec.Request.Parameters
+	metadata := map[string]any{
+		"customMode": spec.MusicCustomMode, "instrumental": p.Instrumental,
+		"callBackUrl": strings.TrimSpace(callbackURL), "lyrics": strings.TrimSpace(p.Lyrics),
+	}
+	optional := map[string]string{
+		"style": p.Style, "title": p.Title, "personaId": p.PersonaID, "personaModel": p.PersonaModel,
+		"negativeTags": p.NegativeTags, "vocalGender": p.VocalGender,
+	}
+	for key, value := range optional {
+		if value = strings.TrimSpace(value); value != "" {
+			metadata[key] = value
+		}
+	}
+	if p.Duration != nil {
+		metadata["duration"] = *p.Duration
+	}
+	if p.StyleWeight != nil {
+		metadata["styleWeight"] = *p.StyleWeight
+	}
+	if p.WeirdnessConstraint != nil {
+		metadata["weirdnessConstraint"] = *p.WeirdnessConstraint
+	}
+	if p.AudioWeight != nil {
+		metadata["audioWeight"] = *p.AudioWeight
+	}
+	return relaycommon.TaskSubmitReq{
+		Prompt: strings.TrimSpace(spec.Request.Prompt), Model: strings.TrimSpace(spec.UpstreamModelID),
+		Mode: strings.TrimSpace(spec.Mode), CallbackURL: strings.TrimSpace(callbackURL), Metadata: metadata,
 	}, nil
 }
 

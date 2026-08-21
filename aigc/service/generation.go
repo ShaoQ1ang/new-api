@@ -102,6 +102,13 @@ func normalizeGenerationRequest(request dto.GenerationRequest) dto.GenerationReq
 	request.Output.Size = strings.TrimSpace(request.Output.Size)
 	request.Output.Resolution = strings.TrimSpace(request.Output.Resolution)
 	request.Output.AspectRatio = strings.TrimSpace(request.Output.AspectRatio)
+	request.Parameters.Lyrics = strings.TrimSpace(request.Parameters.Lyrics)
+	request.Parameters.Style = strings.TrimSpace(request.Parameters.Style)
+	request.Parameters.Title = strings.TrimSpace(request.Parameters.Title)
+	request.Parameters.PersonaID = strings.TrimSpace(request.Parameters.PersonaID)
+	request.Parameters.PersonaModel = strings.TrimSpace(request.Parameters.PersonaModel)
+	request.Parameters.NegativeTags = strings.TrimSpace(request.Parameters.NegativeTags)
+	request.Parameters.VocalGender = strings.TrimSpace(request.Parameters.VocalGender)
 	for _, items := range [][]dto.MediaInput{request.Inputs.Images, request.Inputs.Videos, request.Inputs.Audios} {
 		for index := range items {
 			items[index].Role = strings.TrimSpace(items[index].Role)

@@ -194,6 +194,11 @@ export const CHANNEL_OPTIONS = [
     color: 'teal',
     label: 'Advanced Custom',
   },
+  {
+    value: 59,
+    color: 'yellow',
+    label: 'SunoAPI v1',
+  },
 ];
 
 // Channel types that support upstream model list fetching in UI.

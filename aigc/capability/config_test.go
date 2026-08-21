@@ -126,3 +126,25 @@ func TestParseTextAndMusicConfigurations(t *testing.T) {
 		})
 	}
 }
+
+func TestParseCompleteSunoAPIMusicConfiguration(t *testing.T) {
+	config, err := Parse(ModelTypeMusic, []byte(`{
+		"music":{"adapter":"sunoapi-music","task_protocol":"sunoapi-v1","modes":{"text_to_music":{
+			"upstream_model_id":"V5_5","parameters":{
+				"instrumental":{"supported":true,"default":false,"configurable":true},
+				"exact_lyrics":{"supported":true,"max_length":5000},
+				"style":{"supported":true,"max_length":1000},
+				"title":{"supported":true,"max_length":100},
+				"persona":{"supported":true,"voice_persona_supported":true},
+				"duration":{"supported":true,"min":10,"max":360},
+				"negative_tags":{"supported":true,"max_length":1000},
+				"vocal_gender":{"supported":true},"advanced_weights":{"supported":true}
+			},"output":{"min_tracks":2,"max_tracks":2}
+		}}}
+	}`))
+
+	require.NoError(t, err)
+	require.NotNil(t, config.Music)
+	assert.Equal(t, "sunoapi-v1", config.Music.TaskProtocol)
+	assert.Equal(t, 360, config.Music.Modes["text_to_music"].Parameters.Duration.Max)
+}

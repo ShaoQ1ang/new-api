@@ -86,6 +86,74 @@ func TestGenerationResolverTreatsFirstFrameAsIntrinsicModeInput(t *testing.T) {
 	assert.Equal(t, "video-i2v", spec.UpstreamModelID)
 }
 
+func TestGenerationResolverDerivesAdaptiveSunoMode(t *testing.T) {
+	profile := entity.ModelProfile{
+		PublicModelID: "suno-v5.5", DisplayName: "Suno V5.5", ModelType: "music", Status: entity.ModelStatusPublished,
+		GroupsJSON: `[]`, ConfigVersion: 2, ConfigJSON: `{
+			"music":{"adapter":"sunoapi-music","task_protocol":"sunoapi-v1","modes":{"text_to_music":{
+				"upstream_model_id":"V5_5","parameters":{
+					"instrumental":{"supported":true,"default":false,"configurable":true},
+					"exact_lyrics":{"supported":true,"max_length":5000},
+					"style":{"supported":true,"max_length":1000},
+					"title":{"supported":true,"max_length":100},
+					"persona":{"supported":true,"voice_persona_supported":true},
+					"duration":{"supported":true,"min":10,"max":360},
+					"negative_tags":{"supported":true,"max_length":1000},
+					"vocal_gender":{"supported":true},"advanced_weights":{"supported":true}
+				},"output":{"min_tracks":2,"max_tracks":2}
+			}}}
+		}`,
+	}
+	resolver := NewGenerationResolver(
+		&profileStoreStub{profiles: map[string]*entity.ModelProfile{profile.PublicModelID: &profile}},
+		&availabilityStub{byGroup: map[string]map[string]bool{"default": {"V5_5": true}}},
+	)
+
+	quick, err := resolver.Resolve(context.Background(), "default", dto.GenerationRequest{
+		IdempotencyKey: "turn-quick", Model: profile.PublicModelID, Type: "music", Prompt: "rainy night electronic pop",
+	})
+	require.NoError(t, err)
+	assert.False(t, quick.MusicCustomMode)
+	assert.Equal(t, "sunoapi-v1", quick.TaskProtocol)
+	assert.Equal(t, "V5_5", quick.UpstreamModelID)
+
+	zero := 0.0
+	custom, err := resolver.Resolve(context.Background(), "default", dto.GenerationRequest{
+		IdempotencyKey: "turn-custom", Model: profile.PublicModelID, Type: "music", Prompt: "rainy night electronic pop",
+		Parameters: dto.GenerationParameters{Lyrics: "[Verse]\nNeon falls", AudioWeight: &zero},
+	})
+	require.NoError(t, err)
+	assert.True(t, custom.MusicCustomMode)
+	assert.Equal(t, "rainy night electronic pop", custom.Request.Parameters.Style)
+	assert.Equal(t, "rainy night electronic pop", custom.Request.Parameters.Title)
+	require.NotNil(t, custom.Request.Parameters.AudioWeight)
+	assert.Zero(t, *custom.Request.Parameters.AudioWeight)
+}
+
+func TestGenerationResolverRequiresLyricsForCustomVocalGeneration(t *testing.T) {
+	profile := entity.ModelProfile{
+		PublicModelID: "suno-v5", DisplayName: "Suno V5", ModelType: "music", Status: entity.ModelStatusPublished,
+		GroupsJSON: `[]`, ConfigVersion: 1, ConfigJSON: `{
+			"music":{"adapter":"sunoapi-music","task_protocol":"sunoapi-v1","modes":{"text_to_music":{
+				"upstream_model_id":"V5","parameters":{"instrumental":{"supported":true,"default":false},
+				"exact_lyrics":{"supported":true,"max_length":5000},"style":{"supported":true,"max_length":1000},
+				"title":{"supported":true,"max_length":100}},"output":{"min_tracks":2,"max_tracks":2}
+			}}}
+		}`,
+	}
+	resolver := NewGenerationResolver(
+		&profileStoreStub{profiles: map[string]*entity.ModelProfile{profile.PublicModelID: &profile}},
+		&availabilityStub{byGroup: map[string]map[string]bool{"default": {"V5": true}}},
+	)
+
+	_, err := resolver.Resolve(context.Background(), "default", dto.GenerationRequest{
+		IdempotencyKey: "turn-invalid", Model: profile.PublicModelID, Type: "music", Prompt: "electronic pop",
+		Parameters: dto.GenerationParameters{Style: "electronic"},
+	})
+
+	assertGenerationErrorCode(t, err, "MUSIC_LYRICS_REQUIRED")
+}
+
 func TestGenerationResolverRejectsUnavailableOrHiddenModel(t *testing.T) {
 	profile := validTextProfile(entity.ModelStatusPublished)
 	profile.GroupsJSON = `["vip"]`

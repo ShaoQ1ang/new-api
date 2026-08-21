@@ -87,3 +87,22 @@ func TestBuildMusicTaskRequestRejectsUnsupportedSpec(t *testing.T) {
 		require.Error(t, err)
 	}
 }
+
+func TestBuildSunoAPIV1TaskRequestPreservesResolvedCustomContract(t *testing.T) {
+	zero := 0.0
+	duration := 120
+	spec := Spec{
+		UpstreamModelID: "V5_5", ModelType: "music", Mode: "text_to_music", TaskProtocol: TaskProtocolSunoAPIV1, MusicCustomMode: true,
+		Request: aigcdto.GenerationRequest{Prompt: "night pop", Parameters: aigcdto.GenerationParameters{
+			Lyrics: "exact lyrics", Style: "ambient pop", Title: "Night", Duration: &duration, AudioWeight: &zero,
+		}},
+	}
+
+	request, err := BuildSunoAPIV1TaskRequest(spec, "https://app.test/api/sunoapi/callback")
+	require.NoError(t, err)
+	assert.Equal(t, "V5_5", request.Model)
+	assert.Equal(t, "exact lyrics", request.Metadata["lyrics"])
+	assert.Equal(t, true, request.Metadata["customMode"])
+	assert.Equal(t, 0.0, request.Metadata["audioWeight"])
+	assert.Equal(t, 120, request.Metadata["duration"])
+}

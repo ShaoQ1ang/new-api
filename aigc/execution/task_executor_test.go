@@ -87,6 +87,17 @@ func TestTaskExecutorPollMapsCompletedMusicTracks(t *testing.T) {
 	assert.Equal(t, "https://cdn.test/first.jpg", result.Outputs[0].PosterURL)
 }
 
+func TestTaskExecutorPollMapsSunoAPIV1Tracks(t *testing.T) {
+	data := []byte(`{"code":200,"msg":"success","data":{"status":"SUCCESS","response":{"sunoData":[{"id":"song-1","title":"First","audioUrl":"https://cdn.test/first.mp3","imageUrl":"https://cdn.test/first.jpg","duration":119.6},{"id":"song-2","title":"Second","audioUrl":"https://cdn.test/second.mp3","duration":90}]}}}`)
+	store := &taskStoreStub{found: true, task: &model.Task{TaskID: "task_music", Status: model.TaskStatusSuccess, Progress: "100%", Data: data}}
+	result, err := NewTaskExecutor(&taskWorkflowStub{}, store).Poll(context.Background(), Identity{UserID: 7}, "music", "task_music")
+	require.NoError(t, err)
+	require.Len(t, result.Outputs, 2)
+	assert.Equal(t, "https://cdn.test/first.mp3", result.Outputs[0].URL)
+	assert.Equal(t, 120, result.Outputs[0].Duration)
+	assert.Equal(t, "https://cdn.test/second.mp3", result.Outputs[1].URL)
+}
+
 type taskStoreStub struct {
 	task   *model.Task
 	found  bool

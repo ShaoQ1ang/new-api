@@ -20,6 +20,7 @@ type Spec struct {
 	Adapter         string                `json:"adapter,omitempty"`
 	TaskProtocol    string                `json:"task_protocol,omitempty"`
 	OutputSpecID    string                `json:"output_spec_id,omitempty"`
+	MusicCustomMode bool                  `json:"music_custom_mode,omitempty"`
 	ConfigVersion   int                   `json:"config_version"`
 	Request         dto.GenerationRequest `json:"request"`
 }

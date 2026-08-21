@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
@@ -67,8 +68,14 @@ func (executor *TaskExecutor) Execute(ctx context.Context, identity Identity, sp
 	case "video":
 		request, err = BuildTaskRequest(spec)
 	case "music":
-		request, err = BuildMusicTaskRequest(spec)
-		path = "/suno/submit/music"
+		if strings.TrimSpace(spec.TaskProtocol) == TaskProtocolSunoAPIV1 {
+			callbackURL := strings.TrimRight(system_setting.ServerAddress, "/") + "/api/sunoapi/callback"
+			request, err = BuildSunoAPIV1TaskRequest(spec, callbackURL)
+			path = "/v1/music/generations"
+		} else {
+			request, err = BuildMusicTaskRequest(spec)
+			path = "/suno/submit/music"
+		}
 	default:
 		err = fmt.Errorf("AIGC task execution does not support model type %q", spec.ModelType)
 	}
@@ -99,8 +106,12 @@ func (executor *TaskExecutor) Execute(ctx context.Context, identity Identity, sp
 	common.SetContextKey(taskContext, constant.ContextKeyUserId, identity.UserID)
 	common.SetContextKey(taskContext, constant.ContextKeyTokenId, identity.TokenID)
 	if spec.ModelType == "music" {
-		taskContext.Set("platform", string(constant.TaskPlatformSuno))
-		taskContext.Params = append(taskContext.Params, gin.Param{Key: "action", Value: "music"})
+		if strings.TrimSpace(spec.TaskProtocol) == TaskProtocolSunoAPIV1 {
+			taskContext.Set("platform", strconv.Itoa(constant.ChannelTypeSunoAPIV1))
+		} else {
+			taskContext.Set("platform", string(constant.TaskPlatformSuno))
+			taskContext.Params = append(taskContext.Params, gin.Param{Key: "action", Value: "music"})
+		}
 	}
 
 	info, err := relaycommon.GenRelayInfo(taskContext, types.RelayFormatTask, nil, nil)
@@ -156,6 +167,21 @@ func taskResult(spec Spec, task *model.Task) Result {
 }
 
 func musicTaskOutputs(data []byte) []aigcdto.GenerationOutputItem {
+	var sunoAPI relaydto.SunoAPIResponse[relaydto.SunoAPIRecordData]
+	if common.Unmarshal(data, &sunoAPI) == nil && len(sunoAPI.Data.Response.SunoData) > 0 {
+		outputs := make([]aigcdto.GenerationOutputItem, 0, len(sunoAPI.Data.Response.SunoData))
+		for _, song := range sunoAPI.Data.Response.SunoData {
+			audioURL := strings.TrimSpace(song.AudioURL)
+			if audioURL == "" {
+				continue
+			}
+			outputs = append(outputs, aigcdto.GenerationOutputItem{
+				ID: song.ID, Type: "music", Title: song.Title, URL: audioURL,
+				PosterURL: song.ImageURL, Duration: int(song.Duration + 0.5),
+			})
+		}
+		return outputs
+	}
 	var songs []relaydto.SunoSong
 	if err := common.Unmarshal(data, &songs); err != nil {
 		var envelope struct {

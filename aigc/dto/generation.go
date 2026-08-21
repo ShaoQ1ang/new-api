@@ -28,7 +28,18 @@ type GenerationOptions struct {
 }
 
 type GenerationParameters struct {
-	Instrumental bool `json:"instrumental,omitempty"`
+	Instrumental        bool     `json:"instrumental,omitempty"`
+	Lyrics              string   `json:"lyrics,omitempty"`
+	Style               string   `json:"style,omitempty"`
+	Title               string   `json:"title,omitempty"`
+	PersonaID           string   `json:"persona_id,omitempty"`
+	PersonaModel        string   `json:"persona_model,omitempty"`
+	Duration            *int     `json:"duration,omitempty"`
+	NegativeTags        string   `json:"negative_tags,omitempty"`
+	VocalGender         string   `json:"vocal_gender,omitempty"`
+	StyleWeight         *float64 `json:"style_weight,omitempty"`
+	WeirdnessConstraint *float64 `json:"weirdness_constraint,omitempty"`
+	AudioWeight         *float64 `json:"audio_weight,omitempty"`
 }
 
 type GenerationRequest struct {

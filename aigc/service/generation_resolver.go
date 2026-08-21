@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/aigc/capability"
 	"github.com/QuantumNous/new-api/aigc/dto"
@@ -194,14 +195,112 @@ func resolveMusicGeneration(spec *execution.Spec, config *capability.MusicConfig
 	if mediaCount(spec.Request.Inputs) != 0 {
 		return generationError(http.StatusBadRequest, "INVALID_INPUT_ROLE", "music generation does not accept media inputs", false)
 	}
-	if spec.Request.Parameters.Instrumental && !configured.Parameters.Instrumental.Supported {
+	parameters := &spec.Request.Parameters
+	capabilities := configured.Parameters
+	if parameters.Instrumental && !capabilities.Instrumental.Supported {
 		return generationError(http.StatusBadRequest, "OUTPUT_NOT_SUPPORTED", "instrumental generation is not supported", false)
+	}
+	if parameters.Instrumental && parameters.Lyrics != "" {
+		return generationError(http.StatusBadRequest, "INVALID_MUSIC_PARAMETERS", "instrumental generation cannot include lyrics", false)
+	}
+	if err := validateMusicStringParameter("lyrics", parameters.Lyrics, capabilities.ExactLyrics); err != nil {
+		return err
+	}
+	if err := validateMusicStringParameter("style", parameters.Style, capabilities.Style); err != nil {
+		return err
+	}
+	if err := validateMusicStringParameter("title", parameters.Title, capabilities.Title); err != nil {
+		return err
+	}
+	if err := validateMusicStringParameter("negative_tags", parameters.NegativeTags, capabilities.NegativeTags); err != nil {
+		return err
+	}
+	if parameters.PersonaID != "" && !capabilities.Persona.Supported {
+		return generationError(http.StatusBadRequest, "OUTPUT_NOT_SUPPORTED", "music persona is not supported", false)
+	}
+	if parameters.PersonaID == "" && parameters.PersonaModel != "" {
+		return generationError(http.StatusBadRequest, "INVALID_MUSIC_PARAMETERS", "persona_model requires persona_id", false)
+	}
+	if parameters.PersonaID != "" {
+		if parameters.PersonaModel == "" {
+			parameters.PersonaModel = "style_persona"
+		}
+		if parameters.PersonaModel != "style_persona" && parameters.PersonaModel != "voice_persona" {
+			return generationError(http.StatusBadRequest, "INVALID_MUSIC_PARAMETERS", "persona_model is invalid", false)
+		}
+		if parameters.PersonaModel == "voice_persona" && !capabilities.Persona.VoicePersonaSupported {
+			return generationError(http.StatusBadRequest, "OUTPUT_NOT_SUPPORTED", "voice persona is not supported", false)
+		}
+	}
+	if parameters.Duration != nil {
+		if !capabilities.Duration.Supported || *parameters.Duration < capabilities.Duration.Min || *parameters.Duration > capabilities.Duration.Max {
+			return generationError(http.StatusBadRequest, "OUTPUT_NOT_SUPPORTED", "music duration is not supported", false)
+		}
+	}
+	if parameters.VocalGender != "" {
+		if !capabilities.VocalGender.Supported {
+			return generationError(http.StatusBadRequest, "OUTPUT_NOT_SUPPORTED", "vocal gender is not supported", false)
+		}
+		if parameters.VocalGender != "m" && parameters.VocalGender != "f" {
+			return generationError(http.StatusBadRequest, "INVALID_MUSIC_PARAMETERS", "vocal_gender must be m or f", false)
+		}
+	}
+	weightsPresent := parameters.StyleWeight != nil || parameters.WeirdnessConstraint != nil || parameters.AudioWeight != nil
+	if weightsPresent && !capabilities.AdvancedWeights.Supported {
+		return generationError(http.StatusBadRequest, "OUTPUT_NOT_SUPPORTED", "advanced music weights are not supported", false)
+	}
+	for name, value := range map[string]*float64{
+		"style_weight": parameters.StyleWeight, "weirdness_constraint": parameters.WeirdnessConstraint, "audio_weight": parameters.AudioWeight,
+	} {
+		if value != nil && (*value < 0 || *value > 1) {
+			return generationError(http.StatusBadRequest, "INVALID_MUSIC_PARAMETERS", name+" must be between 0 and 1", false)
+		}
+	}
+	customFields := parameters.Style != "" || parameters.Title != "" || parameters.PersonaID != "" || parameters.Duration != nil ||
+		parameters.NegativeTags != "" || parameters.VocalGender != "" || weightsPresent
+	spec.MusicCustomMode = parameters.Lyrics != "" || parameters.Instrumental && customFields
+	if !parameters.Instrumental && customFields && parameters.Lyrics == "" {
+		return generationError(http.StatusBadRequest, "MUSIC_LYRICS_REQUIRED", "custom vocal generation requires exact lyrics", false)
+	}
+	if spec.MusicCustomMode {
+		if parameters.Style == "" {
+			parameters.Style = spec.Request.Prompt
+		}
+		if parameters.Title == "" {
+			parameters.Title = defaultMusicTitle(spec.Request.Prompt, capabilities.Title.MaxLength)
+		}
 	}
 	spec.Mode = mode
 	spec.Request.Mode = mode
 	spec.Adapter = config.Adapter
+	spec.TaskProtocol = config.TaskProtocol
 	spec.UpstreamModelID = configured.UpstreamModelID
 	return requireAvailable(spec.UpstreamModelID, available)
+}
+
+func validateMusicStringParameter(name, value string, parameter capability.StringCapability) error {
+	if value == "" {
+		return nil
+	}
+	if !parameter.Supported {
+		return generationError(http.StatusBadRequest, "OUTPUT_NOT_SUPPORTED", "music "+name+" is not supported", false)
+	}
+	if parameter.MaxLength > 0 && utf8.RuneCountInString(value) > parameter.MaxLength {
+		return generationError(http.StatusBadRequest, "INVALID_MUSIC_PARAMETERS", "music "+name+" is too long", false)
+	}
+	return nil
+}
+
+func defaultMusicTitle(prompt string, maxLength int) string {
+	prompt = strings.TrimSpace(prompt)
+	if maxLength <= 0 {
+		maxLength = 100
+	}
+	runes := []rune(prompt)
+	if len(runes) > maxLength {
+		runes = runes[:maxLength]
+	}
+	return string(runes)
 }
 
 func validateVideoRequestInputs(mode string, config capability.VideoModeConfig, inputs dto.GenerationInputs) error {

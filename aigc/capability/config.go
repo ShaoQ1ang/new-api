@@ -257,6 +257,27 @@ func validateMusic(config MusicConfig) error {
 	if mode.Output.MinTracks < 1 || mode.Output.MaxTracks < mode.Output.MinTracks {
 		return fmt.Errorf("invalid music output track range")
 	}
+	parameters := mode.Parameters
+	for name, value := range map[string]StringCapability{
+		"exact_lyrics":  parameters.ExactLyrics,
+		"style":         parameters.Style,
+		"title":         parameters.Title,
+		"negative_tags": parameters.NegativeTags,
+	} {
+		if value.MaxLength < 0 || value.Supported && value.MaxLength == 0 {
+			return fmt.Errorf("music parameter %s requires a positive max_length", name)
+		}
+	}
+	if parameters.Duration.Supported {
+		if parameters.Duration.Min <= 0 || parameters.Duration.Max < parameters.Duration.Min {
+			return fmt.Errorf("music duration range is invalid")
+		}
+	} else if parameters.Duration.Min != 0 || parameters.Duration.Max != 0 {
+		return fmt.Errorf("unsupported music duration cannot define a range")
+	}
+	if parameters.Persona.VoicePersonaSupported && !parameters.Persona.Supported {
+		return fmt.Errorf("voice persona requires persona support")
+	}
 	return nil
 }
 

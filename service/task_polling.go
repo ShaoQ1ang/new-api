@@ -269,7 +269,7 @@ func updateSunoTasks(ctx context.Context, channelId int, taskIds []string, taskM
 	}
 	if !responseItems.IsSuccess() {
 		common.SysLog(fmt.Sprintf("渠道 #%d 未完成的任务有: %d, 成功获取到任务数: %s", channelId, len(taskIds), string(responseBody)))
-		return err
+		return fmt.Errorf("Suno fetch failed: %s", responseItems.Message)
 	}
 
 	for _, responseItem := range responseItems.Data {
