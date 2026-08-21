@@ -19,6 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 
 export const IMAGE_MODES = ['text_to_image', 'image_edit'];
 
+export const MUSIC_PROTOCOL_LEGACY = 'legacy-suno';
+export const MUSIC_PROTOCOL_SUNOAPI_V1 = 'sunoapi-v1';
+
 export const VIDEO_MODES = [
   'text_to_video',
   'first_frame',
@@ -130,23 +133,83 @@ export function configTemplate(type) {
         },
       };
     case 'music':
-      return {
-        music: {
-          adapter: 'suno',
-          modes: {
-            text_to_music: {
-              upstream_model_id: '',
-              parameters: {
-                instrumental: { supported: true, default: false },
-              },
-              output: { min_tracks: 1, max_tracks: 2 },
-            },
-          },
-        },
-      };
+      return musicConfigTemplate(MUSIC_PROTOCOL_SUNOAPI_V1);
     default:
       return { text: { upstream_model_id: '', max_output_tokens: 0 } };
   }
+}
+
+export function musicConfigTemplate(protocol, upstreamModelID = '') {
+  const sunoAPIV1 = protocol === MUSIC_PROTOCOL_SUNOAPI_V1;
+  return {
+    music: {
+      adapter: sunoAPIV1 ? 'sunoapi-music' : 'music-task',
+      ...(sunoAPIV1 ? { task_protocol: MUSIC_PROTOCOL_SUNOAPI_V1 } : {}),
+      modes: {
+        text_to_music: {
+          upstream_model_id: upstreamModelID,
+          parameters: sunoAPIV1
+            ? {
+                instrumental: {
+                  supported: true,
+                  default: false,
+                  configurable: true,
+                },
+                exact_lyrics: { supported: true, max_length: 5000 },
+                style: { supported: true, max_length: 1000 },
+                title: { supported: true, max_length: 100 },
+                persona: {
+                  supported: true,
+                  voice_persona_supported: false,
+                },
+                duration: { supported: false },
+                negative_tags: { supported: true, max_length: 1000 },
+                vocal_gender: { supported: true },
+                advanced_weights: { supported: true },
+              }
+            : {
+                instrumental: { supported: true, default: false },
+              },
+          output: sunoAPIV1
+            ? { min_tracks: 2, max_tracks: 2 }
+            : { min_tracks: 1, max_tracks: 2 },
+        },
+      },
+    },
+  };
+}
+
+export function musicProtocol(config) {
+  return config?.music?.task_protocol === MUSIC_PROTOCOL_SUNOAPI_V1
+    ? MUSIC_PROTOCOL_SUNOAPI_V1
+    : MUSIC_PROTOCOL_LEGACY;
+}
+
+export function setMusicProtocol(config, protocol) {
+  const upstreamModelID =
+    config?.music?.modes?.text_to_music?.upstream_model_id || '';
+  return syncMusicModelCapabilities(
+    musicConfigTemplate(protocol, upstreamModelID),
+    upstreamModelID,
+  );
+}
+
+export function syncMusicModelCapabilities(config, upstreamModelID) {
+  const next = structuredClone(config);
+  const mode = next?.music?.modes?.text_to_music;
+  if (!mode) return next;
+  mode.upstream_model_id = upstreamModelID;
+  if (musicProtocol(next) !== MUSIC_PROTOCOL_SUNOAPI_V1) return next;
+
+  const parameters = mode.parameters;
+  parameters.persona ||= { supported: true };
+  parameters.persona.voice_persona_supported =
+    upstreamModelID === 'V5' || upstreamModelID === 'V5_5';
+  parameters.duration =
+    upstreamModelID === 'V5_5'
+      ? { supported: true, min: 10, max: 360 }
+      : { supported: false };
+  return next;
 }
 
 export function imageModeTemplate(mode, upstreamModelID = '') {

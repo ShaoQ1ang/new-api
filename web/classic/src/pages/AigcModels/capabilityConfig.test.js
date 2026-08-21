@@ -21,11 +21,15 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
   IMAGE_SIZE_OPTIONS,
+  MUSIC_PROTOCOL_LEGACY,
+  MUSIC_PROTOCOL_SUNOAPI_V1,
   combinationValue,
   configTemplate,
   normalizeIntegerValues,
   parseCombinationValue,
   setImageModes,
+  setMusicProtocol,
+  syncMusicModelCapabilities,
   setVideoModes,
 } from './capabilityConfig.js';
 
@@ -94,6 +98,66 @@ describe('AIGC capability config helpers', () => {
 
   test('normalizes integer multi-select values', () => {
     assert.deepEqual(normalizeIntegerValues(['10', 5, '5', 'bad']), [5, 10]);
+  });
+
+  test('creates a complete SunoAPI v1 music profile by default', () => {
+    const config = configTemplate('music');
+    const music = config.music;
+    const mode = music.modes.text_to_music;
+
+    assert.equal(music.adapter, 'sunoapi-music');
+    assert.equal(music.task_protocol, MUSIC_PROTOCOL_SUNOAPI_V1);
+    assert.equal(mode.output.min_tracks, 2);
+    assert.equal(mode.output.max_tracks, 2);
+    assert.equal(mode.parameters.exact_lyrics.max_length, 5000);
+    assert.equal(mode.parameters.duration.supported, false);
+    assert.equal(mode.parameters.advanced_weights.supported, true);
+  });
+
+  test('adapts version-specific music capabilities to the assigned model', () => {
+    const base = configTemplate('music');
+    const v55 = syncMusicModelCapabilities(base, 'V5_5');
+    assert.deepEqual(v55.music.modes.text_to_music.parameters.duration, {
+      supported: true,
+      min: 10,
+      max: 360,
+    });
+    assert.equal(
+      v55.music.modes.text_to_music.parameters.persona.voice_persona_supported,
+      true,
+    );
+
+    const v4 = syncMusicModelCapabilities(v55, 'V4');
+    assert.deepEqual(v4.music.modes.text_to_music.parameters.duration, {
+      supported: false,
+    });
+    assert.equal(
+      v4.music.modes.text_to_music.parameters.persona.voice_persona_supported,
+      false,
+    );
+  });
+
+  test('switches music protocols without losing the upstream assignment', () => {
+    const config = configTemplate('music');
+    config.music.modes.text_to_music.upstream_model_id = 'V5_5';
+
+    const legacy = setMusicProtocol(config, MUSIC_PROTOCOL_LEGACY);
+    assert.equal(legacy.music.adapter, 'music-task');
+    assert.equal(legacy.music.task_protocol, undefined);
+    assert.equal(legacy.music.modes.text_to_music.upstream_model_id, 'V5_5');
+
+    const restored = setMusicProtocol(legacy, MUSIC_PROTOCOL_SUNOAPI_V1);
+    assert.equal(restored.music.task_protocol, MUSIC_PROTOCOL_SUNOAPI_V1);
+    assert.equal(restored.music.modes.text_to_music.upstream_model_id, 'V5_5');
+    assert.equal(
+      restored.music.modes.text_to_music.parameters.duration.supported,
+      true,
+    );
+    assert.equal(
+      restored.music.modes.text_to_music.parameters.persona
+        .voice_persona_supported,
+      true,
+    );
   });
 
   test('round trips media combinations', () => {

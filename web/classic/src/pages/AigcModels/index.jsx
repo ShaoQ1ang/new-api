@@ -51,7 +51,11 @@ import {
 import { API, showError, showSuccess, timestamp2string } from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import CapabilityEditor from './CapabilityEditor';
-import { configTemplate, profileConfigAssignments } from './capabilityConfig';
+import {
+  configTemplate,
+  profileConfigAssignments,
+  syncMusicModelCapabilities,
+} from './capabilityConfig';
 
 const { Text, Title } = Typography;
 
@@ -131,6 +135,9 @@ function AigcProfileEditor({
     const next = structuredClone(config);
     if (form.model_type === 'text') {
       next.text.upstream_model_id = upstream;
+    } else if (form.model_type === 'music') {
+      setConfig(syncMusicModelCapabilities(next, upstream));
+      return;
     } else {
       next[form.model_type].modes[mode].upstream_model_id = upstream;
     }

@@ -38,9 +38,13 @@ import {
   IMAGE_COUNT_OPTIONS,
   IMAGE_MODES,
   IMAGE_SIZE_OPTIONS,
+  MUSIC_PROTOCOL_LEGACY,
+  MUSIC_PROTOCOL_SUNOAPI_V1,
+  musicProtocol,
   normalizeIntegerValues,
   parseCombinationValue,
   setImageModes,
+  setMusicProtocol,
   setVideoModes,
   VIDEO_COMBINATION_OPTIONS,
   VIDEO_DURATION_OPTIONS,
@@ -677,69 +681,285 @@ function VideoCapabilityEditor({ config, upstreamModels, onChange }) {
 function MusicCapabilityEditor({ config, onChange }) {
   const { t } = useTranslation();
   const mode = config.music.modes.text_to_music;
-  const instrumental = mode.parameters.instrumental;
+  const parameters = mode.parameters || {};
+  const instrumental = parameters.instrumental || {
+    supported: false,
+    default: false,
+  };
   const output = mode.output;
+  const protocol = musicProtocol(config);
+  const sunoAPIV1 = protocol === MUSIC_PROTOCOL_SUNOAPI_V1;
+  const supportsVoicePersona =
+    mode.upstream_model_id === 'V5' || mode.upstream_model_id === 'V5_5';
+  const supportsDuration = mode.upstream_model_id === 'V5_5';
 
   const updateMode = (update) => {
     const next = structuredClone(config);
+    next.music.modes.text_to_music.parameters ||= {};
     update(next.music.modes.text_to_music);
     onChange(next);
   };
 
-  return (
-    <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
-      <div className='grid grid-cols-2 gap-4'>
-        <Field label={t('支持纯音乐')}>
+  const updateParameter = (name, update, fallback = { supported: false }) =>
+    updateMode((draft) => {
+      draft.parameters[name] ||= structuredClone(fallback);
+      update(draft.parameters[name]);
+    });
+
+  const stringCapability = (name, label, defaultMaxLength) => {
+    const value = parameters[name] || {
+      supported: false,
+      max_length: defaultMaxLength,
+    };
+    return (
+      <div className='grid grid-cols-[minmax(0,1fr)_minmax(120px,1fr)] gap-4'>
+        <Field label={t(label)}>
           <Switch
-            checked={instrumental.supported}
+            checked={Boolean(value.supported)}
             onChange={(checked) =>
-              updateMode((draft) => {
-                draft.parameters.instrumental.supported = checked;
-                if (!checked) draft.parameters.instrumental.default = false;
-              })
+              updateParameter(
+                name,
+                (draft) => {
+                  draft.supported = checked;
+                },
+                { supported: false, max_length: defaultMaxLength },
+              )
             }
           />
         </Field>
-        <Field label={t('默认纯音乐')}>
-          <Switch
-            disabled={!instrumental.supported}
-            checked={instrumental.default}
-            onChange={(checked) =>
-              updateMode((draft) => {
-                draft.parameters.instrumental.default = checked;
-              })
-            }
-          />
-        </Field>
-      </div>
-      <div className='grid grid-cols-2 gap-4'>
-        <Field label={t('最少曲目数')}>
+        <Field label={t('最大字符数')}>
           <InputNumber
             min={1}
-            value={output.min_tracks}
+            disabled={!value.supported}
+            value={value.max_length || defaultMaxLength}
             style={{ width: '100%' }}
-            onChange={(value) =>
-              updateMode((draft) => {
-                draft.output.min_tracks = Number(value) || 1;
-                if (draft.output.max_tracks < draft.output.min_tracks)
-                  draft.output.max_tracks = draft.output.min_tracks;
-              })
-            }
-          />
-        </Field>
-        <Field label={t('最多曲目数')}>
-          <InputNumber
-            min={output.min_tracks}
-            value={output.max_tracks}
-            style={{ width: '100%' }}
-            onChange={(value) =>
-              updateMode((draft) => {
-                draft.output.max_tracks = Number(value) || output.min_tracks;
-              })
+            onChange={(next) =>
+              updateParameter(
+                name,
+                (draft) => {
+                  draft.max_length = Number(next) || defaultMaxLength;
+                },
+                { supported: false, max_length: defaultMaxLength },
+              )
             }
           />
         </Field>
       </div>
+    );
+  };
+
+  return (
+    <div className='flex flex-col gap-5'>
+      <Section title={t('接入协议')}>
+        <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
+          <Field
+            label={t('音乐任务协议')}
+            hint={t(
+              'SunoAPI v1 使用生成接口和后台轮询；旧协议保留已有任务兼容性',
+            )}
+          >
+            <Select
+              value={protocol}
+              style={{ width: '100%' }}
+              onChange={(value) => onChange(setMusicProtocol(config, value))}
+            >
+              <Select.Option value={MUSIC_PROTOCOL_SUNOAPI_V1}>
+                SunoAPI v1
+              </Select.Option>
+              <Select.Option value={MUSIC_PROTOCOL_LEGACY}>
+                {t('旧 Suno 协议')}
+              </Select.Option>
+            </Select>
+          </Field>
+          <Field label={t('曲目输出')}>
+            {sunoAPIV1 ? (
+              <Input value={t('固定生成 2 首')} disabled />
+            ) : (
+              <div className='grid grid-cols-2 gap-3'>
+                <InputNumber
+                  min={1}
+                  value={output.min_tracks}
+                  style={{ width: '100%' }}
+                  onChange={(value) =>
+                    updateMode((draft) => {
+                      draft.output.min_tracks = Number(value) || 1;
+                      if (draft.output.max_tracks < draft.output.min_tracks)
+                        draft.output.max_tracks = draft.output.min_tracks;
+                    })
+                  }
+                />
+                <InputNumber
+                  min={output.min_tracks}
+                  value={output.max_tracks}
+                  style={{ width: '100%' }}
+                  onChange={(value) =>
+                    updateMode((draft) => {
+                      draft.output.max_tracks =
+                        Number(value) || output.min_tracks;
+                    })
+                  }
+                />
+              </div>
+            )}
+          </Field>
+        </div>
+      </Section>
+
+      <Section title={t('基础能力')}>
+        <div className='grid grid-cols-2 gap-4 md:grid-cols-3'>
+          <Field label={t('支持纯音乐')}>
+            <Switch
+              checked={Boolean(instrumental.supported)}
+              onChange={(checked) =>
+                updateParameter(
+                  'instrumental',
+                  (draft) => {
+                    draft.supported = checked;
+                    if (!checked) draft.default = false;
+                  },
+                  { supported: true, default: false, configurable: true },
+                )
+              }
+            />
+          </Field>
+          <Field label={t('默认纯音乐')}>
+            <Switch
+              disabled={!instrumental.supported}
+              checked={Boolean(instrumental.default)}
+              onChange={(checked) =>
+                updateParameter('instrumental', (draft) => {
+                  draft.default = checked;
+                })
+              }
+            />
+          </Field>
+          <Field label={t('允许用户切换')}>
+            <Switch
+              disabled={!instrumental.supported}
+              checked={instrumental.configurable !== false}
+              onChange={(checked) =>
+                updateParameter('instrumental', (draft) => {
+                  draft.configurable = checked;
+                })
+              }
+            />
+          </Field>
+        </div>
+      </Section>
+
+      {sunoAPIV1 ? (
+        <>
+          <Section title={t('歌词与描述字段')}>
+            <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
+              {stringCapability('exact_lyrics', '精确歌词', 5000)}
+              {stringCapability('style', '风格', 1000)}
+              {stringCapability('title', '标题', 100)}
+              {stringCapability('negative_tags', '排除风格', 1000)}
+            </div>
+          </Section>
+
+          <Section title={t('Persona 与生成控制')}>
+            <div className='grid grid-cols-2 gap-4 md:grid-cols-4'>
+              <Field label={t('支持 Persona')}>
+                <Switch
+                  checked={Boolean(parameters.persona?.supported)}
+                  onChange={(checked) =>
+                    updateParameter(
+                      'persona',
+                      (draft) => {
+                        draft.supported = checked;
+                        if (!checked) draft.voice_persona_supported = false;
+                      },
+                      { supported: false, voice_persona_supported: false },
+                    )
+                  }
+                />
+              </Field>
+              <Field label={t('支持声音 Persona')}>
+                <Switch
+                  disabled={
+                    !parameters.persona?.supported || !supportsVoicePersona
+                  }
+                  checked={Boolean(parameters.persona?.voice_persona_supported)}
+                  onChange={(checked) =>
+                    updateParameter('persona', (draft) => {
+                      draft.voice_persona_supported = checked;
+                    })
+                  }
+                />
+              </Field>
+              <Field label={t('人声音色')}>
+                <Switch
+                  checked={Boolean(parameters.vocal_gender?.supported)}
+                  onChange={(checked) =>
+                    updateParameter('vocal_gender', (draft) => {
+                      draft.supported = checked;
+                    })
+                  }
+                />
+              </Field>
+              <Field label={t('高级权重')}>
+                <Switch
+                  checked={Boolean(parameters.advanced_weights?.supported)}
+                  onChange={(checked) =>
+                    updateParameter('advanced_weights', (draft) => {
+                      draft.supported = checked;
+                    })
+                  }
+                />
+              </Field>
+            </div>
+          </Section>
+
+          <Section title={t('时长控制')}>
+            <div className='grid grid-cols-1 gap-4 md:grid-cols-3'>
+              <Field label={t('支持指定时长')}>
+                <Switch
+                  disabled={!supportsDuration}
+                  checked={Boolean(parameters.duration?.supported)}
+                  onChange={(checked) =>
+                    updateParameter(
+                      'duration',
+                      (draft) => {
+                        draft.supported = checked;
+                      },
+                      { supported: false, min: 10, max: 360 },
+                    )
+                  }
+                />
+              </Field>
+              <Field label={t('最短秒数')}>
+                <InputNumber
+                  min={1}
+                  max={360}
+                  disabled={!parameters.duration?.supported}
+                  value={parameters.duration?.min || 10}
+                  style={{ width: '100%' }}
+                  onChange={(value) =>
+                    updateParameter('duration', (draft) => {
+                      draft.min = Number(value) || 10;
+                    })
+                  }
+                />
+              </Field>
+              <Field label={t('最长秒数')}>
+                <InputNumber
+                  min={parameters.duration?.min || 10}
+                  max={360}
+                  disabled={!parameters.duration?.supported}
+                  value={parameters.duration?.max || 360}
+                  style={{ width: '100%' }}
+                  onChange={(value) =>
+                    updateParameter('duration', (draft) => {
+                      draft.max = Number(value) || 360;
+                    })
+                  }
+                />
+              </Field>
+            </div>
+          </Section>
+        </>
+      ) : null}
     </div>
   );
 }

@@ -148,3 +148,41 @@ func TestParseCompleteSunoAPIMusicConfiguration(t *testing.T) {
 	assert.Equal(t, "sunoapi-v1", config.Music.TaskProtocol)
 	assert.Equal(t, 360, config.Music.Modes["text_to_music"].Parameters.Duration.Max)
 }
+
+func TestParseRejectsInconsistentSunoAPIMusicConfiguration(t *testing.T) {
+	tests := []struct {
+		name      string
+		musicJSON string
+		message   string
+	}{
+		{
+			name:      "wrong adapter",
+			musicJSON: `{"adapter":"music-task","task_protocol":"sunoapi-v1","modes":{"text_to_music":{"upstream_model_id":"V5","parameters":{"instrumental":{"supported":true}},"output":{"min_tracks":2,"max_tracks":2}}}}`,
+			message:   "requires the sunoapi-music adapter",
+		},
+		{
+			name:      "wrong output count",
+			musicJSON: `{"adapter":"sunoapi-music","task_protocol":"sunoapi-v1","modes":{"text_to_music":{"upstream_model_id":"V5","parameters":{"instrumental":{"supported":true}},"output":{"min_tracks":1,"max_tracks":2}}}}`,
+			message:   "requires exactly two output tracks",
+		},
+		{
+			name:      "duration on V5",
+			musicJSON: `{"adapter":"sunoapi-music","task_protocol":"sunoapi-v1","modes":{"text_to_music":{"upstream_model_id":"V5","parameters":{"instrumental":{"supported":true},"duration":{"supported":true,"min":10,"max":360}},"output":{"min_tracks":2,"max_tracks":2}}}}`,
+			message:   "duration is only supported by V5_5",
+		},
+		{
+			name:      "voice persona on V4",
+			musicJSON: `{"adapter":"sunoapi-music","task_protocol":"sunoapi-v1","modes":{"text_to_music":{"upstream_model_id":"V4","parameters":{"instrumental":{"supported":true},"persona":{"supported":true,"voice_persona_supported":true}},"output":{"min_tracks":2,"max_tracks":2}}}}`,
+			message:   "voice persona is only supported by V5 and V5_5",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse(ModelTypeMusic, []byte(`{"music":`+tt.musicJSON+`}`))
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.message)
+		})
+	}
+}

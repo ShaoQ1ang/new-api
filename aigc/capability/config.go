@@ -247,6 +247,10 @@ func validateMusic(config MusicConfig) error {
 	if strings.TrimSpace(config.Adapter) == "" {
 		return fmt.Errorf("music adapter is required")
 	}
+	protocol := strings.TrimSpace(config.TaskProtocol)
+	if protocol != "" && protocol != "sunoapi-v1" {
+		return fmt.Errorf("unsupported music task protocol %q", protocol)
+	}
 	if len(config.Modes) != 1 {
 		return fmt.Errorf("music configuration must contain text_to_music only")
 	}
@@ -277,6 +281,21 @@ func validateMusic(config MusicConfig) error {
 	}
 	if parameters.Persona.VoicePersonaSupported && !parameters.Persona.Supported {
 		return fmt.Errorf("voice persona requires persona support")
+	}
+	if protocol == "sunoapi-v1" {
+		if config.Adapter != "sunoapi-music" {
+			return fmt.Errorf("sunoapi-v1 requires the sunoapi-music adapter")
+		}
+		if mode.Output.MinTracks != 2 || mode.Output.MaxTracks != 2 {
+			return fmt.Errorf("sunoapi-v1 requires exactly two output tracks")
+		}
+		model := strings.TrimSpace(mode.UpstreamModelID)
+		if parameters.Duration.Supported && model != "V5_5" {
+			return fmt.Errorf("music duration is only supported by V5_5")
+		}
+		if parameters.Persona.VoicePersonaSupported && model != "V5" && model != "V5_5" {
+			return fmt.Errorf("voice persona is only supported by V5 and V5_5")
+		}
 	}
 	return nil
 }
