@@ -176,13 +176,136 @@ func TestWalletReserveCompletionDoesNotOverwriteNewerCancelTarget(t *testing.T) 
 		ExchangeRate:   "7.30000000",
 	}
 	require.NoError(t, model.CreateWalletUsageCallback(record))
-	require.NoError(t, model.PrepareWalletUsageCancel(record.APIRequestID))
+	require.NoError(t, model.PrepareWalletUsageCancel(record.APIRequestID, time.Now().Add(time.Minute).UnixMilli()))
 
 	require.NoError(t, model.MarkWalletUsageReserved(record.APIRequestID, true))
 	stored, err := model.GetWalletUsageCallback(record.APIRequestID)
 	require.NoError(t, err)
 	assert.Equal(t, model.WalletCallbackStatusCancelPending, stored.Status)
 	assert.Positive(t, stored.ReservedAtMS)
+}
+
+func TestWalletUncertainReserveFailureRetriesReserveBeforeCancel(t *testing.T) {
+	useWalletCallbackTestDB(t, &model.WalletUsageCallback{})
+	t.Setenv("WALLET_CALLBACK_FAIL_CLOSED", "true")
+
+	var mu sync.Mutex
+	paths := make([]string, 0, 3)
+	reserveCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		mu.Lock()
+		paths = append(paths, request.URL.Path)
+		if request.URL.Path == "/internal/callbacks/new-api/usage/reserve" {
+			reserveCalls++
+			if reserveCalls == 1 {
+				mu.Unlock()
+				http.Error(w, "wallet unavailable", http.StatusServiceUnavailable)
+				return
+			}
+		}
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{}}`))
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("WALLET_CALLBACK_BASE_URL", server.URL)
+	t.Setenv("WALLET_CALLBACK_ENABLED", "true")
+
+	relayInfo := &relaycommon.RelayInfo{RequestId: "wallet-reserve-then-cancel", UserId: 42, StartTime: time.Now()}
+	callback, err := newWalletUsageCallbackSession(relayInfo, 100)
+	require.Error(t, err)
+	require.NotNil(t, callback)
+
+	record, err := model.GetWalletUsageCallback(relayInfo.RequestId)
+	require.NoError(t, err)
+	assert.Equal(t, model.WalletCallbackStatusCancelPending, record.Status)
+	assert.Zero(t, record.ReservedAtMS)
+
+	require.NoError(t, callback.Cancel())
+	record, err = model.GetWalletUsageCallback(relayInfo.RequestId)
+	require.NoError(t, err)
+	assert.Equal(t, model.WalletCallbackStatusCancelled, record.Status)
+	assert.Positive(t, record.ReservedAtMS)
+	mu.Lock()
+	assert.Equal(t, []string{
+		"/internal/callbacks/new-api/usage/reserve",
+		"/internal/callbacks/new-api/usage/reserve",
+		"/internal/callbacks/new-api/usage/cancel",
+	}, paths)
+	mu.Unlock()
+}
+
+func TestWalletReserveBusinessRejectionDoesNotCancel(t *testing.T) {
+	useWalletCallbackTestDB(t, &model.WalletUsageCallback{})
+	t.Setenv("WALLET_CALLBACK_FAIL_CLOSED", "true")
+
+	var mu sync.Mutex
+	paths := make([]string, 0, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		mu.Lock()
+		paths = append(paths, request.URL.Path)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"code":210008,"message":"insufficient funds"}`))
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("WALLET_CALLBACK_BASE_URL", server.URL)
+	t.Setenv("WALLET_CALLBACK_ENABLED", "true")
+
+	relayInfo := &relaycommon.RelayInfo{RequestId: "wallet-reserve-rejected", UserId: 42, StartTime: time.Now()}
+	callback, err := newWalletUsageCallbackSession(relayInfo, 100)
+	require.Error(t, err)
+	require.NotNil(t, callback)
+	require.NoError(t, callback.Cancel())
+
+	record, err := model.GetWalletUsageCallback(relayInfo.RequestId)
+	require.NoError(t, err)
+	assert.Equal(t, model.WalletCallbackStatusRejected, record.Status)
+	assert.Equal(t, walletFailureInsufficientFunds, record.FailureCode)
+	assert.Zero(t, record.ReservedAtMS)
+	mu.Lock()
+	assert.Equal(t, []string{"/internal/callbacks/new-api/usage/reserve"}, paths)
+	mu.Unlock()
+}
+
+func TestWalletCallbackClaimUsesConditionalLease(t *testing.T) {
+	useWalletCallbackTestDB(t, &model.WalletUsageCallback{})
+	nowMS := time.Now().UnixMilli()
+	record := &model.WalletUsageCallback{
+		APIRequestID: "wallet-callback-claim",
+		UserID:       42, ReservedQuota: 100, ReservedAmount: 100,
+		ExchangeRate: "7.30000000", NextRetryAtMS: nowMS,
+	}
+	require.NoError(t, model.CreateWalletUsageCallback(record))
+
+	claimed, err := model.ClaimWalletUsageCallback(record.ID, model.WalletCallbackStatusReservePending, nowMS, nowMS+30_000)
+	require.NoError(t, err)
+	assert.True(t, claimed)
+	claimed, err = model.ClaimWalletUsageCallback(record.ID, model.WalletCallbackStatusReservePending, nowMS, nowMS+30_000)
+	require.NoError(t, err)
+	assert.False(t, claimed)
+}
+
+func TestWalletCallbackCircuitBreakerProbesThenRecovers(t *testing.T) {
+	var breaker walletCallbackCircuitBreaker
+	now := time.Now()
+	limit, allowed := breaker.scanLimit(now)
+	assert.True(t, allowed)
+	assert.Equal(t, walletCallbackBatchSize, limit)
+
+	breaker.recordUnavailable(now)
+	limit, allowed = breaker.scanLimit(now.Add(4 * time.Second))
+	assert.False(t, allowed)
+	assert.Zero(t, limit)
+	limit, allowed = breaker.scanLimit(now.Add(5 * time.Second))
+	assert.True(t, allowed)
+	assert.Equal(t, 1, limit)
+
+	breaker.recordAvailable()
+	limit, allowed = breaker.scanLimit(now.Add(5 * time.Second))
+	assert.True(t, allowed)
+	assert.Equal(t, walletCallbackBatchSize, limit)
 }
 
 func TestWalletCallbackConfigDefaultsToFailOpen(t *testing.T) {

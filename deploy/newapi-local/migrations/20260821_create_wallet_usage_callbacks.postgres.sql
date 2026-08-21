@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS wallet_usage_callbacks (
     status VARCHAR(32) NOT NULL,
     next_retry_at_ms BIGINT NOT NULL,
     retry_count BIGINT NOT NULL DEFAULT 0,
+    failure_code VARCHAR(64) NOT NULL DEFAULT '',
     last_error TEXT,
     reserved_at_ms BIGINT NOT NULL DEFAULT 0,
     finalized_at_ms BIGINT NOT NULL DEFAULT 0,
