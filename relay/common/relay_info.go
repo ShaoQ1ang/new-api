@@ -143,6 +143,10 @@ type RelayInfo struct {
 	SubscriptionPlanTitle string
 	// RequestId is used for idempotent pre-consume/refund
 	RequestId string
+	// BusinessOrderNo is an optional parent charge order carried by trusted
+	// internal callers via X-Business-Order. When set, billing is delegated to
+	// WalletService's BUSINESS_INCLUDED flow instead of local quota deduction.
+	BusinessOrderNo string
 	// SubscriptionAmountTotal / SubscriptionAmountUsedAfterPreConsume are used to compute remaining in logs.
 	SubscriptionAmountTotal               int64
 	SubscriptionAmountUsedAfterPreConsume int64
@@ -476,12 +480,13 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 	info := &RelayInfo{
 		Request: request,
 
-		RequestId:  reqId,
-		UserId:     common.GetContextKeyInt(c, constant.ContextKeyUserId),
-		UsingGroup: common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
-		UserGroup:  common.GetContextKeyString(c, constant.ContextKeyUserGroup),
-		UserQuota:  common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
-		UserEmail:  common.GetContextKeyString(c, constant.ContextKeyUserEmail),
+		RequestId:       reqId,
+		BusinessOrderNo: strings.TrimSpace(c.GetHeader("X-Business-Order")),
+		UserId:          common.GetContextKeyInt(c, constant.ContextKeyUserId),
+		UsingGroup:      common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
+		UserGroup:       common.GetContextKeyString(c, constant.ContextKeyUserGroup),
+		UserQuota:       common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
+		UserEmail:       common.GetContextKeyString(c, constant.ContextKeyUserEmail),
 
 		OriginModelName: common.GetContextKeyString(c, constant.ContextKeyOriginalModel),
 

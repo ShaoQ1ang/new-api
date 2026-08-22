@@ -380,6 +380,17 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
 
+	// 覆盖模式：受信调用方通过 X-Business-Order 指定父订单，资金由父 CHARGE 承担，
+	// 不做本地 user/token 额度扣减；钱包回调 reserve 失败即拒绝请求。
+	if relayInfo.BusinessOrderNo != "" {
+		session := &BillingSession{
+			relayInfo: relayInfo,
+			funding:   &CoveredFunding{},
+		}
+		relayInfo.BillingSource = BillingSourceBusinessIncluded
+		return session, nil
+	}
+
 	// 钱包路径需要先检查用户额度
 	tryWallet := func() (*BillingSession, *types.NewAPIError) {
 		userQuota, err := model.GetUserQuota(relayInfo.UserId, false)

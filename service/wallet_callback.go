@@ -187,13 +187,14 @@ func newWalletUsageCallbackSession(relayInfo *relaycommon.RelayInfo, estimatedQu
 		usageAtMS = time.Now().UnixMilli()
 	}
 	record := &model.WalletUsageCallback{
-		APIRequestID:   relayInfo.RequestId,
-		UserID:         relayInfo.UserId,
-		UsageAtMS:      usageAtMS,
-		ReservedQuota:  int64(estimatedQuota),
-		ReservedAmount: estimatedAmount,
-		ExchangeRate:   exchangeRate.StringFixed(8),
-		NextRetryAtMS:  walletCallbackProtectedUntil(config),
+		APIRequestID:    relayInfo.RequestId,
+		UserID:          relayInfo.UserId,
+		BusinessOrderNo: &relayInfo.BusinessOrderNo,
+		UsageAtMS:       usageAtMS,
+		ReservedQuota:   int64(estimatedQuota),
+		ReservedAmount:  estimatedAmount,
+		ExchangeRate:    exchangeRate.StringFixed(8),
+		NextRetryAtMS:   walletCallbackProtectedUntil(config),
 	}
 	if err := model.CreateWalletUsageCallback(record); err != nil {
 		return nil, fmt.Errorf("create wallet callback record: %w", err)

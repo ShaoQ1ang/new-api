@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -267,6 +268,54 @@ func TestWalletReserveBusinessRejectionDoesNotCancel(t *testing.T) {
 	mu.Lock()
 	assert.Equal(t, []string{"/internal/callbacks/new-api/usage/reserve"}, paths)
 	mu.Unlock()
+}
+
+func TestCoveredBillingSkipsLocalQuotaAndCarriesOrderNo(t *testing.T) {
+	useWalletCallbackTestDB(t, &model.User{}, &model.WalletUsageCallback{})
+	require.NoError(t, model.DB.Create(&model.User{Id: 7, Username: "covered_user", Quota: 500}).Error)
+
+	var mu sync.Mutex
+	var bodies []walletReserveRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		if r.URL.Path == "/internal/callbacks/new-api/usage/reserve" {
+			var body walletReserveRequest
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			bodies = append(bodies, body)
+		}
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{}}`))
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("WALLET_CALLBACK_BASE_URL", server.URL)
+	t.Setenv("WALLET_CALLBACK_ENABLED", "true")
+	t.Setenv("WALLET_CALLBACK_FAIL_CLOSED", "true")
+
+	ginContext, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ginContext.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	ginContext.Request.Header.Set("X-Business-Order", "order-monthly-001")
+	relayInfo := &relaycommon.RelayInfo{
+		RequestId:       "covered-request-1",
+		UserId:          7,
+		StartTime:       time.Now(),
+		BusinessOrderNo: ginContext.Request.Header.Get("X-Business-Order"),
+	}
+
+	apiErr := PreConsumeBilling(ginContext, 100, relayInfo)
+	require.Nil(t, apiErr)
+	require.NotNil(t, relayInfo.Billing)
+	assert.Equal(t, BillingSourceBusinessIncluded, relayInfo.BillingSource)
+
+	var user model.User
+	require.NoError(t, model.DB.First(&user, 7).Error)
+	assert.Equal(t, 500, user.Quota, "local quota must not change in covered mode")
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, bodies, 1)
+	require.NotNil(t, bodies[0].BusinessOrderNo)
+	assert.Equal(t, "order-monthly-001", *bodies[0].BusinessOrderNo)
 }
 
 func TestWalletCallbackClaimUsesConditionalLease(t *testing.T) {
