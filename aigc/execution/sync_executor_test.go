@@ -69,7 +69,7 @@ func TestBuildSyncRequestPreservesResolvedImageContract(t *testing.T) {
 	assert.Equal(t, "url", image.ResponseFormat)
 	require.NotNil(t, image.N)
 	assert.Equal(t, uint(2), *image.N)
-	assert.JSONEq(t, `["https://cdn.test/one.png","https://cdn.test/two.png"]`, string(image.Images))
+	assert.JSONEq(t, `[{"image_url":"https://cdn.test/one.png"},{"image_url":"https://cdn.test/two.png"}]`, string(image.Images))
 }
 
 func TestSyncExecutorReturnsCompletedTextOutput(t *testing.T) {
