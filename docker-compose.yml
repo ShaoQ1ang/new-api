@@ -19,7 +19,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: beyondia/new-api:local
+    image: lingentic/new-api:local
     container_name: new-api
     restart: always
     command: --log-dir /app/logs
@@ -73,7 +73,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.control
-    image: beyondia/new-api-control:local
+    image: lingentic/new-api-control:local
     container_name: new-api-control
     restart: always
     init: true
@@ -94,7 +94,7 @@ services:
       - NEW_API_CONTROL_TLS_CERT_FILE=/run/new-api-control/tls.crt
       - NEW_API_CONTROL_TLS_KEY_FILE=/run/new-api-control/tls.key
       - NEW_API_CONTROL_CLIENT_CA_FILE=/run/new-api-control/client-ca.crt
-      - NEW_API_CONTROL_ALLOWED_CLIENT_ID=spiffe://beyondia.internal/new-api-integration
+      - NEW_API_CONTROL_ALLOWED_CLIENT_ID=spiffe://lingentic.internal/new-api-integration
       - TZ=Asia/Shanghai
     volumes:
       - ./deploy/new-api-control/certs:/run/new-api-control:ro

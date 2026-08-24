@@ -22,4 +22,4 @@ server and client CAs so trust in either direction stays narrowly scoped.
 
 The Integration certificate identity must match
 `NEW_API_CONTROL_ALLOWED_CLIENT_ID`. The default Compose value expects the URI
-SAN `spiffe://beyondia.internal/new-api-integration`.
+SAN `spiffe://lingentic.internal/new-api-integration`.
