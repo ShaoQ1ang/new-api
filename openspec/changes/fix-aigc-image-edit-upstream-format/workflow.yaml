@@ -1,5 +1,5 @@
 change_id: fix-aigc-image-edit-upstream-format
-phase: verification
+phase: archiving
 workflow_tier: lightweight
 workflow_tier_rationale: Local, reversible New API relay conversion fix with no public contract, persistence, security, or billing changes.
 openspec_scope: local
@@ -52,15 +52,15 @@ architecture_review_verdict: not-selected
 implementation_review_gate: passed
 implementation_review_disposition: none
 tasks_status: done
-delivery_ready: false
+delivery_ready: true
 
-isolation_audit: pending
-verification_rounds: 0
+isolation_audit: clean
+verification_rounds: 1
 verification_round_limit: 2
-verification_verdict: pending
-verification_gate: pending
-verification_disposition: pending
+verification_verdict: clean
+verification_gate: passed
+verification_disposition: none
 archive_status: pending
 archive_path: null
 created: 2026-08-24T15:05:01+08:00
-updated: 2026-08-24T15:32:00+08:00
+updated: 2026-08-24T15:47:35+08:00

@@ -9,8 +9,8 @@ without requiring callers to know the selected upstream image channel format.
 - **THEN** New API preserves the URL order while resolving the request as an image edit
 
 ### Requirement: Build structured JSON image-edit inputs
-After resolving an AIGC image request to `image_edit`, the New API AIGC
-compatibility layer SHALL represent every source URL as an object containing the
+The New API AIGC compatibility layer SHALL, after resolving an AIGC image
+request to `image_edit`, represent every source URL as an object containing the
 `image_url` field before the request enters generic relay.
 
 #### Scenario: Relay two image URLs
