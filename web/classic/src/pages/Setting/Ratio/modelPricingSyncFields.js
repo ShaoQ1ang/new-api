@@ -27,6 +27,28 @@ const RATIO_SYNC_FIELDS = new Set([
   'audio_completion_ratio',
 ]);
 
+const PRICING_SYNC_OPTION_KEYS = [
+  'ModelRatio',
+  'CompletionRatio',
+  'CacheRatio',
+  'CreateCacheRatio',
+  'ImageRatio',
+  'AudioRatio',
+  'AudioCompletionRatio',
+  'ModelPrice',
+  'VideoSecondsPrice',
+  'ImageInputPrice',
+  'billing_setting.billing_mode',
+  'billing_setting.billing_expr',
+];
+
+export function parseCurrentPricingOptions(options) {
+  return PRICING_SYNC_OPTION_KEYS.reduce((acc, key) => {
+    acc[key] = JSON.parse(options[key] || '{}');
+    return acc;
+  }, {});
+}
+
 export function getPricingSyncCategory(ratioType) {
   if (ratioType === 'image_input_price') return 'ancillary';
   if (ratioType === 'model_price') return 'price';

@@ -90,3 +90,17 @@ test('buildImageInputPriceValueFromModelMap removes a cleared model', () => {
 
   assert.deepEqual(JSON.parse(result), {});
 });
+
+test('buildImageInputPriceValueFromModelMap removes an editor-deleted model', () => {
+  const result = buildImageInputPriceValueFromModelMap(
+    `{
+      "deleted-model":{"default":0.01,"free_count":1},
+      "other-model":{"default":0.02}
+    }`,
+    { 'deleted-model': null },
+  );
+
+  assert.deepEqual(JSON.parse(result), {
+    'other-model': { default: 0.02 },
+  });
+});

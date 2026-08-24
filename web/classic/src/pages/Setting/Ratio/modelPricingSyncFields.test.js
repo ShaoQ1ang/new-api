@@ -21,8 +21,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   getPricingSyncCategory,
+  parseCurrentPricingOptions,
   shouldDiscardSelectedPricingField,
 } from './modelPricingSyncFields.js';
+
+test('current pricing options include image input prices for every sync path', () => {
+  const current = parseCurrentPricingOptions({
+    ModelPrice: '{"request-model":0.2}',
+    VideoSecondsPrice: '{"video-model":{"720p":{"default":0.1}}}',
+    ImageInputPrice: '{"other-model":{"default":0.01}}',
+  });
+
+  assert.deepEqual(current.ModelPrice, { 'request-model': 0.2 });
+  assert.deepEqual(current.VideoSecondsPrice, {
+    'video-model': { '720p': { default: 0.1 } },
+  });
+  assert.deepEqual(current.ImageInputPrice, {
+    'other-model': { default: 0.01 },
+  });
+});
 
 test('image input price is an ancillary synchronization field', () => {
   assert.equal(getPricingSyncCategory('image_input_price'), 'ancillary');

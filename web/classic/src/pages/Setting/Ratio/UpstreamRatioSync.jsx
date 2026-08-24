@@ -51,6 +51,7 @@ import {
 import ChannelSelectorModal from '../../../components/settings/ChannelSelectorModal';
 import {
   getPricingSyncCategory,
+  parseCurrentPricingOptions,
   shouldDiscardSelectedPricingField,
 } from './modelPricingSyncFields';
 
@@ -451,26 +452,7 @@ export default function UpstreamRatioSync(props) {
   );
 
   const applySync = async () => {
-    const currentRatios = {
-      ModelRatio: JSON.parse(props.options.ModelRatio || '{}'),
-      CompletionRatio: JSON.parse(props.options.CompletionRatio || '{}'),
-      CacheRatio: JSON.parse(props.options.CacheRatio || '{}'),
-      CreateCacheRatio: JSON.parse(props.options.CreateCacheRatio || '{}'),
-      ImageRatio: JSON.parse(props.options.ImageRatio || '{}'),
-      AudioRatio: JSON.parse(props.options.AudioRatio || '{}'),
-      AudioCompletionRatio: JSON.parse(
-        props.options.AudioCompletionRatio || '{}',
-      ),
-      ModelPrice: JSON.parse(props.options.ModelPrice || '{}'),
-      VideoSecondsPrice: JSON.parse(props.options.VideoSecondsPrice || '{}'),
-      ImageInputPrice: JSON.parse(props.options.ImageInputPrice || '{}'),
-      'billing_setting.billing_mode': JSON.parse(
-        props.options['billing_setting.billing_mode'] || '{}',
-      ),
-      'billing_setting.billing_expr': JSON.parse(
-        props.options['billing_setting.billing_expr'] || '{}',
-      ),
-    };
+    const currentRatios = parseCurrentPricingOptions(props.options);
 
     const conflicts = [];
 
@@ -1165,29 +1147,7 @@ export default function UpstreamRatioSync(props) {
         loading={confirmLoading}
         onOk={async () => {
           setConfirmLoading(true);
-          const curRatios = {
-            ModelRatio: JSON.parse(props.options.ModelRatio || '{}'),
-            CompletionRatio: JSON.parse(props.options.CompletionRatio || '{}'),
-            CacheRatio: JSON.parse(props.options.CacheRatio || '{}'),
-            CreateCacheRatio: JSON.parse(
-              props.options.CreateCacheRatio || '{}',
-            ),
-            ImageRatio: JSON.parse(props.options.ImageRatio || '{}'),
-            AudioRatio: JSON.parse(props.options.AudioRatio || '{}'),
-            AudioCompletionRatio: JSON.parse(
-              props.options.AudioCompletionRatio || '{}',
-            ),
-            ModelPrice: JSON.parse(props.options.ModelPrice || '{}'),
-            VideoSecondsPrice: JSON.parse(
-              props.options.VideoSecondsPrice || '{}',
-            ),
-            'billing_setting.billing_mode': JSON.parse(
-              props.options['billing_setting.billing_mode'] || '{}',
-            ),
-            'billing_setting.billing_expr': JSON.parse(
-              props.options['billing_setting.billing_expr'] || '{}',
-            ),
-          };
+          const curRatios = parseCurrentPricingOptions(props.options);
           try {
             const success = await performSync(curRatios);
             if (success) {

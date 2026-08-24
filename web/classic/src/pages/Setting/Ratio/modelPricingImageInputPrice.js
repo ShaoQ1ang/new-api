@@ -70,6 +70,11 @@ export function buildImageInputPriceValueFromModelMap(
   );
 
   Object.entries(modelMap || {}).forEach(([modelName, prices]) => {
+    if (prices === null) {
+      delete nextImageInputPrice[modelName];
+      return;
+    }
+
     const nextModelPrices = cloneImageInputPriceMap(
       nextImageInputPrice[modelName],
     );

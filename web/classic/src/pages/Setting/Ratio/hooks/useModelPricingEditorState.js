@@ -1553,6 +1553,15 @@ export function useModelPricingEditorState({
         );
       }
 
+      const activeModelNames = new Set(models.map((model) => model.name));
+      Object.keys(extractImageInputPriceMap(options.ImageInputPrice)).forEach(
+        (modelName) => {
+          if (!activeModelNames.has(modelName)) {
+            imageInputPriceMap[modelName] = null;
+          }
+        },
+      );
+
       const requestQueue = [
         ...Object.entries(output).map(([key, value]) =>
           API.put('/api/option/', {
