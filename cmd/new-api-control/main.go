@@ -97,6 +97,9 @@ func run(ctx context.Context) error {
 	if err := model.InitDB(); err != nil {
 		return fmt.Errorf("initialize database: %w", err)
 	}
+	if err := model.InitLogDB(); err != nil {
+		return fmt.Errorf("initialize log database: %w", err)
+	}
 	defer model.CloseDB()
 	model.InitOptionMap()
 	if err := common.InitRedisClient(); err != nil {
