@@ -4,6 +4,18 @@
 entry point for IAM-managed users and API keys. The public new-api HTTP session
 and administrator endpoints are deliberately not reused.
 
+The Compose service is opt-in through the `iam-control` profile. Existing and
+general-purpose deployments that run `docker compose up -d` do not build or
+start it. Deploy it only on the dedicated IAM-connected server:
+
+```bash
+docker compose --profile iam-control up -d --build new-api-control
+```
+
+Explicitly targeting a profiled service may also activate it in some Compose
+versions, so operational automation must treat `new-api-control` as a
+dedicated-server component rather than adding it to a generic service list.
+
 ## Security boundary
 
 - TLS 1.3 and a verified client certificate are mandatory. The client

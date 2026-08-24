@@ -62,10 +62,14 @@ services:
       timeout: 10s
       retries: 3
 
-  # IAM control plane. The port is safe to expose only when the host firewall
-  # restricts it to the cluster egress range; every request still requires a
-  # client certificate issued by the dedicated Integration CA.
+  # Opt-in IAM control plane. Default `docker compose up` deployments do not
+  # create this service; enable the `iam-control` profile explicitly. The port
+  # is safe to expose only when the host firewall restricts it to the cluster
+  # egress range; every request still requires a client certificate issued by
+  # the dedicated Integration CA.
   new-api-control:
+    profiles:
+      - iam-control
     build:
       context: .
       dockerfile: Dockerfile.control
