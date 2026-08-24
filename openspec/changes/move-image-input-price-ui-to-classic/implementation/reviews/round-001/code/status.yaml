@@ -1,0 +1,13 @@
+operation: code-review
+state: accepted
+actor: reviewer
+review_scope: full
+agent_id: plan_review
+base_commit: c2db55d67bd435ca2b21137b352f16b8dbc0cb43
+head_commit: c5586e842
+commit_count: 1
+commit_exception: null
+deadline_at: null
+interrupt_sent_at: null
+started: 2026-08-24T19:13:00+08:00
+updated: 2026-08-24T19:18:00+08:00

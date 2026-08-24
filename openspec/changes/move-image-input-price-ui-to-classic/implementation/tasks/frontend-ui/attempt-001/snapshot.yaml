@@ -7,4 +7,4 @@ pre_existing_status:
   - "?? openspec/changes/move-image-input-price-ui-to-classic/"
 pre_existing_tracked_diff_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 base_commit: c2db55d67bd435ca2b21137b352f16b8dbc0cb43
-head_commit: c2db55d67bd435ca2b21137b352f16b8dbc0cb43
+head_commit: 3f8c265c3

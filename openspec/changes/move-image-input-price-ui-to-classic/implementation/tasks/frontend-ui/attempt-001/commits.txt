@@ -1,0 +1,2 @@
+c5586e842 feat(classic): configure input image pricing
+3f8c265c3 fix(classic): preserve image input pricing during sync

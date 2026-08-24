@@ -1,5 +1,5 @@
 change_id: move-image-input-price-ui-to-classic
-phase: implementation
+phase: archiving
 workflow_tier: lightweight
 workflow_tier_rationale: Local and reversible frontend configuration migration with no backend billing or persistence changes.
 openspec_scope: local
@@ -33,7 +33,7 @@ tdd_strategy: strict
 tdd_execution: serial
 tdd_plan_status: ready
 compatibility: fully-compatible
-implementation_stage: final-review
+implementation_stage: complete
 standards_status: loaded
 standards_entry:
   - /Users/niuyouguo/go/src/new-api/AGENTS.md
@@ -46,21 +46,21 @@ minimal_review_verdict: skipped
 minimal_user_decision: skipped
 final_review_topology: code
 implementation_review_round_limit: 2
-implementation_review_rounds: 0
-code_review_verdict: pending
+implementation_review_rounds: 2
+code_review_verdict: advisory
 architecture_review_verdict: not-selected
-implementation_review_gate: pending
-implementation_review_disposition: pending
+implementation_review_gate: passed
+implementation_review_disposition: remediate
 tasks_status: done
-delivery_ready: false
-isolation_audit: pending
-verification_rounds: 0
+delivery_ready: true
+isolation_audit: clean
+verification_rounds: 1
 verification_round_limit: 2
-verification_verdict: pending
-verification_gate: pending
-verification_disposition: pending
+verification_verdict: clean
+verification_gate: passed
+verification_disposition: none
 archive_status: pending
 archive_path: null
 intermediate_cleanup_status: pending
 created: 2026-08-24T00:00:00+08:00
-updated: 2026-08-24T19:05:00+08:00
+updated: 2026-08-24T19:27:00+08:00
