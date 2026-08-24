@@ -313,6 +313,8 @@ func migrateDB() error {
 		&ChatModelOption{},
 		&AlipayPendingTask{},
 		&PlaygroundConversation{},
+		&IAMIdentityLink{},
+		&IAMAPIKeyLink{},
 	)
 	if err != nil {
 		return err
@@ -383,6 +385,8 @@ func migrateDBFast() error {
 		{&ChatModelOption{}, "ChatModelOption"},
 		{&AlipayPendingTask{}, "AlipayPendingTask"},
 		{&PlaygroundConversation{}, "PlaygroundConversation"},
+		{&IAMIdentityLink{}, "IAMIdentityLink"},
+		{&IAMAPIKeyLink{}, "IAMAPIKeyLink"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))

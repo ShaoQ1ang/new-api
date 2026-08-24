@@ -37,16 +37,26 @@ var supportedChatModelAPIs = map[string]struct{}{
 }
 
 func GetUserChatModels(c *gin.Context) {
-	pricingMap, groupRatio, _, err := getUserChatPricingScope(c)
+	response, err := GetUserChatModelsForUser(c.GetInt("id"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": response})
+}
+
+// GetUserChatModelsForUser returns the same user-scoped catalog used by the
+// public chat-models endpoint. new-api-control calls this helper so filtering,
+// group ratios and capability fields cannot drift between the two APIs.
+func GetUserChatModelsForUser(userID int) (dto.UserChatModelsResponse, error) {
+	pricingMap, groupRatio, _, err := getUserChatPricingScopeByUserID(userID)
+	if err != nil {
+		return dto.UserChatModelsResponse{}, err
+	}
 
 	options, err := model.GetEnabledChatModelOptions()
 	if err != nil {
-		common.ApiError(c, err)
-		return
+		return dto.UserChatModelsResponse{}, err
 	}
 
 	autoItems := make([]dto.UserChatModelItem, 0, 1)
@@ -79,13 +89,7 @@ func GetUserChatModels(c *gin.Context) {
 	}
 
 	models := append(autoItems, items...)
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": dto.UserChatModelsResponse{
-			Total:  len(models),
-			Models: models,
-		},
-	})
+	return dto.UserChatModelsResponse{Total: len(models), Models: models}, nil
 }
 
 func ListChatModels(c *gin.Context) {
@@ -550,7 +554,11 @@ func DeleteChatModel(c *gin.Context) {
 }
 
 func getUserChatPricingScope(c *gin.Context) (map[string]model.Pricing, map[string]float64, map[string]string, error) {
-	user, err := model.GetUserCache(c.GetInt("id"))
+	return getUserChatPricingScopeByUserID(c.GetInt("id"))
+}
+
+func getUserChatPricingScopeByUserID(userID int) (map[string]model.Pricing, map[string]float64, map[string]string, error) {
+	user, err := model.GetUserCache(userID)
 	if err != nil {
 		return nil, nil, nil, err
 	}

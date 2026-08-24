@@ -28,6 +28,7 @@ type Token struct {
 	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
 	Group              string         `json:"group" gorm:"default:''"`
 	CrossGroupRetry    bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
+	ManagementSource   string         `json:"management_source" gorm:"type:varchar(16);default:'LOCAL';index"`
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }
 
@@ -284,13 +285,25 @@ func GetTokenByKey(key string, fromDB bool) (token *Token, err error) {
 }
 
 func (token *Token) Insert() error {
-	var err error
-	err = DB.Create(token).Error
-	return err
+	if token.ManagementSource == ManagementSourceIAM {
+		return ErrIAMManagedResource
+	}
+	var owner User
+	if err := DB.Select("id", "management_source").First(&owner, token.UserId).Error; err != nil {
+		return err
+	}
+	if owner.ManagementSource == ManagementSourceIAM {
+		return ErrIAMManagedResource
+	}
+	token.ManagementSource = ManagementSourceLocal
+	return DB.Create(token).Error
 }
 
 // Update Make sure your token's fields is completed, because this will update non-zero values
 func (token *Token) Update() (err error) {
+	if token.ManagementSource == ManagementSourceIAM {
+		return ErrIAMManagedResource
+	}
 	defer func() {
 		if shouldUpdateRedis(true, err) {
 			gopool.Go(func() {
@@ -322,6 +335,9 @@ func (token *Token) SelectUpdate() (err error) {
 }
 
 func (token *Token) Delete() (err error) {
+	if token.ManagementSource == ManagementSourceIAM {
+		return ErrIAMManagedResource
+	}
 	defer func() {
 		if shouldUpdateRedis(true, err) {
 			gopool.Go(func() {
@@ -459,6 +475,12 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 		tx.Rollback()
 		return 0, err
 	}
+	for _, token := range tokens {
+		if token.ManagementSource == ManagementSourceIAM {
+			tx.Rollback()
+			return 0, ErrIAMManagedResource
+		}
+	}
 
 	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Delete(&Token{}).Error; err != nil {
 		tx.Rollback()
@@ -483,7 +505,7 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 func GetTokenKeysByIds(ids []int, userId int) ([]Token, error) {
 	var tokens []Token
 	err := DB.Select("id", commonKeyCol).
-		Where("user_id = ? AND id IN (?)", userId, ids).
+		Where("user_id = ? AND id IN (?) AND management_source <> ?", userId, ids, ManagementSourceIAM).
 		Find(&tokens).Error
 	return tokens, err
 }
