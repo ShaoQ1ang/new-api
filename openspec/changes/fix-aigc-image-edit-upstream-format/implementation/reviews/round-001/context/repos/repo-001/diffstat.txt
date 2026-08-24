@@ -1,0 +1,29 @@
+ aigc/execution/sync_executor_test.go               | 46 +++++++++++++++-
+ aigc/execution/sync_request.go                     |  8 +--
+ .../tasks/1.1/attempt-001/briefing.md              | 11 ++++
+ .../tasks/1.1/attempt-001/changes.diff             | 13 +++++
+ .../tasks/1.1/attempt-001/commits.txt              |  1 +
+ .../implementation/tasks/1.1/attempt-001/result.md | 13 +++++
+ .../tasks/1.1/attempt-001/snapshot.yaml            |  8 +++
+ .../tasks/1.1/attempt-001/status.yaml              | 13 +++++
+ .../tasks/1.2/attempt-001/briefing.md              | 11 ++++
+ .../tasks/1.2/attempt-001/changes.diff             | 21 ++++++++
+ .../tasks/1.2/attempt-001/commits.txt              |  1 +
+ .../implementation/tasks/1.2/attempt-001/result.md | 13 +++++
+ .../tasks/1.2/attempt-001/snapshot.yaml            |  8 +++
+ .../tasks/1.2/attempt-001/status.yaml              | 13 +++++
+ .../tasks/2.1/attempt-001/briefing.md              | 10 ++++
+ .../tasks/2.1/attempt-001/changes.diff             | 62 ++++++++++++++++++++++
+ .../tasks/2.1/attempt-001/commits.txt              |  1 +
+ .../implementation/tasks/2.1/attempt-001/result.md | 11 ++++
+ .../tasks/2.1/attempt-001/snapshot.yaml            |  8 +++
+ .../tasks/2.1/attempt-001/status.yaml              | 13 +++++
+ .../tasks/2.2/attempt-001/briefing.md              | 12 +++++
+ .../tasks/2.2/attempt-001/changes.diff             |  0
+ .../tasks/2.2/attempt-001/commits.txt              |  0
+ .../implementation/tasks/2.2/attempt-001/result.md | 12 +++++
+ .../tasks/2.2/attempt-001/snapshot.yaml            |  8 +++
+ .../tasks/2.2/attempt-001/status.yaml              | 13 +++++
+ .../fix-aigc-image-edit-upstream-format/tasks.md   |  8 +--
+ .../workflow.yaml                                  |  6 +--
+ 28 files changed, 333 insertions(+), 11 deletions(-)

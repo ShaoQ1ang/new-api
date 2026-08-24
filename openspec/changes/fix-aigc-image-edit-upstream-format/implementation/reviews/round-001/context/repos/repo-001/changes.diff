@@ -1,0 +1,552 @@
+diff --git a/aigc/execution/sync_executor_test.go b/aigc/execution/sync_executor_test.go
+index d50f38669..172474f60 100644
+--- a/aigc/execution/sync_executor_test.go
++++ b/aigc/execution/sync_executor_test.go
+@@ -2,6 +2,7 @@ package execution
+ 
+ import (
+ 	"context"
++	"io"
+ 	"net/http"
+ 	"net/http/httptest"
+ 	"testing"
+@@ -69,7 +70,7 @@ func TestBuildSyncRequestPreservesResolvedImageContract(t *testing.T) {
+ 	assert.Equal(t, "url", image.ResponseFormat)
+ 	require.NotNil(t, image.N)
+ 	assert.Equal(t, uint(2), *image.N)
+-	assert.JSONEq(t, `["https://cdn.test/one.png","https://cdn.test/two.png"]`, string(image.Images))
++	assert.JSONEq(t, `[{"image_url":"https://cdn.test/one.png"},{"image_url":"https://cdn.test/two.png"}]`, string(image.Images))
+ }
+ 
+ func TestSyncExecutorReturnsCompletedTextOutput(t *testing.T) {
+@@ -118,6 +119,49 @@ func TestSyncExecutorReturnsReplayableImageURLs(t *testing.T) {
+ 	require.Len(t, result.Outputs, 2)
+ 	assert.Equal(t, "https://cdn.test/one.png", result.Outputs[0].URL)
+ 	assert.Equal(t, "https://cdn.test/two.png", result.Outputs[1].URL)
++	assert.Equal(t, "/v1/images/generations", workflow.context.Request.URL.Path)
++	body, err := io.ReadAll(workflow.context.Request.Body)
++	require.NoError(t, err)
++	var payload map[string]any
++	require.NoError(t, common.Unmarshal(body, &payload))
++	assert.NotContains(t, payload, "images")
++}
++
++func TestSyncExecutorBuildsStructuredImageEditRelayRequest(t *testing.T) {
++	gin.SetMode(gin.TestMode)
++	source, _ := gin.CreateTestContext(httptest.NewRecorder())
++	source.Request = httptest.NewRequest(http.MethodPost, "/v1/aigc/generations", nil)
++	workflow := &syncWorkflowStub{result: &relay.SyncWorkflowResult{ResponseBody: []byte(`{
++		"created":1,"data":[{"url":"https://cdn.test/result.png"}]
++	}`)}}
++	executor := NewSyncExecutor(workflow)
++
++	result, err := executor.Execute(WithGinContext(context.Background(), source), Identity{UserID: 7, TokenID: 11, Group: "vip"}, Spec{
++		UpstreamModelID: "image-upstream", ModelType: "image", Mode: "image_edit",
++		Request: aigcdto.GenerationRequest{
++			Prompt: "blend", Inputs: aigcdto.GenerationInputs{Images: []aigcdto.MediaInput{
++				{Role: "source_image", URL: "https://cdn.test/one.png"},
++				{Role: "source_image", URL: "https://cdn.test/two.png"},
++			}}, Output: aigcdto.GenerationOutput{Size: "1024x1024", Count: 1},
++		},
++	})
++
++	require.NoError(t, err)
++	require.Len(t, result.Outputs, 1)
++	assert.Equal(t, "/v1/images/edits", workflow.context.Request.URL.Path)
++	body, err := io.ReadAll(workflow.context.Request.Body)
++	require.NoError(t, err)
++	assert.JSONEq(t, `{
++		"model":"image-upstream",
++		"prompt":"blend",
++		"n":1,
++		"size":"1024x1024",
++		"response_format":"url",
++		"images":[
++			{"image_url":"https://cdn.test/one.png"},
++			{"image_url":"https://cdn.test/two.png"}
++		]
++	}`, string(body))
+ }
+ 
+ func TestSyncExecutorReturnsInlineImageBase64(t *testing.T) {
+diff --git a/aigc/execution/sync_request.go b/aigc/execution/sync_request.go
+index ac2edff2b..b22c66049 100644
+--- a/aigc/execution/sync_request.go
++++ b/aigc/execution/sync_request.go
+@@ -40,11 +40,13 @@ func BuildSyncRequest(spec Spec) (relaydto.Request, string, types.RelayFormat, e
+ 		}
+ 		path := "/v1/images/generations"
+ 		if mode == "image_edit" {
+-			urls := make([]string, len(spec.Request.Inputs.Images))
++			inputs := make([]struct {
++				ImageURL string `json:"image_url"`
++			}, len(spec.Request.Inputs.Images))
+ 			for index, input := range spec.Request.Inputs.Images {
+-				urls[index] = strings.TrimSpace(input.URL)
++				inputs[index].ImageURL = strings.TrimSpace(input.URL)
+ 			}
+-			contents, err := common.Marshal(urls)
++			contents, err := common.Marshal(inputs)
+ 			if err != nil {
+ 				return nil, "", "", fmt.Errorf("encode AIGC image inputs: %w", err)
+ 			}
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/briefing.md b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/briefing.md
+new file mode 100644
+index 000000000..fa236eda6
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/briefing.md
+@@ -0,0 +1,11 @@
++# Task 1.1 Briefing
++
++- Objective: require ordered `images[].image_url` objects in the AIGC sync
++  request builder regression test.
++- Task artifact: `openspec/changes/fix-aigc-image-edit-upstream-format/tasks.md`
++- Standards: `openspec/changes/fix-aigc-image-edit-upstream-format/implementation/standards.md`
++- Allowed scope: `aigc/execution/sync_executor_test.go` and this attempt evidence.
++- Forbidden scope: production code, generic relay, provider adapters, video code.
++- TDD: confirm the focused test fails for the current string-array output.
++- Base commit: `8806b2def`
++- Validation: `go test ./aigc/execution -run TestBuildSyncRequestPreservesResolvedImageContract -count=1`
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/changes.diff b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/changes.diff
+new file mode 100644
+index 000000000..80eededb5
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/changes.diff
+@@ -0,0 +1,13 @@
++diff --git a/aigc/execution/sync_executor_test.go b/aigc/execution/sync_executor_test.go
++index d50f38669..996b89ea5 100644
++--- a/aigc/execution/sync_executor_test.go
+++++ b/aigc/execution/sync_executor_test.go
++@@ -69,7 +69,7 @@ func TestBuildSyncRequestPreservesResolvedImageContract(t *testing.T) {
++ 	assert.Equal(t, "url", image.ResponseFormat)
++ 	require.NotNil(t, image.N)
++ 	assert.Equal(t, uint(2), *image.N)
++-	assert.JSONEq(t, `["https://cdn.test/one.png","https://cdn.test/two.png"]`, string(image.Images))
+++	assert.JSONEq(t, `[{"image_url":"https://cdn.test/one.png"},{"image_url":"https://cdn.test/two.png"}]`, string(image.Images))
++ }
++ 
++ func TestSyncExecutorReturnsCompletedTextOutput(t *testing.T) {
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/commits.txt b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/commits.txt
+new file mode 100644
+index 000000000..802a7df90
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/commits.txt
+@@ -0,0 +1 @@
++3d5d16485401b9a833e8e30bea324a2589e849e4 test(aigc): require structured image edit inputs
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/result.md b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/result.md
+new file mode 100644
+index 000000000..46964d900
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/result.md
+@@ -0,0 +1,13 @@
++# Task 1.1 Result
++
++- Changed: `aigc/execution/sync_executor_test.go`
++- Base: `8806b2def`
++- Head: `3d5d16485401b9a833e8e30bea324a2589e849e4`
++- Commit: `3d5d16485 test(aigc): require structured image edit inputs`
++- Acceptance: the regression test now requires two ordered objects containing
++  `image_url`.
++- TDD evidence: the focused test failed because production still emitted two
++  URL strings instead of objects.
++- Command: `go test ./aigc/execution -run TestBuildSyncRequestPreservesResolvedImageContract -count=1`
++- Result: expected failure.
++- Deviations or unresolved risks: none.
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/snapshot.yaml b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/snapshot.yaml
+new file mode 100644
+index 000000000..f15506e11
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/snapshot.yaml
+@@ -0,0 +1,8 @@
++actor: main-agent
++repository: /Users/niuyouguo/go/src/new-api
++isolated_workspace: /Users/niuyouguo/go/src/new-api
++pre_existing_status: clean
++pre_existing_diff_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
++base_commit: 8806b2def
++head_commit: 3d5d16485401b9a833e8e30bea324a2589e849e4
++changes_diff_sha256: bc5063ba50c5c2de730bcecde73aa3adca80af25ae5d32f86f49900e3f447604
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/status.yaml b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/status.yaml
+new file mode 100644
+index 000000000..918df1175
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/status.yaml
+@@ -0,0 +1,13 @@
++operation: task
++state: accepted
++actor: main-agent
++review_scope: null
++agent_id: null
++base_commit: 8806b2def
++head_commit: 3d5d16485401b9a833e8e30bea324a2589e849e4
++commit_count: 1
++commit_exception: null
++deadline_at: null
++interrupt_sent_at: null
++started: 2026-08-24T15:23:00+08:00
++updated: 2026-08-24T15:24:00+08:00
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/briefing.md b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/briefing.md
+new file mode 100644
+index 000000000..86abc14bf
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/briefing.md
+@@ -0,0 +1,11 @@
++# Task 1.2 Briefing
++
++- Objective: normalize resolved AIGC `image_edit` URLs into canonical
++  `images[].image_url` objects before generic relay.
++- Allowed scope: `aigc/execution/sync_request.go` and this attempt evidence.
++- Forbidden scope: AIGC cross-service DTOs, generic relay, provider adapters,
++  video, billing, and persistence.
++- Compatibility: fully compatible outside the corrected image-edit shape.
++- TDD: make the failing Task 1.1 test pass with the minimum production change.
++- Base commit: `3d5d16485401b9a833e8e30bea324a2589e849e4`
++- Validation: focused builder test and `go test ./aigc/execution -count=1`.
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/changes.diff b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/changes.diff
+new file mode 100644
+index 000000000..ffc587084
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/changes.diff
+@@ -0,0 +1,21 @@
++diff --git a/aigc/execution/sync_request.go b/aigc/execution/sync_request.go
++index ac2edff2b..b22c66049 100644
++--- a/aigc/execution/sync_request.go
+++++ b/aigc/execution/sync_request.go
++@@ -40,11 +40,13 @@ func BuildSyncRequest(spec Spec) (relaydto.Request, string, types.RelayFormat, e
++ 		}
++ 		path := "/v1/images/generations"
++ 		if mode == "image_edit" {
++-			urls := make([]string, len(spec.Request.Inputs.Images))
+++			inputs := make([]struct {
+++				ImageURL string `json:"image_url"`
+++			}, len(spec.Request.Inputs.Images))
++ 			for index, input := range spec.Request.Inputs.Images {
++-				urls[index] = strings.TrimSpace(input.URL)
+++				inputs[index].ImageURL = strings.TrimSpace(input.URL)
++ 			}
++-			contents, err := common.Marshal(urls)
+++			contents, err := common.Marshal(inputs)
++ 			if err != nil {
++ 				return nil, "", "", fmt.Errorf("encode AIGC image inputs: %w", err)
++ 			}
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/commits.txt b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/commits.txt
+new file mode 100644
+index 000000000..949e71c99
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/commits.txt
+@@ -0,0 +1 @@
++68e997359fc9bb75b9485233575bbfb383c84afa fix(aigc): structure image edit inputs
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/result.md b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/result.md
+new file mode 100644
+index 000000000..fa1a05d84
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/result.md
+@@ -0,0 +1,13 @@
++# Task 1.2 Result
++
++- Changed: `aigc/execution/sync_request.go`
++- Base: `3d5d16485401b9a833e8e30bea324a2589e849e4`
++- Head: `68e997359fc9bb75b9485233575bbfb383c84afa`
++- Commit: `68e997359 fix(aigc): structure image edit inputs`
++- Acceptance: resolved AIGC image edits now marshal ordered objects containing
++  `image_url` before generic relay; other paths are unchanged.
++- Commands:
++  - `go test ./aigc/execution -run TestBuildSyncRequestPreservesResolvedImageContract -count=1`
++  - `go test ./aigc/execution -count=1`
++- Result: both passed.
++- Deviations or unresolved risks: none.
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/snapshot.yaml b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/snapshot.yaml
+new file mode 100644
+index 000000000..591df9d2b
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/snapshot.yaml
+@@ -0,0 +1,8 @@
++actor: main-agent
++repository: /Users/niuyouguo/go/src/new-api
++isolated_workspace: /Users/niuyouguo/go/src/new-api
++pre_existing_status: owned OpenSpec evidence from task 1.1
++pre_existing_diff_sha256: dd1005efd4f2e55d617db5b67163706375c6576f260ee174c46b07ccd5d4a6a2
++base_commit: 3d5d16485401b9a833e8e30bea324a2589e849e4
++head_commit: 68e997359fc9bb75b9485233575bbfb383c84afa
++changes_diff_sha256: e9a8265e99769bbd011120bd128b41ac204d1f1167fadf1f50a5e2217d7f508c
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/status.yaml b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/status.yaml
+new file mode 100644
+index 000000000..0856a2a59
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/status.yaml
+@@ -0,0 +1,13 @@
++operation: task
++state: accepted
++actor: main-agent
++review_scope: null
++agent_id: null
++base_commit: 3d5d16485401b9a833e8e30bea324a2589e849e4
++head_commit: 68e997359fc9bb75b9485233575bbfb383c84afa
++commit_count: 1
++commit_exception: null
++deadline_at: null
++interrupt_sent_at: null
++started: 2026-08-24T15:25:00+08:00
++updated: 2026-08-24T15:26:00+08:00
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/briefing.md b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/briefing.md
+new file mode 100644
+index 000000000..0f0e96107
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/briefing.md
+@@ -0,0 +1,10 @@
++# Task 2.1 Briefing
++
++- Objective: verify the path and serialized request body handed from the AIGC
++  compatibility executor to generic relay for image edit and text-to-image.
++- Allowed scope: `aigc/execution/sync_executor_test.go` and this attempt evidence.
++- Forbidden scope: production code, generic relay, provider adapters, video.
++- Acceptance: edit body contains ordered `images[].image_url`; generation body
++  omits `images`; both paths are exact.
++- Base commit: `68e997359fc9bb75b9485233575bbfb383c84afa`
++- Validation: focused image executor tests and full `aigc/execution` tests.
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/changes.diff b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/changes.diff
+new file mode 100644
+index 000000000..ff2bba53a
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/changes.diff
+@@ -0,0 +1,62 @@
++diff --git a/aigc/execution/sync_executor_test.go b/aigc/execution/sync_executor_test.go
++index 996b89ea5..172474f60 100644
++--- a/aigc/execution/sync_executor_test.go
+++++ b/aigc/execution/sync_executor_test.go
++@@ -2,6 +2,7 @@ package execution
++ 
++ import (
++ 	"context"
+++	"io"
++ 	"net/http"
++ 	"net/http/httptest"
++ 	"testing"
++@@ -118,6 +119,49 @@ func TestSyncExecutorReturnsReplayableImageURLs(t *testing.T) {
++ 	require.Len(t, result.Outputs, 2)
++ 	assert.Equal(t, "https://cdn.test/one.png", result.Outputs[0].URL)
++ 	assert.Equal(t, "https://cdn.test/two.png", result.Outputs[1].URL)
+++	assert.Equal(t, "/v1/images/generations", workflow.context.Request.URL.Path)
+++	body, err := io.ReadAll(workflow.context.Request.Body)
+++	require.NoError(t, err)
+++	var payload map[string]any
+++	require.NoError(t, common.Unmarshal(body, &payload))
+++	assert.NotContains(t, payload, "images")
+++}
+++
+++func TestSyncExecutorBuildsStructuredImageEditRelayRequest(t *testing.T) {
+++	gin.SetMode(gin.TestMode)
+++	source, _ := gin.CreateTestContext(httptest.NewRecorder())
+++	source.Request = httptest.NewRequest(http.MethodPost, "/v1/aigc/generations", nil)
+++	workflow := &syncWorkflowStub{result: &relay.SyncWorkflowResult{ResponseBody: []byte(`{
+++		"created":1,"data":[{"url":"https://cdn.test/result.png"}]
+++	}`)}}
+++	executor := NewSyncExecutor(workflow)
+++
+++	result, err := executor.Execute(WithGinContext(context.Background(), source), Identity{UserID: 7, TokenID: 11, Group: "vip"}, Spec{
+++		UpstreamModelID: "image-upstream", ModelType: "image", Mode: "image_edit",
+++		Request: aigcdto.GenerationRequest{
+++			Prompt: "blend", Inputs: aigcdto.GenerationInputs{Images: []aigcdto.MediaInput{
+++				{Role: "source_image", URL: "https://cdn.test/one.png"},
+++				{Role: "source_image", URL: "https://cdn.test/two.png"},
+++			}}, Output: aigcdto.GenerationOutput{Size: "1024x1024", Count: 1},
+++		},
+++	})
+++
+++	require.NoError(t, err)
+++	require.Len(t, result.Outputs, 1)
+++	assert.Equal(t, "/v1/images/edits", workflow.context.Request.URL.Path)
+++	body, err := io.ReadAll(workflow.context.Request.Body)
+++	require.NoError(t, err)
+++	assert.JSONEq(t, `{
+++		"model":"image-upstream",
+++		"prompt":"blend",
+++		"n":1,
+++		"size":"1024x1024",
+++		"response_format":"url",
+++		"images":[
+++			{"image_url":"https://cdn.test/one.png"},
+++			{"image_url":"https://cdn.test/two.png"}
+++		]
+++	}`, string(body))
++ }
++ 
++ func TestSyncExecutorReturnsInlineImageBase64(t *testing.T) {
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/commits.txt b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/commits.txt
+new file mode 100644
+index 000000000..affb0901e
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/commits.txt
+@@ -0,0 +1 @@
++243cba56ac5e2af6023d63297ab4a56f18098391 test(aigc): verify image relay request body
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/result.md b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/result.md
+new file mode 100644
+index 000000000..d3d7fc02c
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/result.md
+@@ -0,0 +1,11 @@
++# Task 2.1 Result
++
++- Changed: `aigc/execution/sync_executor_test.go`
++- Base: `68e997359fc9bb75b9485233575bbfb383c84afa`
++- Head: `243cba56ac5e2af6023d63297ab4a56f18098391`
++- Commit: `243cba56a test(aigc): verify image relay request body`
++- Acceptance: executor tests capture the generic relay request and assert the
++  edit path/body plus generation path omission of `images`.
++- Command: `go test ./aigc/execution -run 'TestSyncExecutor(ReturnsReplayableImageURLs|BuildsStructuredImageEditRelayRequest)' -count=1`
++- Result: passed.
++- Deviations or unresolved risks: none.
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/snapshot.yaml b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/snapshot.yaml
+new file mode 100644
+index 000000000..fd7878fc0
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/snapshot.yaml
+@@ -0,0 +1,8 @@
++actor: main-agent
++repository: /Users/niuyouguo/go/src/new-api
++isolated_workspace: /Users/niuyouguo/go/src/new-api
++pre_existing_status: owned OpenSpec evidence from tasks 1.1 and 1.2
++pre_existing_diff_sha256: 247f991deb6b4c34fc9679af8ae5b3f4520f5960c6a73c4e0e6d1c71b40066ee
++base_commit: 68e997359fc9bb75b9485233575bbfb383c84afa
++head_commit: 243cba56ac5e2af6023d63297ab4a56f18098391
++changes_diff_sha256: 8b54a84d804965f2046cf9630cd8cb7be457b1a0be10ded271cdc974a0021e7a
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/status.yaml b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/status.yaml
+new file mode 100644
+index 000000000..01319e9c6
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/status.yaml
+@@ -0,0 +1,13 @@
++operation: task
++state: accepted
++actor: main-agent
++review_scope: null
++agent_id: null
++base_commit: 68e997359fc9bb75b9485233575bbfb383c84afa
++head_commit: 243cba56ac5e2af6023d63297ab4a56f18098391
++commit_count: 1
++commit_exception: null
++deadline_at: null
++interrupt_sent_at: null
++started: 2026-08-24T15:27:00+08:00
++updated: 2026-08-24T15:28:00+08:00
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.2/attempt-001/briefing.md b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.2/attempt-001/briefing.md
+new file mode 100644
+index 000000000..315b7b5f7
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.2/attempt-001/briefing.md
+@@ -0,0 +1,12 @@
++# Task 2.2 Briefing
++
++- Objective: format changed Go files and run focused plus broader AIGC tests,
++  including existing video task conversion coverage.
++- Allowed scope: formatting of the two changed AIGC execution files and this
++  attempt evidence.
++- Forbidden scope: behavioral code changes.
++- Base commit: `243cba56ac5e2af6023d63297ab4a56f18098391`
++- Validation:
++  - `gofmt -d aigc/execution/sync_request.go aigc/execution/sync_executor_test.go`
++  - `go test ./aigc/execution -count=1`
++  - `go test ./aigc/... -count=1`
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.2/attempt-001/changes.diff b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.2/attempt-001/changes.diff
+new file mode 100644
+index 000000000..e69de29bb
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.2/attempt-001/commits.txt b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.2/attempt-001/commits.txt
+new file mode 100644
+index 000000000..e69de29bb
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.2/attempt-001/result.md b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.2/attempt-001/result.md
+new file mode 100644
+index 000000000..f566c5d78
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.2/attempt-001/result.md
+@@ -0,0 +1,12 @@
++# Task 2.2 Result
++
++- Project code changes: none.
++- Base/head: `243cba56ac5e2af6023d63297ab4a56f18098391`
++- Commit exception: verification-only task.
++- Commands:
++  - `gofmt -d aigc/execution/sync_request.go aigc/execution/sync_executor_test.go`
++  - `go test ./aigc/execution -count=1`
++  - `go test ./aigc/... -count=1`
++- Result: formatting clean; all tests passed, including
++  `TestBuildTaskRequestPreservesResolvedVideoContract` in the execution suite.
++- Deviations or unresolved risks: none.
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.2/attempt-001/snapshot.yaml b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.2/attempt-001/snapshot.yaml
+new file mode 100644
+index 000000000..6c31e28b0
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.2/attempt-001/snapshot.yaml
+@@ -0,0 +1,8 @@
++actor: main-agent
++repository: /Users/niuyouguo/go/src/new-api
++isolated_workspace: /Users/niuyouguo/go/src/new-api
++pre_existing_status: owned OpenSpec evidence from prior tasks
++pre_existing_diff_sha256: null
++base_commit: 243cba56ac5e2af6023d63297ab4a56f18098391
++head_commit: 243cba56ac5e2af6023d63297ab4a56f18098391
++changes_diff_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.2/attempt-001/status.yaml b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.2/attempt-001/status.yaml
+new file mode 100644
+index 000000000..90383fcb9
+--- /dev/null
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.2/attempt-001/status.yaml
+@@ -0,0 +1,13 @@
++operation: task
++state: accepted
++actor: main-agent
++review_scope: null
++agent_id: null
++base_commit: 243cba56ac5e2af6023d63297ab4a56f18098391
++head_commit: 243cba56ac5e2af6023d63297ab4a56f18098391
++commit_count: 0
++commit_exception: verification-only task with no project code changes
++deadline_at: null
++interrupt_sent_at: null
++started: 2026-08-24T15:29:00+08:00
++updated: 2026-08-24T15:30:00+08:00
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/tasks.md b/openspec/changes/fix-aigc-image-edit-upstream-format/tasks.md
+index 89ad2d85a..d5168983b 100644
+--- a/openspec/changes/fix-aigc-image-edit-upstream-format/tasks.md
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/tasks.md
+@@ -1,9 +1,9 @@
+ ## 1. Image Edit Contract
+ 
+-- [ ] 1.1 Update the AIGC synchronous request builder test to require ordered `images[].image_url` objects for multiple source URLs.
+-- [ ] 1.2 Change `aigc/execution/BuildSyncRequest` to build the canonical structured image-edit inputs after mode resolution and before generic relay.
++- [x] 1.1 Update the AIGC synchronous request builder test to require ordered `images[].image_url` objects for multiple source URLs.
++- [x] 1.2 Change `aigc/execution/BuildSyncRequest` to build the canonical structured image-edit inputs after mode resolution and before generic relay.
+ 
+ ## 2. Verification
+ 
+-- [ ] 2.1 Add executor-level tests that capture the generic relay path and serialized body for both image edit and text-to-image field omission.
+-- [ ] 2.2 Run formatting plus focused and broader affected Go package tests, including existing video task request conversion coverage.
++- [x] 2.1 Add executor-level tests that capture the generic relay path and serialized body for both image edit and text-to-image field omission.
++- [x] 2.2 Run formatting plus focused and broader affected Go package tests, including existing video task request conversion coverage.
+diff --git a/openspec/changes/fix-aigc-image-edit-upstream-format/workflow.yaml b/openspec/changes/fix-aigc-image-edit-upstream-format/workflow.yaml
+index 5c8c716fb..88d39393c 100644
+--- a/openspec/changes/fix-aigc-image-edit-upstream-format/workflow.yaml
++++ b/openspec/changes/fix-aigc-image-edit-upstream-format/workflow.yaml
+@@ -34,7 +34,7 @@ plan_review_disposition: followed
+ execution_path: main-agent-serial
+ tdd: true
+ compatibility: fully-compatible
+-implementation_stage: full-building
++implementation_stage: final-review
+ standards_status: loaded
+ standards_entry:
+   - /Users/niuyouguo/go/src/new-api/AGENTS.md
+@@ -51,7 +51,7 @@ code_review_verdict: pending
+ architecture_review_verdict: not-selected
+ implementation_review_gate: pending
+ implementation_review_disposition: pending
+-tasks_status: pending
++tasks_status: done
+ delivery_ready: false
+ 
+ isolation_audit: pending
+@@ -63,4 +63,4 @@ verification_disposition: pending
+ archive_status: pending
+ archive_path: null
+ created: 2026-08-24T15:05:01+08:00
+-updated: 2026-08-24T15:22:00+08:00
++updated: 2026-08-24T15:30:00+08:00
