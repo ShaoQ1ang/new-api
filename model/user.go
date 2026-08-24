@@ -85,7 +85,7 @@ type User struct {
 	Role             int                        `json:"role" gorm:"type:int;default:1"`   // admin, common
 	Status           int                        `json:"status" gorm:"type:int;default:1"` // enabled, disabled
 	Email            string                     `json:"email" gorm:"index" validate:"max=50"`
-	Phone            *string        `json:"phone" gorm:"column:phone;uniqueIndex:idx_users_phone_unique;type:varchar(32)" validate:"omitempty,max=32"`
+	Phone            *string                    `json:"phone" gorm:"column:phone;uniqueIndex:idx_users_phone_unique;type:varchar(32)" validate:"omitempty,max=32"`
 	GitHubId         string                     `json:"github_id" gorm:"column:github_id;index"`
 	DiscordId        string                     `json:"discord_id" gorm:"column:discord_id;index"`
 	OidcId           string                     `json:"oidc_id" gorm:"column:oidc_id;index"`
@@ -109,6 +109,7 @@ type User struct {
 	StripeCustomer   string                     `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
 	CreatedAt        int64                      `json:"created_at" gorm:"autoCreateTime;column:created_at"`
 	LastLoginAt      int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
+	ManagementSource string                     `json:"management_source" gorm:"type:varchar(16);default:'LOCAL';index"`
 	AdminPermissions map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
 }
 
@@ -535,6 +536,9 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 }
 
 func (user *User) prepareForInsert(tx *gorm.DB) error {
+	if err := ValidateLocalUserManagement(*user); err != nil {
+		return err
+	}
 	user.Email = NormalizeEmail(user.Email)
 	if err := ensureEmailAvailableWithTx(tx, user.Email, 0); err != nil {
 		return err
@@ -719,6 +723,12 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 	if err = tx.First(&current, user.Id).Error; err != nil {
 		return err
 	}
+	if current.ManagementSource == ManagementSourceIAM {
+		return errors.New("IAM managed users can only be changed through new-api-control")
+	}
+	if IsIAMManagedUsername(newUser.Username) {
+		return errors.New("username prefix iam_ is reserved")
+	}
 	if err = tx.Model(&current).Omit("quota", "used_quota", "request_count").Updates(newUser).Error; err != nil {
 		return err
 	}
@@ -755,6 +765,12 @@ func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool) error {
 	current := User{}
 	if err = tx.First(&current, user.Id).Error; err != nil {
 		return err
+	}
+	if current.ManagementSource == ManagementSourceIAM {
+		return errors.New("IAM managed users can only be changed through new-api-control")
+	}
+	if IsIAMManagedUsername(newUser.Username) {
+		return errors.New("username prefix iam_ is reserved")
 	}
 	if err = tx.Model(&current).Updates(updates).Error; err != nil {
 		return err
@@ -798,8 +814,12 @@ func (user *User) Delete() error {
 		return errors.New("id 为空！")
 	}
 	if err := DB.Transaction(func(tx *gorm.DB) error {
-		if _, err := lockUserForUpdateTx(tx, user.Id, false); err != nil {
+		lockedUser, err := lockUserForUpdateTx(tx, user.Id, false)
+		if err != nil {
 			return err
+		}
+		if lockedUser.ManagementSource == ManagementSourceIAM {
+			return errors.New("IAM managed users can only be deleted through new-api-control")
 		}
 		if err := deleteUserManagementPermissionsTx(tx, user.Id); err != nil {
 			return err
@@ -819,6 +839,13 @@ func (user *User) HardDelete() error {
 	}
 	var tokens []Token
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		lockedUser, lockErr := lockUserForUpdateTx(tx, user.Id, true)
+		if lockErr != nil {
+			return lockErr
+		}
+		if lockedUser.ManagementSource == ManagementSourceIAM {
+			return errors.New("IAM managed users cannot be hard deleted")
+		}
 		if common.RedisEnabled {
 			if err := tx.Unscoped().Select("id", commonKeyCol).Where("user_id = ?", user.Id).Find(&tokens).Error; err != nil {
 				return err
@@ -1357,4 +1384,3 @@ func GetUserByPhone(phone string) (*User, error) {
 	err := DB.Where("phone = ?", phone).First(&user).Error
 	return &user, err
 }
-
