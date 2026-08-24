@@ -1,0 +1,8 @@
+actor: main-agent
+repository: /Users/niuyouguo/go/src/new-api
+isolated_workspace: /Users/niuyouguo/go/src/new-api
+pre_existing_status: clean
+pre_existing_diff_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+base_commit: 8806b2def
+head_commit: 3d5d16485401b9a833e8e30bea324a2589e849e4
+changes_diff_sha256: bc5063ba50c5c2de730bcecde73aa3adca80af25ae5d32f86f49900e3f447604

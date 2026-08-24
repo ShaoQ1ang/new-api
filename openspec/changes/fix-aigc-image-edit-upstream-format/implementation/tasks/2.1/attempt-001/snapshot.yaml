@@ -1,0 +1,8 @@
+actor: main-agent
+repository: /Users/niuyouguo/go/src/new-api
+isolated_workspace: /Users/niuyouguo/go/src/new-api
+pre_existing_status: owned OpenSpec evidence from tasks 1.1 and 1.2
+pre_existing_diff_sha256: 247f991deb6b4c34fc9679af8ae5b3f4520f5960c6a73c4e0e6d1c71b40066ee
+base_commit: 68e997359fc9bb75b9485233575bbfb383c84afa
+head_commit: 243cba56ac5e2af6023d63297ab4a56f18098391
+changes_diff_sha256: 8b54a84d804965f2046cf9630cd8cb7be457b1a0be10ded271cdc974a0021e7a

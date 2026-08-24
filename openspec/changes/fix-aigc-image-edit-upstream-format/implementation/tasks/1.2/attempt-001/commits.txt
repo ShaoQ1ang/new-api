@@ -1,0 +1,1 @@
+68e997359fc9bb75b9485233575bbfb383c84afa fix(aigc): structure image edit inputs

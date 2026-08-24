@@ -1,0 +1,1 @@
+243cba56ac5e2af6023d63297ab4a56f18098391 test(aigc): verify image relay request body

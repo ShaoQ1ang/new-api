@@ -1,0 +1,13 @@
+operation: task
+state: accepted
+actor: main-agent
+review_scope: null
+agent_id: null
+base_commit: 3d5d16485401b9a833e8e30bea324a2589e849e4
+head_commit: 68e997359fc9bb75b9485233575bbfb383c84afa
+commit_count: 1
+commit_exception: null
+deadline_at: null
+interrupt_sent_at: null
+started: 2026-08-24T15:25:00+08:00
+updated: 2026-08-24T15:26:00+08:00

@@ -1,0 +1,1 @@
+3d5d16485401b9a833e8e30bea324a2589e849e4 test(aigc): require structured image edit inputs
