@@ -1,6 +1,6 @@
 actor: main-agent
-repository: /Users/niuyouguo/go/src/new-api
-isolated_workspace: /Users/niuyouguo/go/src/new-api
+repository: .
+isolated_workspace: .
 pre_existing_status: owned OpenSpec evidence from task 1.1
 pre_existing_diff_sha256: dd1005efd4f2e55d617db5b67163706375c6576f260ee174c46b07ccd5d4a6a2
 base_commit: 3d5d16485401b9a833e8e30bea324a2589e849e4

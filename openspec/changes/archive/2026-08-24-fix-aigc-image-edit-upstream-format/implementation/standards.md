@@ -2,7 +2,7 @@
 
 ## Entry
 
-- `/Users/niuyouguo/go/src/new-api/AGENTS.md`
+- `AGENTS.md`
 
 ## Evidence
 

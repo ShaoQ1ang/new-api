@@ -3,41 +3,41 @@ review_types: [plan]
 review_scope: closure
 workflow_tier: lightweight
 project_roots:
-  - /Users/niuyouguo/go/src/new-api
+  - .
 source_artifacts:
   - id: artifact-001
-    path: /Users/niuyouguo/go/src/new-api/openspec/changes/fix-aigc-image-edit-upstream-format/design.md
+    path: openspec/changes/fix-aigc-image-edit-upstream-format/design.md
     sha256: c4c66d4fd25801c6ce0f3ba4707889ba69f0c397f040769302bf85256e52c9f8
-    snapshot: /Users/niuyouguo/go/src/new-api/openspec/changes/fix-aigc-image-edit-upstream-format/review/round-002/context/artifacts/artifact-001/current.snapshot
+    snapshot: openspec/changes/fix-aigc-image-edit-upstream-format/review/round-002/context/artifacts/artifact-001/current.snapshot
     changed_since_prior: true
-    changes_diff: /Users/niuyouguo/go/src/new-api/openspec/changes/fix-aigc-image-edit-upstream-format/review/round-002/context/artifacts/artifact-001/changes.diff
+    changes_diff: openspec/changes/fix-aigc-image-edit-upstream-format/review/round-002/context/artifacts/artifact-001/changes.diff
   - id: artifact-002
-    path: /Users/niuyouguo/go/src/new-api/openspec/changes/fix-aigc-image-edit-upstream-format/proposal.md
+    path: openspec/changes/fix-aigc-image-edit-upstream-format/proposal.md
     sha256: 0bfb23907497417e846ed05371c733597b79e31990eaa3df2c6f80f388d02ad9
-    snapshot: /Users/niuyouguo/go/src/new-api/openspec/changes/fix-aigc-image-edit-upstream-format/review/round-002/context/artifacts/artifact-002/current.snapshot
+    snapshot: openspec/changes/fix-aigc-image-edit-upstream-format/review/round-002/context/artifacts/artifact-002/current.snapshot
     changed_since_prior: true
-    changes_diff: /Users/niuyouguo/go/src/new-api/openspec/changes/fix-aigc-image-edit-upstream-format/review/round-002/context/artifacts/artifact-002/changes.diff
+    changes_diff: openspec/changes/fix-aigc-image-edit-upstream-format/review/round-002/context/artifacts/artifact-002/changes.diff
   - id: artifact-003
-    path: /Users/niuyouguo/go/src/new-api/openspec/changes/fix-aigc-image-edit-upstream-format/specs/aigc-image-edit-relay/spec.md
+    path: openspec/changes/fix-aigc-image-edit-upstream-format/specs/aigc-image-edit-relay/spec.md
     sha256: 9eeaa4bca4f3ed36d52cc8985e773e7d897b5c88345acdb06fd41f752275d2e9
-    snapshot: /Users/niuyouguo/go/src/new-api/openspec/changes/fix-aigc-image-edit-upstream-format/review/round-002/context/artifacts/artifact-003/current.snapshot
+    snapshot: openspec/changes/fix-aigc-image-edit-upstream-format/review/round-002/context/artifacts/artifact-003/current.snapshot
     changed_since_prior: true
-    changes_diff: /Users/niuyouguo/go/src/new-api/openspec/changes/fix-aigc-image-edit-upstream-format/review/round-002/context/artifacts/artifact-003/changes.diff
+    changes_diff: openspec/changes/fix-aigc-image-edit-upstream-format/review/round-002/context/artifacts/artifact-003/changes.diff
   - id: artifact-004
-    path: /Users/niuyouguo/go/src/new-api/openspec/changes/fix-aigc-image-edit-upstream-format/tasks.md
+    path: openspec/changes/fix-aigc-image-edit-upstream-format/tasks.md
     sha256: 56117f9d102b5ed70353b4d8a2c0d5f246c973c710216972924e0ee0560d66dd
-    snapshot: /Users/niuyouguo/go/src/new-api/openspec/changes/fix-aigc-image-edit-upstream-format/review/round-002/context/artifacts/artifact-004/current.snapshot
+    snapshot: openspec/changes/fix-aigc-image-edit-upstream-format/review/round-002/context/artifacts/artifact-004/current.snapshot
     changed_since_prior: true
-    changes_diff: /Users/niuyouguo/go/src/new-api/openspec/changes/fix-aigc-image-edit-upstream-format/review/round-002/context/artifacts/artifact-004/changes.diff
+    changes_diff: openspec/changes/fix-aigc-image-edit-upstream-format/review/round-002/context/artifacts/artifact-004/changes.diff
 decision_artifacts:
-  - /Users/niuyouguo/go/src/new-api/openspec/changes/fix-aigc-image-edit-upstream-format/workflow-selection.md
-  - /Users/niuyouguo/go/src/new-api/openspec/changes/fix-aigc-image-edit-upstream-format/review/round-001/decision.md
+  - openspec/changes/fix-aigc-image-edit-upstream-format/workflow-selection.md
+  - openspec/changes/fix-aigc-image-edit-upstream-format/review/round-001/decision.md
 test_evidence: []
 generated_artifacts: []
 repositories: []
 prior_review:
-  findings: /Users/niuyouguo/go/src/new-api/openspec/changes/fix-aigc-image-edit-upstream-format/review/round-001/findings.md
-  decision: /Users/niuyouguo/go/src/new-api/openspec/changes/fix-aigc-image-edit-upstream-format/review/round-001/decision.md
+  findings: openspec/changes/fix-aigc-image-edit-upstream-format/review/round-001/findings.md
+  decision: openspec/changes/fix-aigc-image-edit-upstream-format/review/round-001/decision.md
   reviewed_head: null
 limits:
   reasoning_effort: medium

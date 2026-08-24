@@ -1,6 +1,6 @@
-root: /Users/niuyouguo/go/src/new-api
+root: .
 base_commit: 8806b2def
 head_commit: b09b8e44f
-changes_diff_sha256: 9211bf241d8ad33b8dee166adea43d909502bd7bad12db2379534282c4e7d4aa
+changes_diff_sha256: c33a6e5914ad74efb335e8ea4eff90925cce3514f4c9490e170dfbe938b89bac
 changed_files_sha256: f28549105ac6fc2f93fafeec990e372fc9ab1d1a7662e33ae75855a007e55581
 diffstat_sha256: 9241716ff80ce1766fc28b7aafc840bbe40853cffc80bacde4254bf3365dc5f0

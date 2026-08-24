@@ -159,8 +159,8 @@ index 000000000..f15506e11
 +++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.1/attempt-001/snapshot.yaml
 @@ -0,0 +1,8 @@
 +actor: main-agent
-+repository: /Users/niuyouguo/go/src/new-api
-+isolated_workspace: /Users/niuyouguo/go/src/new-api
++repository: .
++isolated_workspace: .
 +pre_existing_status: clean
 +pre_existing_diff_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 +base_commit: 8806b2def
@@ -262,8 +262,8 @@ index 000000000..591df9d2b
 +++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/1.2/attempt-001/snapshot.yaml
 @@ -0,0 +1,8 @@
 +actor: main-agent
-+repository: /Users/niuyouguo/go/src/new-api
-+isolated_workspace: /Users/niuyouguo/go/src/new-api
++repository: .
++isolated_workspace: .
 +pre_existing_status: owned OpenSpec evidence from task 1.1
 +pre_existing_diff_sha256: dd1005efd4f2e55d617db5b67163706375c6576f260ee174c46b07ccd5d4a6a2
 +base_commit: 3d5d16485401b9a833e8e30bea324a2589e849e4
@@ -403,8 +403,8 @@ index 000000000..fd7878fc0
 +++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.1/attempt-001/snapshot.yaml
 @@ -0,0 +1,8 @@
 +actor: main-agent
-+repository: /Users/niuyouguo/go/src/new-api
-+isolated_workspace: /Users/niuyouguo/go/src/new-api
++repository: .
++isolated_workspace: .
 +pre_existing_status: owned OpenSpec evidence from tasks 1.1 and 1.2
 +pre_existing_diff_sha256: 247f991deb6b4c34fc9679af8ae5b3f4520f5960c6a73c4e0e6d1c71b40066ee
 +base_commit: 68e997359fc9bb75b9485233575bbfb383c84afa
@@ -478,8 +478,8 @@ index 000000000..6c31e28b0
 +++ b/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/tasks/2.2/attempt-001/snapshot.yaml
 @@ -0,0 +1,8 @@
 +actor: main-agent
-+repository: /Users/niuyouguo/go/src/new-api
-+isolated_workspace: /Users/niuyouguo/go/src/new-api
++repository: .
++isolated_workspace: .
 +pre_existing_status: owned OpenSpec evidence from prior tasks
 +pre_existing_diff_sha256: null
 +base_commit: 243cba56ac5e2af6023d63297ab4a56f18098391
@@ -534,7 +534,7 @@ index 5c8c716fb..88d39393c 100644
 +implementation_stage: final-review
  standards_status: loaded
  standards_entry:
-   - /Users/niuyouguo/go/src/new-api/AGENTS.md
+   - AGENTS.md
 @@ -51,7 +51,7 @@ code_review_verdict: pending
  architecture_review_verdict: not-selected
  implementation_review_gate: pending

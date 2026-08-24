@@ -3,7 +3,7 @@ compliance, correctness, changed-business test coverage, missing cases, error
 handling, compatibility, and code quality. Do not modify files.
 
 Manifest:
-`/Users/niuyouguo/go/src/new-api/openspec/changes/fix-aigc-image-edit-upstream-format/implementation/reviews/round-001/context/manifest.yaml`
+`openspec/changes/fix-aigc-image-edit-upstream-format/implementation/reviews/round-001/context/manifest.yaml`
 
 Return: verdict; evidence inspected; unassessed material; stable finding IDs with
 severity `blocking`, `important`, or `advisory`, conclusion, and cited evidence;

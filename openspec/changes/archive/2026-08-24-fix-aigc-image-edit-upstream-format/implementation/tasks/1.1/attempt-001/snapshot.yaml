@@ -1,6 +1,6 @@
 actor: main-agent
-repository: /Users/niuyouguo/go/src/new-api
-isolated_workspace: /Users/niuyouguo/go/src/new-api
+repository: .
+isolated_workspace: .
 pre_existing_status: clean
 pre_existing_diff_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 base_commit: 8806b2def

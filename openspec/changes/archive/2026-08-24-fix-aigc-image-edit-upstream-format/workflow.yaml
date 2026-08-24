@@ -5,13 +5,13 @@ workflow_tier_rationale: Local, reversible New API relay conversion fix with no 
 openspec_scope: local
 openspec_store: null
 openspec_schema: spec-driven
-change_root: /Users/niuyouguo/go/src/new-api/openspec/changes/archive/2026-08-24-fix-aigc-image-edit-upstream-format
-planning_root: /Users/niuyouguo/go/src/new-api/openspec/changes/archive/2026-08-24-fix-aigc-image-edit-upstream-format
+change_root: openspec/changes/archive/2026-08-24-fix-aigc-image-edit-upstream-format
+planning_root: openspec/changes/archive/2026-08-24-fix-aigc-image-edit-upstream-format
 artifact_paths:
-  proposal: /Users/niuyouguo/go/src/new-api/openspec/changes/archive/2026-08-24-fix-aigc-image-edit-upstream-format/proposal.md
-  design: /Users/niuyouguo/go/src/new-api/openspec/changes/archive/2026-08-24-fix-aigc-image-edit-upstream-format/design.md
-  specs: /Users/niuyouguo/go/src/new-api/openspec/changes/archive/2026-08-24-fix-aigc-image-edit-upstream-format/specs
-  tasks: /Users/niuyouguo/go/src/new-api/openspec/changes/archive/2026-08-24-fix-aigc-image-edit-upstream-format/tasks.md
+  proposal: openspec/changes/archive/2026-08-24-fix-aigc-image-edit-upstream-format/proposal.md
+  design: openspec/changes/archive/2026-08-24-fix-aigc-image-edit-upstream-format/design.md
+  specs: openspec/changes/archive/2026-08-24-fix-aigc-image-edit-upstream-format/specs
+  tasks: openspec/changes/archive/2026-08-24-fix-aigc-image-edit-upstream-format/tasks.md
 
 requirements_mode: fast
 design_review_round_limit: 0
@@ -37,7 +37,7 @@ compatibility: fully-compatible
 implementation_stage: complete
 standards_status: loaded
 standards_entry:
-  - /Users/niuyouguo/go/src/new-api/AGENTS.md
+  - AGENTS.md
 minimal_gate: skipped
 minimal_strategy: null
 minimal_review_round_limit: 0
@@ -61,6 +61,6 @@ verification_verdict: clean
 verification_gate: passed
 verification_disposition: none
 archive_status: complete
-archive_path: /Users/niuyouguo/go/src/new-api/openspec/changes/archive/2026-08-24-fix-aigc-image-edit-upstream-format
+archive_path: openspec/changes/archive/2026-08-24-fix-aigc-image-edit-upstream-format
 created: 2026-08-24T15:05:01+08:00
 updated: 2026-08-24T15:53:00+08:00
