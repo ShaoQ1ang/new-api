@@ -1,0 +1,15 @@
+## 1. Default UI rollback
+
+- [ ] 1.1 Remove `ImageInputPrice` fields, snapshots, synchronization, and controls from default model pricing settings without changing backend support or unrelated image pricing.
+
+## 2. Classic UI support
+
+- [ ] 2.1 Add a tested classic helper that parses and updates per-model `ImageInputPrice` maps while preserving unrelated models.
+- [ ] 2.2 Add `ImageInputPrice` to classic raw ratio settings and option submission.
+- [ ] 2.3 Add default/1K/2K/4K/8K prices and `free_count` to the classic visual model pricing editor load, validation, conflict, reset, and save paths.
+- [ ] 2.4 Include `image_input_price` in classic upstream ratio synchronization comparison and selected update paths.
+
+## 3. Verification
+
+- [ ] 3.1 Run focused classic tests for map preservation, clearing, editor serialization, and synchronization helpers.
+- [ ] 3.2 Run classic and default frontend builds and the required default i18n synchronization check.

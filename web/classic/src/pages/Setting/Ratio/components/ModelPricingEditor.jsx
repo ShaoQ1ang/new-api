@@ -45,12 +45,12 @@ import {
   PAGE_SIZE,
   PRICE_SUFFIX,
   buildSummaryText,
+  getImageInputPriceFieldName,
   hasValue,
   useModelPricingEditorState,
 } from '../hooks/useModelPricingEditorState';
-import {
-  VIDEO_SECONDS_CONTROLLED_TIERS,
-} from '../modelPricingVideoSecondsPrice';
+import { VIDEO_SECONDS_CONTROLLED_TIERS } from '../modelPricingVideoSecondsPrice';
+import { IMAGE_INPUT_PRICE_KEYS } from '../modelPricingImageInputPrice';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import TieredPricingEditor from './TieredPricingEditor';
 
@@ -505,9 +505,7 @@ export default function ModelPricingEditor({
                         <PriceInput
                           key={tier}
                           label={`${tier} ${t('价格')}`}
-                          value={
-                            selectedModel[`imageResolution${tier}Price`]
-                          }
+                          value={selectedModel[`imageResolution${tier}Price`]}
                           placeholder={t('输入每次调用价格')}
                           suffix={t('$/次')}
                           onChange={(value) =>
@@ -542,7 +540,9 @@ export default function ModelPricingEditor({
                         <PriceInput
                           label={t(`${tier} Default Price`)}
                           value={
-                            selectedModel[getVideoSecondsFieldName(tier, 'default')]
+                            selectedModel[
+                              getVideoSecondsFieldName(tier, 'default')
+                            ]
                           }
                           placeholder={t('Enter USD / second')}
                           suffix={t('$/sec')}
@@ -556,7 +556,9 @@ export default function ModelPricingEditor({
                         <PriceInput
                           label={t(`${tier} Silent Price`)}
                           value={
-                            selectedModel[getVideoSecondsFieldName(tier, 'silent')]
+                            selectedModel[
+                              getVideoSecondsFieldName(tier, 'silent')
+                            ]
                           }
                           placeholder={t('Enter USD / second')}
                           suffix={t('$/sec')}
@@ -991,6 +993,54 @@ export default function ModelPricingEditor({
                     </Card>
                   </>
                 )}
+
+                {selectedModel.billingMode === 'per-request' ||
+                selectedModel.billingMode === 'video-seconds' ? (
+                  <Card
+                    bodyStyle={{ padding: 16 }}
+                    style={{
+                      marginBottom: 16,
+                      background: 'var(--semi-color-fill-0)',
+                    }}
+                  >
+                    <div className='font-medium mb-3'>{t('图片输入价格')}</div>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns:
+                          'repeat(auto-fit, minmax(180px, 1fr))',
+                        columnGap: 12,
+                      }}
+                    >
+                      {IMAGE_INPUT_PRICE_KEYS.map((key) => {
+                        const isFreeCount = key === 'free_count';
+                        const label =
+                          key === 'default'
+                            ? t('默认')
+                            : isFreeCount
+                              ? t('免费图片数量')
+                              : key.toUpperCase();
+                        return (
+                          <PriceInput
+                            key={key}
+                            label={label}
+                            value={
+                              selectedModel[getImageInputPriceFieldName(key)]
+                            }
+                            placeholder='0'
+                            suffix={isFreeCount ? null : t('每张图片')}
+                            onChange={(value) =>
+                              handleNumericFieldChange(
+                                getImageInputPriceFieldName(key),
+                                value,
+                              )
+                            }
+                          />
+                        );
+                      })}
+                    </div>
+                  </Card>
+                ) : null}
 
                 <Card
                   bodyStyle={{ padding: 16 }}

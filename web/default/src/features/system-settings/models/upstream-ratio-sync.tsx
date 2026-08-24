@@ -75,7 +75,6 @@ type UpstreamRatioSyncProps = {
     CacheRatio: string
     CreateCacheRatio: string
     ImageRatio: string
-    ImageInputPrice: string
     AudioRatio: string
     AudioCompletionRatio: string
     VideoSecondsPrice: string
@@ -103,7 +102,6 @@ function optionKeyBySyncField(ratioType: string): string {
     billing_mode: 'billing_setting.billing_mode',
     billing_expr: 'billing_setting.billing_expr',
     video_seconds_price: 'VideoSecondsPrice',
-    image_input_price: 'ImageInputPrice',
   }
   if (explicit[ratioType]) return explicit[ratioType]
   return ratioType
@@ -301,9 +299,6 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
       CacheRatio: parseJsonRecord<number>(modelRatios.CacheRatio),
       CreateCacheRatio: parseJsonRecord<number>(modelRatios.CreateCacheRatio),
       ImageRatio: parseJsonRecord<number>(modelRatios.ImageRatio),
-      ImageInputPrice: parseJsonRecord<Record<string, number>>(
-        modelRatios.ImageInputPrice
-      ),
       AudioRatio: parseJsonRecord<number>(modelRatios.AudioRatio),
       AudioCompletionRatio: parseJsonRecord<number>(
         modelRatios.AudioCompletionRatio
@@ -351,7 +346,6 @@ export function UpstreamRatioSync({ modelRatios }: UpstreamRatioSyncProps) {
         CacheRatio: { ...currentRatios.CacheRatio },
         CreateCacheRatio: { ...currentRatios.CreateCacheRatio },
         ImageRatio: { ...currentRatios.ImageRatio },
-        ImageInputPrice: { ...currentRatios.ImageInputPrice },
         AudioRatio: { ...currentRatios.AudioRatio },
         AudioCompletionRatio: { ...currentRatios.AudioCompletionRatio },
         ModelPrice: { ...currentRatios.ModelPrice },

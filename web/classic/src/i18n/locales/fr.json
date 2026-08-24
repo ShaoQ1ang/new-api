@@ -4365,6 +4365,8 @@
     "Very good": "Très bien",
     "Good": "Bon",
     "Fair": "Correct",
-    "Needs improvement": "À améliorer"
+    "Needs improvement": "À améliorer",
+    "免费图片数量": "Nombre d'images gratuites",
+    "模型 {{name}} 的免费图片数量必须是 0 到 128 的整数": "Le nombre d'images gratuites du modèle {{name}} doit être un entier compris entre 0 et 128"
   }
 }

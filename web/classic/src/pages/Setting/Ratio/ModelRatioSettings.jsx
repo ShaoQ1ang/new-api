@@ -41,6 +41,7 @@ export default function ModelRatioSettings(props) {
   const [inputs, setInputs] = useState({
     ModelPrice: '',
     VideoSecondsPrice: '',
+    ImageInputPrice: '',
     ModelRatio: '',
     CacheRatio: '',
     CreateCacheRatio: '',
@@ -160,6 +161,27 @@ export default function ModelRatioSettings(props) {
                 },
               ]}
               onChange={(value) => setInputs({ ...inputs, ModelPrice: value })}
+            />
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col xs={24} sm={16}>
+            <Form.TextArea
+              label={t('图片输入价格')}
+              placeholder='{"model":{"default":0.01,"1k":0.02,"2k":0.03,"4k":0.04,"8k":0.05,"free_count":1}}'
+              field={'ImageInputPrice'}
+              autosize={{ minRows: 6, maxRows: 12 }}
+              trigger='blur'
+              stopValidateWithError
+              rules={[
+                {
+                  validator: (rule, value) => verifyJSON(value),
+                  message: '不是合法的 JSON 字符串',
+                },
+              ]}
+              onChange={(value) =>
+                setInputs({ ...inputs, ImageInputPrice: value })
+              }
             />
           </Col>
         </Row>

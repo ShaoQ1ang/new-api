@@ -71,7 +71,6 @@ export const RATIO_SYNC_FIELDS: RatioType[] = [
 export const SYNC_FIELD_ORDER: RatioType[] = [
   ...RATIO_SYNC_FIELDS,
   'model_price',
-  'image_input_price',
   'video_seconds_price',
   'billing_mode',
   'billing_expr',
@@ -95,7 +94,9 @@ export function getOrderedRatioTypes(
   ratioTypes: Partial<Record<RatioType, RatioDifferenceEntry>>,
   filter?: string
 ): RatioType[] {
-  const keys = Object.keys(ratioTypes) as RatioType[]
+  const keys = (Object.keys(ratioTypes) as RatioType[]).filter(
+    (key) => key !== 'image_input_price'
+  ) as RatioType[]
   const ordered = [
     ...SYNC_FIELD_ORDER.filter((f) => keys.includes(f)),
     ...keys.filter((f) => !SYNC_FIELD_ORDER.includes(f)),
@@ -121,7 +122,6 @@ export function getPreferredSyncField(
   const videoPrice = ratioTypes.video_seconds_price?.upstreams?.[sourceName]
   if (
     ratioType !== 'video_seconds_price' &&
-    ratioType !== 'image_input_price' &&
     videoPrice !== null &&
     videoPrice !== undefined &&
     videoPrice !== 'same'
@@ -164,7 +164,6 @@ export function getBillingCategory(
   ratioType: string
 ): 'price' | 'ratio' | 'video' | 'tiered' {
   if (ratioType === 'model_price') return 'price'
-  if (ratioType === 'image_input_price') return 'price'
   if (ratioType === 'video_seconds_price') return 'video'
   if (ratioType === 'billing_mode' || ratioType === 'billing_expr') {
     return 'tiered'

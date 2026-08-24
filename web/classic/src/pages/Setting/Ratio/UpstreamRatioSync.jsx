@@ -49,6 +49,10 @@ import {
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import ChannelSelectorModal from '../../../components/settings/ChannelSelectorModal';
+import {
+  getPricingSyncCategory,
+  shouldDiscardSelectedPricingField,
+} from './modelPricingSyncFields';
 
 const OFFICIAL_RATIO_PRESET_ID = -100;
 const OFFICIAL_RATIO_PRESET_NAME = '官方倍率预设';
@@ -276,6 +280,7 @@ export default function UpstreamRatioSync(props) {
     ...ratioSyncFields,
     'model_price',
     'video_seconds_price',
+    'image_input_price',
     'billing_mode',
     'billing_expr',
   ];
@@ -291,6 +296,7 @@ export default function UpstreamRatioSync(props) {
       audio_completion_ratio: t('音频补全倍率'),
       model_price: t('固定价格'),
       video_seconds_price: t('视频按秒价格'),
+      image_input_price: t('图片输入价格'),
       billing_mode: t('计费模式'),
       billing_expr: t('表达式计费'),
     };
@@ -327,12 +333,7 @@ export default function UpstreamRatioSync(props) {
   }
 
   function getBillingCategory(ratioType) {
-    if (ratioType === 'model_price') return 'price';
-    if (ratioType === 'video_seconds_price') return 'video';
-    if (ratioType === 'billing_mode' || ratioType === 'billing_expr') {
-      return 'tiered';
-    }
-    return 'ratio';
+    return getPricingSyncCategory(ratioType);
   }
 
   function optionKeyBySyncField(ratioType) {
@@ -340,6 +341,7 @@ export default function UpstreamRatioSync(props) {
       billing_mode: 'billing_setting.billing_mode',
       billing_expr: 'billing_setting.billing_expr',
       video_seconds_price: 'VideoSecondsPrice',
+      image_input_price: 'ImageInputPrice',
     };
     if (explicit[ratioType]) return explicit[ratioType];
     return ratioType
@@ -357,6 +359,9 @@ export default function UpstreamRatioSync(props) {
   }
 
   function getPreferredSyncField(model, ratioType, sourceName) {
+    if (ratioType === 'image_input_price') {
+      return ratioType;
+    }
     const exprValue = getUpstreamValue(model, 'billing_expr', sourceName);
     if (ratioType !== 'billing_expr' && isSelectableUpstreamValue(exprValue)) {
       return 'billing_expr';
@@ -398,11 +403,7 @@ export default function UpstreamRatioSync(props) {
         const newModelRes = { ...(prev[model] || {}) };
 
         Object.keys(newModelRes).forEach((rt) => {
-          if (
-            category !== 'tiered' &&
-            getBillingCategory(rt) !== 'tiered' &&
-            getBillingCategory(rt) !== category
-          ) {
+          if (shouldDiscardSelectedPricingField(ratioType, rt)) {
             delete newModelRes[rt];
           }
         });
@@ -462,6 +463,7 @@ export default function UpstreamRatioSync(props) {
       ),
       ModelPrice: JSON.parse(props.options.ModelPrice || '{}'),
       VideoSecondsPrice: JSON.parse(props.options.VideoSecondsPrice || '{}'),
+      ImageInputPrice: JSON.parse(props.options.ImageInputPrice || '{}'),
       'billing_setting.billing_mode': JSON.parse(
         props.options['billing_setting.billing_mode'] || '{}',
       ),
@@ -565,6 +567,7 @@ export default function UpstreamRatioSync(props) {
         AudioCompletionRatio: { ...currentRatios.AudioCompletionRatio },
         ModelPrice: { ...currentRatios.ModelPrice },
         VideoSecondsPrice: { ...currentRatios.VideoSecondsPrice },
+        ImageInputPrice: { ...currentRatios.ImageInputPrice },
         'billing_setting.billing_mode': {
           ...currentRatios['billing_setting.billing_mode'],
         },
@@ -756,6 +759,9 @@ export default function UpstreamRatioSync(props) {
               <Select.Option value='model_price'>{t('固定价格')}</Select.Option>
               <Select.Option value='video_seconds_price'>
                 {t('视频按秒价格')}
+              </Select.Option>
+              <Select.Option value='image_input_price'>
+                {t('图片输入价格')}
               </Select.Option>
               <Select.Option value='billing_expr'>
                 {t('表达式计费')}

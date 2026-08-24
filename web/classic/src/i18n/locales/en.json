@@ -4490,6 +4490,8 @@
     "Very good": "Very good",
     "Good": "Good",
     "Fair": "Fair",
-    "Needs improvement": "Needs improvement"
+    "Needs improvement": "Needs improvement",
+    "免费图片数量": "Free image count",
+    "模型 {{name}} 的免费图片数量必须是 0 到 128 的整数": "The free image count for model {{name}} must be an integer from 0 to 128"
   }
 }

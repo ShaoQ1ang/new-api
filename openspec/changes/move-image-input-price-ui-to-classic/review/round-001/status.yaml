@@ -1,0 +1,13 @@
+operation: plan-review
+state: accepted
+actor: reviewer
+review_scope: full
+agent_id: /root/plan_review
+base_commit: null
+head_commit: null
+commit_count: 0
+commit_exception: null
+deadline_at: 2026-08-24T17:43:35+08:00
+interrupt_sent_at: null
+started: 2026-08-24T17:37:35+08:00
+updated: 2026-08-24T17:45:00+08:00

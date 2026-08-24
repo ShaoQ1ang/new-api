@@ -49,7 +49,6 @@ const defaultModelSettings: ModelSettings = {
   CreateCacheRatio: '',
   CompletionRatio: '',
   ImageRatio: '',
-  ImageInputPrice: '{}',
   AudioRatio: '',
   AudioCompletionRatio: '',
   ExposeRatioEnabled: false,
