@@ -1,0 +1,21 @@
+--- openspec/changes/fix-aigc-image-edit-upstream-format/review/round-001/context/artifacts/artifact-002/current.snapshot	2026-08-24 15:11:15
++++ openspec/changes/fix-aigc-image-edit-upstream-format/proposal.md	2026-08-24 15:21:28
+@@ -8,8 +8,8 @@
+ 
+ - Preserve the generic `/v1/aigc/generations` media contract using
+   `inputs.images[] = {role, url}`.
+-- Convert image-edit URL inputs into the request representation required by the
+-  selected upstream image channel before dispatch.
++- After resolving an AIGC public image model to `image_edit`, convert URL inputs
++  into New API's canonical image-edit request before entering generic relay.
+ - Preserve text-to-image behavior and existing video provider conversions.
+ - Add regression coverage for multiple image-edit URL inputs and outbound
+   request shape.
+@@ -27,6 +27,6 @@
+ 
+ ## Impact
+ 
+-- Affected code: `aigc/execution`, image relay conversion, and focused Go tests.
++- Affected code: `aigc/execution` compatibility conversion and focused Go tests.
+ - Public AIGC request and response contracts remain unchanged.
+ - No database, billing, authorization, frontend, or video protocol changes.

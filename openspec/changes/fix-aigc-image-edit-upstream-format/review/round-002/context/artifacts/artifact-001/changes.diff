@@ -1,0 +1,83 @@
+--- openspec/changes/fix-aigc-image-edit-upstream-format/review/round-001/context/artifacts/artifact-001/current.snapshot	2026-08-24 15:11:15
++++ openspec/changes/fix-aigc-image-edit-upstream-format/design.md	2026-08-24 15:21:28
+@@ -5,11 +5,12 @@
+ API resolves requests with source images to `image_edit`, builds an internal
+ `dto.ImageRequest`, and relays it as JSON to `/v1/images/edits`.
+ 
+-The current builder serializes `ImageRequest.Images` as an array of URL strings.
+-The deployed OpenAI channel rejects that representation because its JSON image
+-edit contract requires each array item to expose `image_url`. Video requests do
+-not use this synchronous image builder; they already pass through provider task
+-adapters that map generic roles and URLs into provider-specific payloads.
++The current AIGC compatibility builder serializes `ImageRequest.Images` as an
++array of URL strings. The canonical New API JSON image-edit representation
++requires each array item to expose `image_url`; the malformed request currently
++passes through generic relay unchanged and is rejected upstream. Video requests
++do not use this synchronous image builder; they already pass through provider
++task adapters that map generic roles and URLs into provider-specific payloads.
+ 
+ ## Goals / Non-Goals
+ 
+@@ -29,39 +30,41 @@
+ 
+ ## Decisions
+ 
+-### Convert at the New API AIGC-to-relay boundary
++### Convert inside the New API AIGC compatibility layer
+ 
+-`BuildSyncRequest` will transform each generic image URL into a small structured
+-JSON item with an `image_url` field before assigning `ImageRequest.Images`.
+-This is the narrowest boundary that both understands the resolved `image_edit`
+-mode and owns the relay request.
++After the AIGC resolver identifies the public model as a synchronous image model
++and selects `image_edit`, `BuildSyncRequest` will transform each generic image
++URL into a small structured JSON item with an `image_url` field before assigning
++`ImageRequest.Images`. The resulting `dto.ImageRequest` is New API's canonical
++image-edit request and then enters the existing generic relay workflow.
+ 
+ Converting in AIGC was rejected because it would expose upstream channel syntax
+-through the cross-service contract and duplicate New API's existing video
+-provider adaptation responsibility.
++through the cross-service contract. Converting in the generic image relay or a
++provider adapter was also rejected because those layers must not depend on the
++request having originated from AIGC.
+ 
+-### Preserve JSON relay behavior
++### Preserve generic relay behavior
+ 
+-The current deployed channel accepts JSON image edits and explicitly reports
+-the missing object field. New API will therefore preserve the JSON request path
+-and correct only the item representation. Downloading every signed URL and
+-rebuilding multipart was rejected for this change because it adds network I/O,
++The compatibility layer will hand generic relay a fully normalized
++`dto.ImageRequest`. No AIGC-specific branches, context flags, or transformations
++will be added to `relay/image_handler.go` or provider adapters. Downloading every
++signed URL and rebuilding multipart was rejected because it adds network I/O,
+ file limits, MIME handling, and expiry failure modes while not matching the
+-observed upstream contract.
++canonical JSON request used by this AIGC execution path.
+ 
+ ### Test the observable request contract
+ 
+-Focused tests will assert that two input URLs become two ordered objects with
+-`image_url` fields and that the route remains `/v1/images/edits`. Existing
+-text-to-image and video tests remain the regression boundary for unaffected
+-paths.
++Builder tests will assert that two input URLs become two ordered objects with
++`image_url` fields. Executor-level tests will capture the actual request passed
++to generic relay and assert its serialized body and `/v1/images/edits` route.
++Text-to-image tests will explicitly assert `/v1/images/generations` and omission
++of `images`; existing video tests remain the regression boundary for that path.
+ 
+ ## Risks / Trade-offs
+ 
+-- [A future image channel expects a different JSON or multipart representation]
+-  -> Keep this fix scoped to the established AIGC JSON image relay contract;
+-  introduce an explicit per-channel capability only when a second incompatible
+-  channel is configured.
++- [A downstream channel needs a provider-specific representation] -> Keep the
++  AIGC compatibility output canonical and handle true provider differences in
++  the existing channel adapter, without adding AIGC awareness there.
+ - [Signed URLs expire before the upstream fetches them] -> Existing AIGC
+   materialization and submission timing remain unchanged; this change neither
+   shortens nor extends URL validity.

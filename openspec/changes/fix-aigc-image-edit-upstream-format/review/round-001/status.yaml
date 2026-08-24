@@ -1,0 +1,13 @@
+operation: plan-review
+state: accepted
+actor: reviewer
+review_scope: full
+agent_id: /root/plan_review
+base_commit: null
+head_commit: null
+commit_count: 0
+commit_exception: read-only artifact review
+deadline_at: 2026-08-24T15:20:00+08:00
+interrupt_sent_at: null
+started: 2026-08-24T15:14:01+08:00
+updated: 2026-08-24T15:16:00+08:00
