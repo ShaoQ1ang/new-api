@@ -238,6 +238,7 @@ func createIAMManagedUser(tx *gorm.DB, input ApplyIAMIdentityInput) (*User, erro
 		Username: iamManagedUsername(input.IAMUserID), Password: password,
 		DisplayName: normalizeIAMDisplayName(input.DisplayName, input.IAMUserID),
 		Role:        common.RoleCommonUser, Status: status, Group: group, Quota: quota,
+		AffCode:          iamManagedUsername(input.IAMUserID),
 		ManagementSource: ManagementSourceIAM,
 	}
 	if err := tx.Create(user).Error; err != nil {

@@ -58,6 +58,28 @@ func TestIAMIdentityDeletionIsAnIrreversibleTombstone(t *testing.T) {
 	require.EqualValues(t, 2, link.LastVersion)
 }
 
+func TestIAMManagedUsersReceiveDistinctAffCodes(t *testing.T) {
+	setupIAMManagedTestDB(t)
+	first := ApplyIAMIdentityInput{EventID: 600, IAMUserID: 16, OrganizationID: 26,
+		OrganizationType: 1, DisplayName: "First", DesiredState: IAMIdentityStateActive,
+		LifecycleVersion: 1, SourceCreatedAt: 1}
+	second := ApplyIAMIdentityInput{EventID: 601, IAMUserID: 17, OrganizationID: 27,
+		OrganizationType: 1, DisplayName: "Second", DesiredState: IAMIdentityStateActive,
+		LifecycleVersion: 1, SourceCreatedAt: 1}
+
+	_, err := ApplyIAMIdentity(first)
+	require.NoError(t, err)
+	_, err = ApplyIAMIdentity(second)
+	require.NoError(t, err)
+
+	var users []User
+	require.NoError(t, DB.Order("id").Find(&users).Error)
+	require.Len(t, users, 2)
+	require.Equal(t, iamManagedUsername(first.IAMUserID), users[0].AffCode)
+	require.Equal(t, iamManagedUsername(second.IAMUserID), users[1].AffCode)
+	require.NotEqual(t, users[0].AffCode, users[1].AffCode)
+}
+
 func TestIdentityDeletionDoesNotOverwriteAPIKeyVersion(t *testing.T) {
 	setupIAMManagedTestDB(t)
 	identity := ApplyIAMIdentityInput{EventID: 500, IAMUserID: 13, OrganizationID: 23,
