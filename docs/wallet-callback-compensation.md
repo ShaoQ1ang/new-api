@@ -4,6 +4,10 @@
 
 NewAPI 对 Wallet 的 Reserve、Confirm、Cancel 默认同步调用。同步成功的请求不进入后台补偿；只有失败或结果不确定的请求由 `wallet_usage_callbacks` 表驱动重试。不引入 MQ，也不新增 Outbox 表。
 
+Callback 调用 Facade 的 `/wallet/callback/v1/api-platform/usage/{reserve,confirm,cancel}`，并使用
+`api_platform_user_id` 传递 NewAPI 本地用户 ID。Facade 负责将该 ID 解析为 Wallet
+所需的 IAM `user_id`。
+
 ## 状态
 
 ```text

@@ -1,13 +1,13 @@
 package service
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -65,6 +65,23 @@ func TestQuotaToWalletAmount(t *testing.T) {
 	}
 }
 
+func TestWalletCallbackPayloadsUseAPIPlatformUserID(t *testing.T) {
+	payloads := []any{
+		walletReserveRequest{APIPlatformUserID: 42},
+		walletConfirmRequest{APIPlatformUserID: 42},
+		walletCancelRequest{APIPlatformUserID: 42},
+	}
+	for _, payload := range payloads {
+		encoded, err := common.Marshal(payload)
+		require.NoError(t, err)
+		var decoded map[string]any
+		require.NoError(t, common.Unmarshal(encoded, &decoded))
+		assert.Equal(t, float64(42), decoded["api_platform_user_id"])
+		_, hasLegacyUserID := decoded["user_id"]
+		assert.False(t, hasLegacyUserID)
+	}
+}
+
 func TestBillingSessionSettleEqualAmountStillConfirmsWallet(t *testing.T) {
 	useWalletCallbackTestDB(t, &model.WalletUsageCallback{})
 
@@ -111,8 +128,8 @@ func TestBillingSessionSettleEqualAmountStillConfirmsWallet(t *testing.T) {
 	assert.Equal(t, int64(7_300_000), *record.FinalAmount)
 	mu.Lock()
 	assert.Equal(t, []string{
-		"/internal/callbacks/new-api/usage/reserve",
-		"/internal/callbacks/new-api/usage/confirm",
+		"/wallet/callback/v1/api-platform/usage/reserve",
+		"/wallet/callback/v1/api-platform/usage/confirm",
 	}, paths)
 	mu.Unlock()
 }
@@ -170,11 +187,11 @@ func TestWalletReserveFailureMode(t *testing.T) {
 func TestWalletReserveCompletionDoesNotOverwriteNewerCancelTarget(t *testing.T) {
 	useWalletCallbackTestDB(t, &model.WalletUsageCallback{})
 	record := &model.WalletUsageCallback{
-		APIRequestID:   "wallet-callback-cancel-race",
-		UserID:         42,
-		ReservedQuota:  100,
-		ReservedAmount: 1460,
-		ExchangeRate:   "7.30000000",
+		APIRequestID:      "wallet-callback-cancel-race",
+		APIPlatformUserID: 42,
+		ReservedQuota:     100,
+		ReservedAmount:    1460,
+		ExchangeRate:      "7.30000000",
 	}
 	require.NoError(t, model.CreateWalletUsageCallback(record))
 	require.NoError(t, model.PrepareWalletUsageCancel(record.APIRequestID, time.Now().Add(time.Minute).UnixMilli()))
@@ -196,7 +213,7 @@ func TestWalletUncertainReserveFailureRetriesReserveBeforeCancel(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		mu.Lock()
 		paths = append(paths, request.URL.Path)
-		if request.URL.Path == "/internal/callbacks/new-api/usage/reserve" {
+		if request.URL.Path == "/wallet/callback/v1/api-platform/usage/reserve" {
 			reserveCalls++
 			if reserveCalls == 1 {
 				mu.Unlock()
@@ -229,9 +246,9 @@ func TestWalletUncertainReserveFailureRetriesReserveBeforeCancel(t *testing.T) {
 	assert.Positive(t, record.ReservedAtMS)
 	mu.Lock()
 	assert.Equal(t, []string{
-		"/internal/callbacks/new-api/usage/reserve",
-		"/internal/callbacks/new-api/usage/reserve",
-		"/internal/callbacks/new-api/usage/cancel",
+		"/wallet/callback/v1/api-platform/usage/reserve",
+		"/wallet/callback/v1/api-platform/usage/reserve",
+		"/wallet/callback/v1/api-platform/usage/cancel",
 	}, paths)
 	mu.Unlock()
 }
@@ -266,7 +283,7 @@ func TestWalletReserveBusinessRejectionDoesNotCancel(t *testing.T) {
 	assert.Equal(t, walletFailureInsufficientFunds, record.FailureCode)
 	assert.Zero(t, record.ReservedAtMS)
 	mu.Lock()
-	assert.Equal(t, []string{"/internal/callbacks/new-api/usage/reserve"}, paths)
+	assert.Equal(t, []string{"/wallet/callback/v1/api-platform/usage/reserve"}, paths)
 	mu.Unlock()
 }
 
@@ -275,12 +292,12 @@ func TestCoveredBillingSkipsLocalQuotaAndCarriesOrderNo(t *testing.T) {
 	require.NoError(t, model.DB.Create(&model.User{Id: 7, Username: "covered_user", Quota: 500}).Error)
 
 	var mu sync.Mutex
-	var bodies []walletReserveRequest
+	var bodies []map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
-		if r.URL.Path == "/internal/callbacks/new-api/usage/reserve" {
-			var body walletReserveRequest
-			_ = json.NewDecoder(r.Body).Decode(&body)
+		if r.URL.Path == "/wallet/callback/v1/api-platform/usage/reserve" {
+			var body map[string]any
+			_ = common.DecodeJson(r.Body, &body)
 			bodies = append(bodies, body)
 		}
 		mu.Unlock()
@@ -314,16 +331,18 @@ func TestCoveredBillingSkipsLocalQuotaAndCarriesOrderNo(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	require.Len(t, bodies, 1)
-	require.NotNil(t, bodies[0].BusinessOrderNo)
-	assert.Equal(t, "order-monthly-001", *bodies[0].BusinessOrderNo)
+	assert.Equal(t, float64(7), bodies[0]["api_platform_user_id"])
+	assert.Equal(t, "order-monthly-001", bodies[0]["business_order_no"])
+	_, hasLegacyUserID := bodies[0]["user_id"]
+	assert.False(t, hasLegacyUserID)
 }
 
 func TestWalletCallbackClaimUsesConditionalLease(t *testing.T) {
 	useWalletCallbackTestDB(t, &model.WalletUsageCallback{})
 	nowMS := time.Now().UnixMilli()
 	record := &model.WalletUsageCallback{
-		APIRequestID: "wallet-callback-claim",
-		UserID:       42, ReservedQuota: 100, ReservedAmount: 100,
+		APIRequestID: "wallet-callback-claim", APIPlatformUserID: 42,
+		ReservedQuota: 100, ReservedAmount: 100,
 		ExchangeRate: "7.30000000", NextRetryAtMS: nowMS,
 	}
 	require.NoError(t, model.CreateWalletUsageCallback(record))

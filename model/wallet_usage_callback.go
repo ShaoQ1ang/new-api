@@ -17,11 +17,11 @@ const (
 )
 
 type WalletUsageCallback struct {
-	ID              int64   `json:"id" gorm:"primaryKey"`
-	APIRequestID    string  `json:"api_request_id" gorm:"type:varchar(128);not null;uniqueIndex"`
-	UserID          int     `json:"user_id" gorm:"not null;index"`
-	BusinessOrderNo *string `json:"business_order_no" gorm:"type:varchar(128)"`
-	UsageAtMS       int64   `json:"usage_at_ms" gorm:"not null"`
+	ID                int64   `json:"id" gorm:"primaryKey"`
+	APIRequestID      string  `json:"api_request_id" gorm:"type:varchar(128);not null;uniqueIndex"`
+	APIPlatformUserID int     `json:"api_platform_user_id" gorm:"column:user_id;not null;index"`
+	BusinessOrderNo   *string `json:"business_order_no" gorm:"type:varchar(128)"`
+	UsageAtMS         int64   `json:"usage_at_ms" gorm:"not null"`
 
 	ReservedQuota  int64  `json:"reserved_quota" gorm:"not null"`
 	ReservedAmount int64  `json:"reserved_amount" gorm:"not null"`
@@ -41,7 +41,7 @@ type WalletUsageCallback struct {
 }
 
 func CreateWalletUsageCallback(callback *WalletUsageCallback) error {
-	if callback == nil || callback.APIRequestID == "" || callback.UserID <= 0 || callback.ReservedAmount <= 0 {
+	if callback == nil || callback.APIRequestID == "" || callback.APIPlatformUserID <= 0 || callback.ReservedAmount <= 0 {
 		return gorm.ErrInvalidData
 	}
 	nowMS := time.Now().UnixMilli()

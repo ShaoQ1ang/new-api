@@ -98,23 +98,23 @@ type walletUsageCallbackSession struct {
 }
 
 type walletReserveRequest struct {
-	UserID          int     `json:"user_id"`
-	APIRequestID    string  `json:"api_request_id"`
-	EstimateAmount  string  `json:"estimate_amount"`
-	UsageAtMS       int64   `json:"usage_at_ms"`
-	BusinessOrderNo *string `json:"business_order_no,omitempty"`
+	APIPlatformUserID int     `json:"api_platform_user_id"`
+	APIRequestID      string  `json:"api_request_id"`
+	EstimateAmount    string  `json:"estimate_amount"`
+	UsageAtMS         int64   `json:"usage_at_ms"`
+	BusinessOrderNo   *string `json:"business_order_no,omitempty"`
 }
 
 type walletConfirmRequest struct {
-	UserID       int    `json:"user_id"`
-	APIRequestID string `json:"api_request_id"`
-	FinalAmount  string `json:"final_amount"`
-	UsageDetail  string `json:"usage_detail,omitempty"`
+	APIPlatformUserID int    `json:"api_platform_user_id"`
+	APIRequestID      string `json:"api_request_id"`
+	FinalAmount       string `json:"final_amount"`
+	UsageDetail       string `json:"usage_detail,omitempty"`
 }
 
 type walletCancelRequest struct {
-	UserID       int    `json:"user_id"`
-	APIRequestID string `json:"api_request_id"`
+	APIPlatformUserID int    `json:"api_platform_user_id"`
+	APIRequestID      string `json:"api_request_id"`
 }
 
 type walletCallbackHTTPError struct {
@@ -187,14 +187,14 @@ func newWalletUsageCallbackSession(relayInfo *relaycommon.RelayInfo, estimatedQu
 		usageAtMS = time.Now().UnixMilli()
 	}
 	record := &model.WalletUsageCallback{
-		APIRequestID:    relayInfo.RequestId,
-		UserID:          relayInfo.UserId,
-		BusinessOrderNo: &relayInfo.BusinessOrderNo,
-		UsageAtMS:       usageAtMS,
-		ReservedQuota:   int64(estimatedQuota),
-		ReservedAmount:  estimatedAmount,
-		ExchangeRate:    exchangeRate.StringFixed(8),
-		NextRetryAtMS:   walletCallbackProtectedUntil(config),
+		APIRequestID:      relayInfo.RequestId,
+		APIPlatformUserID: relayInfo.UserId,
+		BusinessOrderNo:   &relayInfo.BusinessOrderNo,
+		UsageAtMS:         usageAtMS,
+		ReservedQuota:     int64(estimatedQuota),
+		ReservedAmount:    estimatedAmount,
+		ExchangeRate:      exchangeRate.StringFixed(8),
+		NextRetryAtMS:     walletCallbackProtectedUntil(config),
 	}
 	if err := model.CreateWalletUsageCallback(record); err != nil {
 		return nil, fmt.Errorf("create wallet callback record: %w", err)
@@ -262,13 +262,13 @@ func processWalletUsageCallback(ctx context.Context, record *model.WalletUsageCa
 	}
 	if record.ReservedAtMS == 0 {
 		request := walletReserveRequest{
-			UserID:          record.UserID,
-			APIRequestID:    record.APIRequestID,
-			EstimateAmount:  strconv.FormatInt(record.ReservedAmount, 10),
-			UsageAtMS:       record.UsageAtMS,
-			BusinessOrderNo: record.BusinessOrderNo,
+			APIPlatformUserID: record.APIPlatformUserID,
+			APIRequestID:      record.APIRequestID,
+			EstimateAmount:    strconv.FormatInt(record.ReservedAmount, 10),
+			UsageAtMS:         record.UsageAtMS,
+			BusinessOrderNo:   record.BusinessOrderNo,
 		}
-		if err := sendWalletCallback(ctx, config, "/internal/callbacks/new-api/usage/reserve", request); err != nil {
+		if err := sendWalletCallback(ctx, config, "/wallet/callback/v1/api-platform/usage/reserve", request); err != nil {
 			handleWalletCallbackFailure(record, config, err)
 			return err
 		}
@@ -289,20 +289,20 @@ func processWalletUsageCallback(ctx context.Context, record *model.WalletUsageCa
 			return fmt.Errorf("wallet confirm amount is missing for request %s", record.APIRequestID)
 		}
 		request := walletConfirmRequest{
-			UserID:       record.UserID,
-			APIRequestID: record.APIRequestID,
-			FinalAmount:  strconv.FormatInt(*record.FinalAmount, 10),
-			UsageDetail:  fmt.Sprintf("newapi_quota=%d;exchange_rate=%s", *record.FinalQuota, record.ExchangeRate),
+			APIPlatformUserID: record.APIPlatformUserID,
+			APIRequestID:      record.APIRequestID,
+			FinalAmount:       strconv.FormatInt(*record.FinalAmount, 10),
+			UsageDetail:       fmt.Sprintf("newapi_quota=%d;exchange_rate=%s", *record.FinalQuota, record.ExchangeRate),
 		}
-		if err := sendWalletCallback(ctx, config, "/internal/callbacks/new-api/usage/confirm", request); err != nil {
+		if err := sendWalletCallback(ctx, config, "/wallet/callback/v1/api-platform/usage/confirm", request); err != nil {
 			handleWalletCallbackFailure(record, config, err)
 			return err
 		}
 		walletBreaker.recordAvailable()
 		return model.MarkWalletUsageFinalized(record.APIRequestID, model.WalletCallbackStatusConfirmed)
 	case model.WalletCallbackStatusCancelPending:
-		request := walletCancelRequest{UserID: record.UserID, APIRequestID: record.APIRequestID}
-		if err := sendWalletCallback(ctx, config, "/internal/callbacks/new-api/usage/cancel", request); err != nil {
+		request := walletCancelRequest{APIPlatformUserID: record.APIPlatformUserID, APIRequestID: record.APIRequestID}
+		if err := sendWalletCallback(ctx, config, "/wallet/callback/v1/api-platform/usage/cancel", request); err != nil {
 			handleWalletCallbackFailure(record, config, err)
 			return err
 		}
