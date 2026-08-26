@@ -42,6 +42,17 @@ type Adaptor struct {
 	ResponseFormat string
 }
 
+const openRouterMaxImageN = 10
+
+type openRouterImageReference struct {
+	Type     string                 `json:"type"`
+	ImageURL openRouterImageURLData `json:"image_url"`
+}
+
+type openRouterImageURLData struct {
+	URL string `json:"url"`
+}
+
 func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeminiChatRequest) (any, error) {
 	result, err := service.ConvertRequest(c, info, types.RelayFormatOpenAI, request)
 	if err != nil {
@@ -105,7 +116,8 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	if info.ChannelType == constant.ChannelTypeOpenRouter &&
-		info.RelayMode == relayconstant.RelayModeImagesGenerations {
+		(info.RelayMode == relayconstant.RelayModeImagesGenerations ||
+			info.RelayMode == relayconstant.RelayModeImagesEdits) {
 		return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, "/v1/images", info.ChannelType), nil
 	}
 	if info.RelayMode == relayconstant.RelayModeRealtime {
@@ -524,6 +536,9 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	if channelType == constant.ChannelTypeOpenAI && request.Model == "gpt-image-2" {
 		request.ResponseFormat = ""
 	}
+	if channelType == constant.ChannelTypeOpenRouter {
+		return convertOpenRouterImageRequest(c, relayMode, request)
+	}
 	switch relayMode {
 	case relayconstant.RelayModeImagesEdits:
 		if isJSONRequest(c) {
@@ -655,6 +670,189 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	default:
 		return request, nil
 	}
+}
+
+func convertOpenRouterImageRequest(c *gin.Context, relayMode int, request dto.ImageRequest) (dto.ImageRequest, error) {
+	if request.N != nil && *request.N > openRouterMaxImageN {
+		return dto.ImageRequest{}, types.NewErrorWithStatusCode(
+			fmt.Errorf("n must be an integer between 1 and %d for OpenRouter image requests", openRouterMaxImageN),
+			types.ErrorCodeInvalidRequest,
+			http.StatusBadRequest,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
+
+	hasImages := len(bytes.TrimSpace(request.Images)) > 0 && !bytes.Equal(bytes.TrimSpace(request.Images), []byte("null"))
+	hasImage := len(bytes.TrimSpace(request.Image)) > 0 && !bytes.Equal(bytes.TrimSpace(request.Image), []byte("null"))
+	hasInputReferences := false
+	trimmedInputReferences := bytes.TrimSpace(request.InputReferences)
+	if len(trimmedInputReferences) > 0 && !bytes.Equal(trimmedInputReferences, []byte("null")) {
+		var inputReferences []json.RawMessage
+		if err := common.Unmarshal(request.InputReferences, &inputReferences); err != nil {
+			return dto.ImageRequest{}, types.NewErrorWithStatusCode(
+				fmt.Errorf("invalid input_references for OpenRouter image request: %w", err),
+				types.ErrorCodeInvalidRequest,
+				http.StatusBadRequest,
+				types.ErrOptionWithSkipRetry(),
+			)
+		}
+		hasInputReferences = len(inputReferences) > 0
+	}
+	jsonRequest := isJSONRequest(c)
+	if hasInputReferences && (hasImages || hasImage) {
+		return dto.ImageRequest{}, types.NewErrorWithStatusCode(
+			errors.New("images and input_references cannot be provided together for OpenRouter image requests"),
+			types.ErrorCodeInvalidRequest,
+			http.StatusBadRequest,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
+
+	request.ResponseFormat = ""
+	if hasInputReferences {
+		return request, nil
+	}
+
+	references := make([]openRouterImageReference, 0)
+	if hasImages {
+		var inputs []struct {
+			ImageURL string `json:"image_url"`
+		}
+		if err := common.Unmarshal(request.Images, &inputs); err != nil {
+			return dto.ImageRequest{}, types.NewErrorWithStatusCode(
+				fmt.Errorf("invalid images for OpenRouter image request: %w", err),
+				types.ErrorCodeInvalidRequest,
+				http.StatusBadRequest,
+				types.ErrOptionWithSkipRetry(),
+			)
+		}
+		for index, input := range inputs {
+			imageURL := strings.TrimSpace(input.ImageURL)
+			if imageURL == "" {
+				return dto.ImageRequest{}, types.NewErrorWithStatusCode(
+					fmt.Errorf("images[%d].image_url is required for OpenRouter image requests", index),
+					types.ErrorCodeInvalidRequest,
+					http.StatusBadRequest,
+					types.ErrOptionWithSkipRetry(),
+				)
+			}
+			references = append(references, openRouterImageReference{
+				Type: "image_url", ImageURL: openRouterImageURLData{URL: imageURL},
+			})
+		}
+	}
+	if hasImage && (relayMode != relayconstant.RelayModeImagesEdits || jsonRequest) {
+		var imageURL string
+		if err := common.Unmarshal(request.Image, &imageURL); err != nil || strings.TrimSpace(imageURL) == "" {
+			return dto.ImageRequest{}, types.NewErrorWithStatusCode(
+				errors.New("image must be a non-empty URL for OpenRouter image requests"),
+				types.ErrorCodeInvalidRequest,
+				http.StatusBadRequest,
+				types.ErrOptionWithSkipRetry(),
+			)
+		}
+		references = append(references, openRouterImageReference{
+			Type: "image_url", ImageURL: openRouterImageURLData{URL: strings.TrimSpace(imageURL)},
+		})
+	}
+
+	if relayMode == relayconstant.RelayModeImagesEdits && !jsonRequest {
+		multipartReferences, err := openRouterMultipartImageReferences(c)
+		if err != nil {
+			return dto.ImageRequest{}, err
+		}
+		references = append(references, multipartReferences...)
+		c.Request.Header.Set("Content-Type", "application/json")
+	}
+
+	if relayMode == relayconstant.RelayModeImagesEdits && len(references) == 0 {
+		return dto.ImageRequest{}, types.NewErrorWithStatusCode(
+			errors.New("image is required for OpenRouter image edits"),
+			types.ErrorCodeInvalidRequest,
+			http.StatusBadRequest,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
+	if len(references) > 0 {
+		encodedReferences, err := common.Marshal(references)
+		if err != nil {
+			return dto.ImageRequest{}, fmt.Errorf("encode OpenRouter input references: %w", err)
+		}
+		request.InputReferences = encodedReferences
+	}
+	request.Images = nil
+	request.Image = nil
+	return request, nil
+}
+
+func openRouterMultipartImageReferences(c *gin.Context) ([]openRouterImageReference, error) {
+	if c == nil || c.Request == nil {
+		return nil, types.NewErrorWithStatusCode(
+			errors.New("multipart image request is missing"),
+			types.ErrorCodeInvalidRequest,
+			http.StatusBadRequest,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
+	multipartForm := c.Request.MultipartForm
+	if multipartForm == nil {
+		form, err := common.ParseMultipartFormReusable(c)
+		if err != nil {
+			return nil, types.NewErrorWithStatusCode(
+				fmt.Errorf("failed to parse OpenRouter image edit form: %w", err),
+				types.ErrorCodeInvalidRequest,
+				http.StatusBadRequest,
+				types.ErrOptionWithSkipRetry(),
+			)
+		}
+		c.Request.MultipartForm = form
+		c.Request.PostForm = url.Values(form.Value)
+		multipartForm = form
+	}
+	if maskFiles := multipartForm.File["mask"]; len(maskFiles) > 0 {
+		return nil, types.NewErrorWithStatusCode(
+			errors.New("mask is not supported by OpenRouter image edits"),
+			types.ErrorCodeInvalidRequest,
+			http.StatusBadRequest,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
+
+	references := make([]openRouterImageReference, 0)
+	for _, fieldName := range []string{"image", "image[]"} {
+		for _, imageURL := range multipartForm.Value[fieldName] {
+			imageURL = strings.TrimSpace(imageURL)
+			if imageURL == "" {
+				continue
+			}
+			references = append(references, openRouterImageReference{
+				Type: "image_url", ImageURL: openRouterImageURLData{URL: imageURL},
+			})
+		}
+	}
+
+	imageFiles := append([]*multipart.FileHeader(nil), multipartForm.File["image"]...)
+	imageFiles = append(imageFiles, multipartForm.File["image[]"]...)
+	for index, fileHeader := range imageFiles {
+		file, err := fileHeader.Open()
+		if err != nil {
+			return nil, fmt.Errorf("open OpenRouter image file %d: %w", index, err)
+		}
+		imageBytes, readErr := io.ReadAll(file)
+		closeErr := file.Close()
+		if readErr != nil {
+			return nil, fmt.Errorf("read OpenRouter image file %d: %w", index, readErr)
+		}
+		if closeErr != nil {
+			return nil, fmt.Errorf("close OpenRouter image file %d: %w", index, closeErr)
+		}
+		mimeType := detectImageMimeType(fileHeader.Filename)
+		dataURL := "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(imageBytes)
+		references = append(references, openRouterImageReference{
+			Type: "image_url", ImageURL: openRouterImageURLData{URL: dataURL},
+		})
+	}
+	return references, nil
 }
 
 func isJSONRequest(c *gin.Context) bool {
