@@ -287,6 +287,34 @@ func TestWalletReserveBusinessRejectionDoesNotCancel(t *testing.T) {
 	mu.Unlock()
 }
 
+func TestWalletReserveOmitsEmptyBusinessOrderNo(t *testing.T) {
+	useWalletCallbackTestDB(t, &model.WalletUsageCallback{})
+	t.Setenv("WALLET_CALLBACK_FAIL_CLOSED", "true")
+
+	var body map[string]any
+	var decodeErr error
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		decodeErr = common.DecodeJson(request.Body, &body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{}}`))
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("WALLET_CALLBACK_BASE_URL", server.URL)
+	t.Setenv("WALLET_CALLBACK_ENABLED", "true")
+
+	relayInfo := &relaycommon.RelayInfo{RequestId: "wallet-reserve-without-order", UserId: 42, StartTime: time.Now()}
+	callback, err := newWalletUsageCallbackSession(relayInfo, 100)
+	require.NoError(t, err)
+	require.NotNil(t, callback)
+	require.NoError(t, decodeErr)
+
+	_, hasBusinessOrderNo := body["business_order_no"]
+	assert.False(t, hasBusinessOrderNo)
+	record, err := model.GetWalletUsageCallback(relayInfo.RequestId)
+	require.NoError(t, err)
+	assert.Nil(t, record.BusinessOrderNo)
+}
+
 func TestCoveredBillingSkipsLocalQuotaAndCarriesOrderNo(t *testing.T) {
 	useWalletCallbackTestDB(t, &model.User{}, &model.WalletUsageCallback{})
 	require.NoError(t, model.DB.Create(&model.User{Id: 7, Username: "covered_user", Quota: 500}).Error)

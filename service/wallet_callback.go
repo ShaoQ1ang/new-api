@@ -186,10 +186,14 @@ func newWalletUsageCallbackSession(relayInfo *relaycommon.RelayInfo, estimatedQu
 	if relayInfo.StartTime.IsZero() {
 		usageAtMS = time.Now().UnixMilli()
 	}
+	var businessOrderNo *string
+	if relayInfo.BusinessOrderNo != "" {
+		businessOrderNo = &relayInfo.BusinessOrderNo
+	}
 	record := &model.WalletUsageCallback{
 		APIRequestID:      relayInfo.RequestId,
 		APIPlatformUserID: relayInfo.UserId,
-		BusinessOrderNo:   &relayInfo.BusinessOrderNo,
+		BusinessOrderNo:   businessOrderNo,
 		UsageAtMS:         usageAtMS,
 		ReservedQuota:     int64(estimatedQuota),
 		ReservedAmount:    estimatedAmount,
