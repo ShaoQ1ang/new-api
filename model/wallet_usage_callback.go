@@ -22,6 +22,8 @@ type WalletUsageCallback struct {
 	APIPlatformUserID int     `json:"api_platform_user_id" gorm:"column:user_id;not null;index"`
 	BusinessOrderNo   *string `json:"business_order_no" gorm:"type:varchar(128)"`
 	UsageAtMS         int64   `json:"usage_at_ms" gorm:"not null"`
+	ModelName         string  `json:"model_name" gorm:"type:varchar(255)"`
+	APIKeyName        string  `json:"api_key_name" gorm:"type:varchar(255)"`
 
 	ReservedQuota  int64  `json:"reserved_quota" gorm:"not null"`
 	ReservedAmount int64  `json:"reserved_amount" gorm:"not null"`

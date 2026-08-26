@@ -98,11 +98,21 @@ type walletUsageCallbackSession struct {
 }
 
 type walletReserveRequest struct {
-	APIPlatformUserID int     `json:"api_platform_user_id"`
-	APIRequestID      string  `json:"api_request_id"`
-	EstimateAmount    string  `json:"estimate_amount"`
-	UsageAtMS         int64   `json:"usage_at_ms"`
-	BusinessOrderNo   *string `json:"business_order_no,omitempty"`
+	APIPlatformUserID int                   `json:"api_platform_user_id"`
+	APIRequestID      string                `json:"api_request_id"`
+	EstimateAmount    string                `json:"estimate_amount"`
+	UsageAtMS         int64                 `json:"usage_at_ms"`
+	BusinessOrderNo   *string               `json:"business_order_no,omitempty"`
+	Extra             *walletOperationExtra `json:"extra,omitempty"`
+}
+
+type walletAPIUsageDetail struct {
+	ModelName  string `json:"model_name"`
+	APIKeyName string `json:"api_key_name"`
+}
+
+type walletOperationExtra struct {
+	APIUsageDetail *walletAPIUsageDetail `json:"api_usage_detail,omitempty"`
 }
 
 type walletConfirmRequest struct {
@@ -176,6 +186,9 @@ func newWalletUsageCallbackSession(relayInfo *relaycommon.RelayInfo, estimatedQu
 	if !config.Enabled || relayInfo == nil || estimatedQuota <= 0 {
 		return nil, nil
 	}
+	if strings.TrimSpace(relayInfo.OriginModelName) == "" || strings.TrimSpace(relayInfo.TokenName) == "" {
+		return nil, fmt.Errorf("wallet API usage detail is incomplete")
+	}
 
 	exchangeRate := decimal.NewFromFloat(operation_setting.USDExchangeRate)
 	estimatedAmount, err := quotaToWalletAmount(int64(estimatedQuota), exchangeRate)
@@ -195,6 +208,8 @@ func newWalletUsageCallbackSession(relayInfo *relaycommon.RelayInfo, estimatedQu
 		APIPlatformUserID: relayInfo.UserId,
 		BusinessOrderNo:   businessOrderNo,
 		UsageAtMS:         usageAtMS,
+		ModelName:         relayInfo.OriginModelName,
+		APIKeyName:        relayInfo.TokenName,
 		ReservedQuota:     int64(estimatedQuota),
 		ReservedAmount:    estimatedAmount,
 		ExchangeRate:      exchangeRate.StringFixed(8),
@@ -265,12 +280,19 @@ func processWalletUsageCallback(ctx context.Context, record *model.WalletUsageCa
 		return nil
 	}
 	if record.ReservedAtMS == 0 {
+		var extra *walletOperationExtra
+		if record.ModelName != "" && record.APIKeyName != "" {
+			extra = &walletOperationExtra{APIUsageDetail: &walletAPIUsageDetail{
+				ModelName: record.ModelName, APIKeyName: record.APIKeyName,
+			}}
+		}
 		request := walletReserveRequest{
 			APIPlatformUserID: record.APIPlatformUserID,
 			APIRequestID:      record.APIRequestID,
 			EstimateAmount:    strconv.FormatInt(record.ReservedAmount, 10),
 			UsageAtMS:         record.UsageAtMS,
 			BusinessOrderNo:   record.BusinessOrderNo,
+			Extra:             extra,
 		}
 		if err := sendWalletCallback(ctx, config, "/wallet/callback/v1/api-platform/usage/reserve", request); err != nil {
 			handleWalletCallbackFailure(record, config, err)

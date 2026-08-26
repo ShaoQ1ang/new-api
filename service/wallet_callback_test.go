@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -104,10 +105,12 @@ func TestBillingSessionSettleEqualAmountStillConfirmsWallet(t *testing.T) {
 	t.Setenv("WALLET_CALLBACK_FAIL_CLOSED", "false")
 
 	relayInfo := &relaycommon.RelayInfo{
-		RequestId:    "wallet-callback-equal-amount",
-		UserId:       42,
-		StartTime:    time.Now(),
-		IsPlayground: true,
+		RequestId:       "wallet-callback-equal-amount",
+		UserId:          42,
+		StartTime:       time.Now(),
+		IsPlayground:    true,
+		OriginModelName: "gpt-5",
+		TokenName:       "desktop",
 	}
 	callback, err := newWalletUsageCallbackSession(relayInfo, 500_000)
 	require.NoError(t, err)
@@ -165,6 +168,8 @@ func TestWalletReserveFailureMode(t *testing.T) {
 				StartTime:       time.Now(),
 				IsPlayground:    true,
 				ForcePreConsume: true,
+				OriginModelName: "gpt-5",
+				TokenName:       "desktop",
 				UserSetting:     dto.UserSetting{BillingPreference: "wallet_only"},
 			}
 			apiErr := PreConsumeBilling(context, 100, relayInfo)
@@ -209,11 +214,15 @@ func TestWalletUncertainReserveFailureRetriesReserveBeforeCancel(t *testing.T) {
 
 	var mu sync.Mutex
 	paths := make([]string, 0, 3)
+	reserveRequests := make([]walletReserveRequest, 0, 2)
 	reserveCalls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		mu.Lock()
 		paths = append(paths, request.URL.Path)
 		if request.URL.Path == "/wallet/callback/v1/api-platform/usage/reserve" {
+			var payload walletReserveRequest
+			require.NoError(t, common.DecodeJson(request.Body, &payload))
+			reserveRequests = append(reserveRequests, payload)
 			reserveCalls++
 			if reserveCalls == 1 {
 				mu.Unlock()
@@ -229,7 +238,7 @@ func TestWalletUncertainReserveFailureRetriesReserveBeforeCancel(t *testing.T) {
 	t.Setenv("WALLET_CALLBACK_BASE_URL", server.URL)
 	t.Setenv("WALLET_CALLBACK_ENABLED", "true")
 
-	relayInfo := &relaycommon.RelayInfo{RequestId: "wallet-reserve-then-cancel", UserId: 42, StartTime: time.Now()}
+	relayInfo := &relaycommon.RelayInfo{RequestId: "wallet-reserve-then-cancel", UserId: 42, StartTime: time.Now(), OriginModelName: "gpt-5", TokenName: "desktop"}
 	callback, err := newWalletUsageCallbackSession(relayInfo, 100)
 	require.Error(t, err)
 	require.NotNil(t, callback)
@@ -250,7 +259,37 @@ func TestWalletUncertainReserveFailureRetriesReserveBeforeCancel(t *testing.T) {
 		"/wallet/callback/v1/api-platform/usage/reserve",
 		"/wallet/callback/v1/api-platform/usage/cancel",
 	}, paths)
+	require.Len(t, reserveRequests, 2)
+	for _, request := range reserveRequests {
+		require.NotNil(t, request.Extra)
+		require.NotNil(t, request.Extra.APIUsageDetail)
+		assert.Equal(t, "gpt-5", request.Extra.APIUsageDetail.ModelName)
+		assert.Equal(t, "desktop", request.Extra.APIUsageDetail.APIKeyName)
+	}
 	mu.Unlock()
+}
+
+func TestWalletLegacyCallbackOmitsExtra(t *testing.T) {
+	useWalletCallbackTestDB(t, &model.WalletUsageCallback{})
+
+	var body map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		require.NoError(t, common.DecodeJson(request.Body, &body))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{}}`))
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("WALLET_CALLBACK_BASE_URL", server.URL)
+	t.Setenv("WALLET_CALLBACK_ENABLED", "true")
+
+	record := &model.WalletUsageCallback{
+		APIRequestID: "legacy-wallet-callback", APIPlatformUserID: 42,
+		ReservedQuota: 100, ReservedAmount: 100, ExchangeRate: "7.30000000",
+	}
+	require.NoError(t, model.CreateWalletUsageCallback(record))
+	require.NoError(t, processWalletUsageCallback(context.Background(), record, loadWalletCallbackConfig()))
+	_, hasExtra := body["extra"]
+	assert.False(t, hasExtra)
 }
 
 func TestWalletReserveBusinessRejectionDoesNotCancel(t *testing.T) {
@@ -271,7 +310,7 @@ func TestWalletReserveBusinessRejectionDoesNotCancel(t *testing.T) {
 	t.Setenv("WALLET_CALLBACK_BASE_URL", server.URL)
 	t.Setenv("WALLET_CALLBACK_ENABLED", "true")
 
-	relayInfo := &relaycommon.RelayInfo{RequestId: "wallet-reserve-rejected", UserId: 42, StartTime: time.Now()}
+	relayInfo := &relaycommon.RelayInfo{RequestId: "wallet-reserve-rejected", UserId: 42, StartTime: time.Now(), OriginModelName: "gpt-5", TokenName: "desktop"}
 	callback, err := newWalletUsageCallbackSession(relayInfo, 100)
 	require.Error(t, err)
 	require.NotNil(t, callback)
@@ -302,7 +341,7 @@ func TestWalletReserveOmitsEmptyBusinessOrderNo(t *testing.T) {
 	t.Setenv("WALLET_CALLBACK_BASE_URL", server.URL)
 	t.Setenv("WALLET_CALLBACK_ENABLED", "true")
 
-	relayInfo := &relaycommon.RelayInfo{RequestId: "wallet-reserve-without-order", UserId: 42, StartTime: time.Now()}
+	relayInfo := &relaycommon.RelayInfo{RequestId: "wallet-reserve-without-order", UserId: 42, StartTime: time.Now(), OriginModelName: "gpt-5", TokenName: "desktop"}
 	callback, err := newWalletUsageCallbackSession(relayInfo, 100)
 	require.NoError(t, err)
 	require.NotNil(t, callback)
@@ -310,9 +349,15 @@ func TestWalletReserveOmitsEmptyBusinessOrderNo(t *testing.T) {
 
 	_, hasBusinessOrderNo := body["business_order_no"]
 	assert.False(t, hasBusinessOrderNo)
+	extra := body["extra"].(map[string]any)
+	detail := extra["api_usage_detail"].(map[string]any)
+	assert.Equal(t, "gpt-5", detail["model_name"])
+	assert.Equal(t, "desktop", detail["api_key_name"])
 	record, err := model.GetWalletUsageCallback(relayInfo.RequestId)
 	require.NoError(t, err)
 	assert.Nil(t, record.BusinessOrderNo)
+	assert.Equal(t, "gpt-5", record.ModelName)
+	assert.Equal(t, "desktop", record.APIKeyName)
 }
 
 func TestCoveredBillingSkipsLocalQuotaAndCarriesOrderNo(t *testing.T) {
@@ -345,6 +390,8 @@ func TestCoveredBillingSkipsLocalQuotaAndCarriesOrderNo(t *testing.T) {
 		UserId:          7,
 		StartTime:       time.Now(),
 		BusinessOrderNo: ginContext.Request.Header.Get("X-Business-Order"),
+		OriginModelName: "gpt-5",
+		TokenName:       "desktop",
 	}
 
 	apiErr := PreConsumeBilling(ginContext, 100, relayInfo)
