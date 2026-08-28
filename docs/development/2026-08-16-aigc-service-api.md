@@ -29,7 +29,7 @@ New API 从 Token 得到 `user_id`、`token_id` 和实际用户组。请求方�
 
 ```json
 {
-  "idempotency_key": "turn_01JXYZ"
+  "idempotency_key": "user-a1b2c3d4e5:019c4f7a8e4376b89c219e0fb7a4d312"
 }
 ```
 
@@ -37,13 +37,13 @@ New API 从 Token 得到 `user_id`、`token_id` 和实际用户组。请求方�
 
 1. `idempotency_key` 必填，去除首尾空格后长度为 1 到 200 个字符。
 2. 幂等作用域是 `(user_id, idempotency_key)`。
-3. 相同 Key、相同规范化请求返回原 Generation，不再次进入 Relay 或计费。
-4. 相同 Key、不同请求摘要返回 HTTP 409 `IDEMPOTENCY_CONFLICT`。
-5. 网络超时或响应丢失时，客户端必须使用相同 Key 和相同 Body 重放。
+3. `(user_id, idempotency_key)` 命中后始终返回首次 Generation，不再次解析 Profile、进入 Relay 或计费。
+4. 请求摘要和首次规范化请求 JSON 仅用于审计与排障，不参与重放判定。
+5. 网络超时或响应丢失时，客户端必须使用相同 Key 重放；素材签名 URL 的过期时间或签名参数可以变化。
 6. 原 Generation 明确失败后的业务重试必须使用新 Key；新请求重新读取当前 Published Profile，并重新选择当前模型与渠道。
 7. 不使用 `Idempotency-Key` Header。`X-Request-ID` 如有发送只用于链路追踪，不参与幂等。
 
-AIGC Backend 使用 AIGC Turn ID 作为 `idempotency_key`。
+AIGC Backend 对新 Turn 使用 `<内部用户 ID>:<UUIDv7 Turn ID>` 作为 `idempotency_key`；历史 `turn-*` 任务恢复时保留原 Key。
 
 ## 查询模型目录
 
@@ -103,7 +103,7 @@ Accept: application/json
 
 ```json
 {
-  "idempotency_key": "turn_01JXYZ",
+  "idempotency_key": "user-a1b2c3d4e5:019c4f7a8e4376b89c219e0fb7a4d312",
   "model": "video-cinema-pro",
   "type": "video",
   "prompt": "清晨薄雾中的城市天际线",
@@ -138,7 +138,7 @@ Accept: application/json
 
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
-| `idempotency_key` | 是 | 客户端幂等键，AIGC 使用 Turn ID |
+| `idempotency_key` | 是 | 客户端幂等键；AIGC 新任务使用内部用户 ID 与 UUIDv7 Turn ID 的组合 Key |
 | `model` | 是 | New API 公开模型 ID |
 | `type` | 是 | `text`、`image`、`video` 或 `music` |
 | `prompt` | 是 | 规范化后不能为空 |
@@ -154,7 +154,7 @@ Accept: application/json
 
 1. TokenAuth 确认用户、Token 和用户组。
 2. 规范化请求并计算 SHA-256 请求摘要。
-3. 按 `(user_id, idempotency_key)` 查询幂等记录。
+3. 按 `(user_id, idempotency_key)` 查询幂等记录；命中即返回首次 Generation，摘要只用于诊断。
 4. 未命中时读取当前 Published Profile，校验 Group、Mode、输入和输出组合。
 5. 解析当前 `upstream_model_id`，创建 Generation 记录。
 6. 进入 New API Relay 完成渠道路由、供应商适配和计费。
@@ -165,7 +165,7 @@ Accept: application/json
 ```json
 {
   "id": "aigc_gen_vD8uP4",
-  "idempotency_key": "turn_01JXYZ",
+  "idempotency_key": "user-a1b2c3d4e5:019c4f7a8e4376b89c219e0fb7a4d312",
   "status": "processing",
   "progress": 42,
   "model": "video-cinema-pro",
@@ -199,17 +199,6 @@ Accept: application/json
 
 ## 错误协议
 
-```json
-{
-  "error": {
-    "code": "IDEMPOTENCY_CONFLICT",
-    "message": "idempotency_key was already used with different input",
-    "retryable": false,
-    "idempotency_key": "turn_01JXYZ"
-  }
-}
-```
-
 | HTTP | Code | Retryable | 说明 |
 | --- | --- | ---: | --- |
 | 400 | `INVALID_REQUEST` | false | 请求结构错误或缺少幂等键 |
@@ -220,7 +209,6 @@ Accept: application/json
 | 403 | `MODEL_NOT_AVAILABLE_FOR_GROUP` | false | 当前用户组无权限 |
 | 404 | `MODEL_NOT_FOUND` | false | 公开模型不存在或未发布 |
 | 404 | `GENERATION_NOT_FOUND` | false | Generation 不存在或不属于当前用户 |
-| 409 | `IDEMPOTENCY_CONFLICT` | false | 同一幂等键使用了不同请求 |
 | 503 | `MODEL_CONFIGURATION_INVALID` | false | Profile 配置无效 |
 | 503 | `MODEL_CHANNEL_UNAVAILABLE` | true | 当前用户组没有可用渠道 |
 

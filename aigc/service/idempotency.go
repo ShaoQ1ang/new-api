@@ -27,9 +27,6 @@ func (service *IdempotencyService) Replay(ctx context.Context, userID int, idemp
 	if err != nil {
 		return nil, false, err
 	}
-	if stored.RequestDigest != strings.TrimSpace(requestDigest) {
-		return nil, false, ErrIdempotencyConflict
-	}
 	return stored, true, nil
 }
 
@@ -84,9 +81,6 @@ func (service *IdempotencyService) Begin(ctx context.Context, input BeginRequest
 	stored, created, err := service.requests.CreateOrGetRequest(ctx, request)
 	if err != nil {
 		return nil, false, err
-	}
-	if !created && stored.RequestDigest != input.RequestDigest {
-		return nil, false, ErrIdempotencyConflict
 	}
 	return stored, created, nil
 }

@@ -37,7 +37,7 @@ func TestIdempotencyBeginCreatesThenReplaysSameRequest(t *testing.T) {
 	input := BeginRequest{
 		IdempotencyKey: "turn-1", UserID: 7, TokenID: 11, GroupName: "default",
 		PublicModelID: "writer-pro", UpstreamModelID: "gpt-5", ModelType: "text", Mode: "text",
-		ConfigVersion: 3, RequestDigest: strings.Repeat("a", 64),
+		ConfigVersion: 3, RequestDigest: strings.Repeat("a", 64), RequestJSON: `{"prompt":"hello"}`,
 	}
 
 	request, created, err := service.Begin(context.Background(), input)
@@ -45,6 +45,8 @@ func TestIdempotencyBeginCreatesThenReplaysSameRequest(t *testing.T) {
 	assert.True(t, created)
 	assert.Equal(t, "aigc_gen_fixed", request.GenerationID)
 	assert.Equal(t, 3, request.ConfigVersion)
+	assert.Len(t, request.RequestDigest, 64)
+	assert.Equal(t, `{"prompt":"hello"}`, request.RequestJSON)
 
 	replayed, created, err := service.Begin(context.Background(), input)
 	require.NoError(t, err)
@@ -52,18 +54,51 @@ func TestIdempotencyBeginCreatesThenReplaysSameRequest(t *testing.T) {
 	assert.Equal(t, request.GenerationID, replayed.GenerationID)
 }
 
-func TestIdempotencyBeginRejectsDigestMismatch(t *testing.T) {
+func TestIdempotencyBeginReplaysExistingRequestWhenDigestChanges(t *testing.T) {
 	store := &requestStoreStub{stored: &entity.AigcRequest{
 		IdempotencyKey: "turn-1", GenerationID: "aigc_gen_existing", UserID: 7, RequestDigest: strings.Repeat("a", 64),
 	}}
 	service := NewIdempotencyService(store, func() (string, error) { return "unused", nil })
 
-	_, _, err := service.Begin(context.Background(), BeginRequest{
+	replayed, created, err := service.Begin(context.Background(), BeginRequest{
 		IdempotencyKey: "turn-1", UserID: 7, TokenID: 11, PublicModelID: "writer-pro",
 		UpstreamModelID: "gpt-5", ModelType: "text", Mode: "text", RequestDigest: strings.Repeat("b", 64),
 	})
 
-	assert.ErrorIs(t, err, ErrIdempotencyConflict)
+	require.NoError(t, err)
+	assert.False(t, created)
+	assert.Equal(t, "aigc_gen_existing", replayed.GenerationID)
+	assert.Equal(t, strings.Repeat("a", 64), replayed.RequestDigest)
+}
+
+func TestIdempotencyReplayUsesUserAndKeyAsAuthoritativeIdentity(t *testing.T) {
+	store := newGenerationRequestStoreStub()
+	service := NewIdempotencyService(store, func() (string, error) { return "unused", nil })
+	for _, request := range []*entity.AigcRequest{
+		{IdempotencyKey: "shared-key", GenerationID: "aigc_gen_user_7", UserID: 7, RequestDigest: strings.Repeat("a", 64)},
+		{IdempotencyKey: "shared-key", GenerationID: "aigc_gen_user_8", UserID: 8, RequestDigest: strings.Repeat("b", 64)},
+	} {
+		_, created, err := store.CreateOrGetRequest(context.Background(), request)
+		require.NoError(t, err)
+		require.True(t, created)
+	}
+
+	for _, test := range []struct {
+		name          string
+		userID        int
+		wantID        string
+		changedDigest string
+	}{
+		{name: "first authenticated user", userID: 7, wantID: "aigc_gen_user_7", changedDigest: strings.Repeat("c", 64)},
+		{name: "second authenticated user", userID: 8, wantID: "aigc_gen_user_8", changedDigest: strings.Repeat("d", 64)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			replayed, found, err := service.Replay(context.Background(), test.userID, "shared-key", test.changedDigest)
+			require.NoError(t, err)
+			assert.True(t, found)
+			assert.Equal(t, test.wantID, replayed.GenerationID)
+		})
+	}
 }
 
 func TestDigestGenerationRequestIsStable(t *testing.T) {

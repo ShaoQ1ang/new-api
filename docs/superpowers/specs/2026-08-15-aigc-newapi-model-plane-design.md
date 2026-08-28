@@ -235,7 +235,7 @@ aigc/router.SetRelayRouter(router)
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `id` | bigint/int | 内部主键 |
-| `idempotency_key` | varchar(191) | AIGC Turn ID/幂等键 |
+| `idempotency_key` | varchar(191) | AIGC 内部用户 ID 与 Turn ID 的组合幂等键；历史任务可为 `turn-*` |
 | `generation_id` | varchar(191) | New API 对外任务 ID，唯一 |
 | `user_id` | int | 真实 New API 用户 |
 | `token_id` | int | 实际调用 Token |
@@ -261,8 +261,8 @@ aigc/router.SetRelayRouter(router)
 
 幂等规则：
 
-- 相同 `idempotency_key` 和相同 `request_digest` 返回原任务。
-- 相同 `idempotency_key` 但请求内容不同返回 `409 IDEMPOTENCY_CONFLICT`。
+- 相同认证用户命中相同 `idempotency_key` 时始终返回原任务，Key 是权威重放身份。
+- `request_digest` 和首次 `request_json` 仅用于审计与排障，不参与重放判定；素材签名 URL 参数变化不构成冲突。
 - 已完成任务不得重新经过计费和 Relay。
 - 失败是否允许重新执行由明确的 Retry API 或新的 Turn ID 决定，不能靠重复 POST 隐式重跑。
 
@@ -425,7 +425,7 @@ POST /v1/aigc/generations
 
 ```json
 {
-  "idempotency_key": "turn-01J...",
+  "idempotency_key": "user-a1b2c3d4e5:019c4f7a8e4376b89c219e0fb7a4d312",
   "model": "happyhorse-1.1",
   "type": "video",
   "prompt": "A train moving through snow",
@@ -466,7 +466,7 @@ POST /v1/aigc/generations
 ```json
 {
   "id": "aigc_gen_01J...",
-  "idempotency_key": "turn-01J...",
+  "idempotency_key": "user-a1b2c3d4e5:019c4f7a8e4376b89c219e0fb7a4d312",
   "status": "submitted",
   "progress": 0,
   "model": "happyhorse-1.1",
@@ -499,7 +499,7 @@ submitted -> queued -> processing -> completed
 ```json
 {
   "id": "aigc_gen_01J...",
-  "idempotency_key": "turn-01J...",
+  "idempotency_key": "user-a1b2c3d4e5:019c4f7a8e4376b89c219e0fb7a4d312",
   "status": "completed",
   "progress": 100,
   "model": "happyhorse-1.1",
@@ -646,7 +646,7 @@ Client 职责仅包括：
 
 - 使用当前用户对应的 New API Token。
 - 发送模型目录和生成请求。
-- 在生成请求 Body 中发送 AIGC Turn ID 作为 `idempotency_key`。
+- 在生成请求 Body 中发送 `<内部用户 ID>:<UUIDv7 Turn ID>` 作为新任务的 `idempotency_key`。
 - 解码标准错误和任务状态。
 - 设置连接、请求和空闲超时。
 - 不在 Client 内判断具体供应商或真实模型 ID。
@@ -669,7 +669,7 @@ Client 职责仅包括：
 AIGC 保留本地 Job 恢复机制，但恢复动作只允许：
 
 - 已有 `generation_id`：查询原 New API 任务，禁止重新提交。
-- 尚无 `generation_id`：使用原 Turn ID 重复提交，由 New API 幂等层返回原任务。
+- 尚无 `generation_id`：使用原组合 Key 重复提交，由 New API 幂等层返回原任务；历史 `turn-*` 任务仍使用原裸 Key。
 
 ### 12.4 迁移后删除的 AIGC 能力
 
@@ -767,7 +767,7 @@ New API 根据 Token 和用户配置计算实际组。Profile 的 `groups_json` 
     "code": "MODEL_MODE_NOT_SUPPORTED",
     "message": "该模型不支持首尾帧生成",
     "retryable": false,
-    "idempotency_key": "turn-01J..."
+    "idempotency_key": "user-a1b2c3d4e5:019c4f7a8e4376b89c219e0fb7a4d312"
   }
 }
 ```
@@ -782,7 +782,6 @@ New API 根据 Token 和用户配置计算实际组。Profile 的 `groups_json` 
 | 401 | `UNAUTHORIZED` | 否 | Token 无效 |
 | 403 | `MODEL_NOT_AVAILABLE_FOR_GROUP` | 否 | 用户组无权使用 |
 | 404 | `MODEL_NOT_FOUND` | 否 | 公共模型不存在或未发布 |
-| 409 | `IDEMPOTENCY_CONFLICT` | 否 | 同一幂等键请求内容不同 |
 | 409 | `CONFIG_VERSION_CONFLICT` | 是 | 管理配置版本冲突 |
 | 429 | `RATE_LIMITED` | 是 | 限流 |
 | 402/429 | `INSUFFICIENT_QUOTA` | 否 | 额度不足，沿用项目约定状态码 |
@@ -796,11 +795,11 @@ AIGC Client 将这些错误映射为现有 Job 的 `error_code`、`error` 和 `r
 
 ## 16. 可观测性
 
-业务幂等统一使用 AIGC Turn ID：
+新任务的业务幂等统一使用 AIGC 内部用户 ID 与 UUIDv7 Turn ID 的组合 Key：
 
 ```text
-AIGC turn_id
-  -> body.idempotency_key
+AIGC user_id + turn_id
+  -> body.idempotency_key (`<user_id>:<turn_id>`)
   -> New API AigcRequest.idempotency_key
   -> Relay log request id
   -> upstream task metadata when supported

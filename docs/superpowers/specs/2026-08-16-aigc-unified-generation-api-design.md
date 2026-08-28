@@ -89,7 +89,7 @@ Content-Type: application/json
 
 ```json
 {
-  "idempotency_key": "turn-123",
+  "idempotency_key": "user-a1b2c3d4e5:019c4f7a8e4376b89c219e0fb7a4d312",
   "model": "wan-2.7",
   "type": "video",
   "prompt": "camera moves forward",
@@ -115,7 +115,7 @@ Content-Type: application/json
 }
 ```
 
-`type` 必须与 Profile 的 `model_type` 一致。`idempotency_key` 必填；同一用户用相同幂等键提交不同请求时返回冲突。
+`type` 必须与 Profile 的 `model_type` 一致。`idempotency_key` 必填；同一认证用户命中相同 Key 时返回首次 Generation，不重复解析、执行或计费。请求摘要和首次请求 JSON 仅用于诊断。
 
 ### 查询
 
@@ -129,7 +129,7 @@ Authorization: Bearer <user-token>
 ```json
 {
   "id": "aigc_gen_xxx",
-  "idempotency_key": "turn-123",
+  "idempotency_key": "user-a1b2c3d4e5:019c4f7a8e4376b89c219e0fb7a4d312",
   "status": "completed",
   "progress": 100,
   "model": "wan-2.7",

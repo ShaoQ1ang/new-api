@@ -91,12 +91,16 @@ type executorStub struct {
 	cancelExecute context.CancelFunc
 	pollResult    execution.Result
 	executeCalls  int
+	relayCalls    int
+	billingCalls  int
 	pollCalls     int
 	pollModelType string
 }
 
 func (stub *executorStub) Execute(_ context.Context, _ execution.Identity, _ execution.Spec) (execution.Result, error) {
 	stub.executeCalls++
+	stub.relayCalls++
+	stub.billingCalls++
 	if stub.cancelExecute != nil {
 		stub.cancelExecute()
 	}
@@ -135,6 +139,38 @@ func TestGenerationServiceExecutesOnceAndReplaysCompletedResult(t *testing.T) {
 	assert.Equal(t, first.ID, replayed.ID)
 	assert.Equal(t, 1, executor.executeCalls)
 	assert.Equal(t, 1, resolver.calls)
+}
+
+func TestGenerationServiceReplaysWhenMediaSignatureChanges(t *testing.T) {
+	store := newGenerationRequestStoreStub()
+	idempotency := NewIdempotencyService(store, func() (string, error) { return "aigc_gen_signed_media", nil })
+	executor := &executorStub{executeResult: execution.Result{
+		Status: entity.RequestStatusCompleted, Progress: 100,
+		Outputs: []dto.GenerationOutputItem{{ID: "output-1", Type: "video", URL: "https://cdn.test/result.mp4"}},
+	}}
+	resolver := &generationResolverStub{spec: &execution.Spec{
+		PublicModelID: "video-pro", UpstreamModelID: "video-upstream", ModelType: "video", Mode: "first_frame", ConfigVersion: 3,
+	}}
+	service := NewGenerationService(resolver, idempotency, store, executor)
+	identity := execution.Identity{UserID: 7, TokenID: 11, Group: "default"}
+	request := dto.GenerationRequest{
+		IdempotencyKey: "user-7:019c4f7a8e4376b89c219e0fb7a4d312",
+		Model:          "video-pro", Type: "video", Prompt: "move", Mode: "first_frame",
+		Inputs: dto.GenerationInputs{Images: []dto.MediaInput{{Role: "first_frame", URL: "https://oss.test/input.png?Expires=1000&Signature=aaa"}}},
+	}
+
+	first, err := service.Submit(context.Background(), identity, request)
+	require.NoError(t, err)
+	request.Inputs.Images[0].URL = "https://oss.test/input.png?Expires=1060&Signature=bbb"
+	replayed, err := service.Submit(context.Background(), identity, request)
+	require.NoError(t, err)
+
+	assert.Equal(t, first.ID, replayed.ID)
+	assert.Equal(t, first.IdempotencyKey, replayed.IdempotencyKey)
+	assert.Equal(t, 1, resolver.calls, "profile resolution must not run again")
+	assert.Equal(t, 1, executor.executeCalls, "generation execution must not run again")
+	assert.Equal(t, 1, executor.relayCalls, "provider relay must not run again")
+	assert.Equal(t, 1, executor.billingCalls, "billing must not run again")
 }
 
 func TestGenerationServicePersistsFailureAfterRequestContextCanceled(t *testing.T) {
