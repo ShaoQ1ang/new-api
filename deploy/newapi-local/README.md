@@ -252,7 +252,7 @@ go test ./relay/channel/task/ali ./relay/channel/task/taskcommon ./relay/helper 
 
 ## 4.2 多渠道视频本地 mock
 
-本地开发提供一个独立的视频 mock 服务。为保持已有脚本和部署配置兼容，服务名与环境变量前缀仍为 `ali-video-mock` / `ALI_VIDEO_MOCK_*`，但它同时实现 Ali、Seedance、OpenRouter Video、Gemini Veo 和 Vertex Veo 的上游协议。Ali、Seedance、OpenRouter Video 和 Gemini Veo 可以直接用于零成本端到端联调。
+本地开发提供一个独立的 AIGC mock 服务。为保持已有脚本和部署配置兼容，服务名与环境变量前缀仍为 `ali-video-mock` / `ALI_VIDEO_MOCK_*`，但它同时实现 Ali、Seedance、OpenRouter Video、Gemini Veo、Vertex Veo、OpenAI Images、Suno 和 SunoAPI v1 的上游协议，可直接用于零成本端到端联调。
 
 启动：
 
@@ -304,6 +304,8 @@ http://127.0.0.1:18080
 - `GET /{version}/{operationName}`
 - `POST /v1/projects/{project}/locations/{region}/publishers/google/models/{model}:predictLongRunning`
 - `POST /v1/projects/{project}/locations/{region}/publishers/google/models/{model}:fetchPredictOperation`
+- `POST /api/v1/generate`
+- `GET /api/v1/generate/record-info?taskId=:id`
 
 支持的模型族：
 
@@ -316,6 +318,7 @@ http://127.0.0.1:18080
 - OpenRouter `google/veo-*`
 - `veo-3.0-generate-001`、`veo-3.0-fast-generate-001`
 - `veo-3.1-generate-preview`、`veo-3.1-fast-generate-preview`
+- SunoAPI v1 `V4`、`V4_5`、`V4_5PLUS`、`V4_5ALL`、`V5`、`V5_5`
 
 行为约定：
 
@@ -330,6 +333,7 @@ http://127.0.0.1:18080
 - OpenRouter Seedance/Veo 成功响应返回 `output.video_url`、`usage.video_tokens`、`usage.total_tokens`、duration 和 provider cost
 - Gemini Veo 成功响应返回 `generateVideoResponse.generatedVideos[].video.uri`
 - Vertex Veo 按真实协议在 operation 结果中返回 Base64 编码的可播放 MP4
+- SunoAPI v1 遵循 `PENDING` / `FIRST_SUCCESS` / `SUCCESS` 轮询状态，成功时固定返回两首可播放 WAV；`callBackUrl` 仅做必填校验，不主动发起回调
 
 Seedance 2.0 多模态请求示例：
 

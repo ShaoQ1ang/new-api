@@ -116,6 +116,8 @@ func shouldCaptureMockRequest(requestPath string) bool {
 
 func mockProtocolForPath(requestPath string) string {
 	switch {
+	case strings.HasPrefix(requestPath, "/api/v1/generate"):
+		return "SunoAPI v1"
 	case strings.HasPrefix(requestPath, "/api/v1/services/aigc/"), strings.HasPrefix(requestPath, "/api/v1/tasks/"):
 		return "Alibaba"
 	case strings.HasPrefix(requestPath, "/api/v3/contents/generations/tasks"):

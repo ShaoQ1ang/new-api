@@ -29,6 +29,10 @@ var mockImageSizes = map[string]struct{}{
 	"768x1024": {}, "1008x672": {}, "672x1008": {}, "1536x1024": {}, "1024x1536": {},
 }
 
+var mockSunoAPIModels = map[string]struct{}{
+	"V4": {}, "V4_5": {}, "V4_5PLUS": {}, "V4_5ALL": {}, "V5": {}, "V5_5": {},
+}
+
 type mockImageRequest struct {
 	Model          string `json:"model"`
 	Prompt         string `json:"prompt"`
@@ -262,6 +266,119 @@ func (s *mockServer) handleSunoFetch(w http.ResponseWriter, r *http.Request) {
 		items = append(items, item)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"code": "success", "message": "", "data": items})
+}
+
+func (s *mockServer) handleSunoAPIV1Generate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeSunoAPIError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var request relaydto.SunoAPIGenerateRequest
+	if err := common.DecodeJson(r.Body, &request); err != nil {
+		writeSunoAPIError(w, http.StatusBadRequest, "invalid request: "+err.Error())
+		return
+	}
+	if _, ok := mockSunoAPIModels[request.Model]; !ok {
+		writeSunoAPIError(w, http.StatusBadRequest, "unsupported music model")
+		return
+	}
+	if strings.TrimSpace(request.CallBackURL) == "" {
+		writeSunoAPIError(w, http.StatusBadRequest, "callBackUrl is required")
+		return
+	}
+	prompt := strings.TrimSpace(request.Prompt)
+	style := strings.TrimSpace(request.Style)
+	title := strings.TrimSpace(request.Title)
+	if !request.CustomMode && prompt == "" {
+		writeSunoAPIError(w, http.StatusBadRequest, "prompt is required")
+		return
+	}
+	if request.CustomMode && (style == "" || title == "" || (!request.Instrumental && prompt == "")) {
+		writeSunoAPIError(w, http.StatusBadRequest, "custom mode requires style, title, and vocal prompt")
+		return
+	}
+	duration := 120
+	if request.Duration != nil {
+		if request.Model != "V5_5" || *request.Duration < 10 || *request.Duration > 360 {
+			writeSunoAPIError(w, http.StatusBadRequest, "duration requires V5_5 and must be between 10 and 360")
+			return
+		}
+		duration = *request.Duration
+	}
+
+	taskID := strings.Replace(s.nextTaskID(), "mock-task", "mock-sunoapi", 1)
+	now := time.Now()
+	task := &mockTask{
+		ID: taskID, Provider: "sunoapi-v1", Model: request.Model, Family: "music", Prompt: prompt,
+		Style: style, Title: title, Instrumental: request.Instrumental, Duration: duration,
+		CreatedAt: now, ScheduledAt: now.Add(time.Second), CompletedAt: s.completionTime(now),
+		ShouldFail: s.shouldFail(), FailReason: "mock upstream random failure",
+		AudioURL:  s.buildAssetURL(r, "/mock-assets/music/"+taskID+".wav"),
+		PosterURL: s.buildAssetURL(r, "/mock-assets/images/"+taskID+"-1024x1024.png"),
+	}
+	s.storeTask(task)
+	writeJSON(w, http.StatusOK, relaydto.SunoAPIResponse[relaydto.SunoAPISubmitData]{
+		Code: http.StatusOK, Msg: "success", Data: relaydto.SunoAPISubmitData{TaskID: taskID},
+	})
+}
+
+func (s *mockServer) handleSunoAPIV1Record(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeSunoAPIError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	taskID := strings.TrimSpace(r.URL.Query().Get("taskId"))
+	if taskID == "" {
+		writeSunoAPIError(w, http.StatusBadRequest, "taskId is required")
+		return
+	}
+	task, ok := s.pollTask(taskID)
+	if !ok || task.Provider != "sunoapi-v1" {
+		writeSunoAPIError(w, http.StatusNotFound, "task not found")
+		return
+	}
+
+	status := "PENDING"
+	if task.PollCount > 1 {
+		status = "FIRST_SUCCESS"
+	}
+	record := relaydto.SunoAPIRecordData{TaskID: task.ID, Status: status}
+	if s.taskComplete(task) {
+		if task.ShouldFail {
+			record.Status = "GENERATE_AUDIO_FAILED"
+			record.ErrorCode = "MOCK_GENERATION_FAILED"
+			record.ErrorMessage = task.FailReason
+		} else {
+			record.Status = "SUCCESS"
+			record.Response = relaydto.SunoAPIGenerationResponse{
+				TaskID: task.ID,
+				SunoData: []relaydto.SunoAPISong{
+					sunoAPIMockSong(task, 1),
+					sunoAPIMockSong(task, 2),
+				},
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, relaydto.SunoAPIResponse[relaydto.SunoAPIRecordData]{
+		Code: http.StatusOK, Msg: "success", Data: record,
+	})
+}
+
+func sunoAPIMockSong(task mockTask, track int) relaydto.SunoAPISong {
+	title := task.Title
+	if title == "" {
+		title = "Mock Track"
+	}
+	return relaydto.SunoAPISong{
+		ID: task.ID + "-" + strconv.Itoa(track), AudioURL: task.AudioURL, StreamAudioURL: task.AudioURL,
+		ImageURL: task.PosterURL, Prompt: task.Prompt, ModelName: task.Model,
+		Title: title + " " + strconv.Itoa(track), Tags: task.Style,
+		CreateTime: task.CreatedAt.UTC().Format(time.RFC3339), Duration: float64(task.Duration),
+	}
+}
+
+func writeSunoAPIError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, relaydto.SunoAPIResponse[any]{Code: status, Msg: message})
 }
 
 func (s *mockServer) handleMockMusic(w http.ResponseWriter, r *http.Request) {

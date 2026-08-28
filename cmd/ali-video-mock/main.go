@@ -69,6 +69,8 @@ type mockTask struct {
 	Ratio         string
 	Seed          int
 	Prompt        string
+	Style         string
+	Title         string
 	Instrumental  bool
 	AudioURL      string
 	PosterURL     string
@@ -229,6 +231,8 @@ func (s *mockServer) routes() http.Handler {
 	mux.HandleFunc("/v1/images/edits", s.handleImageEdit)
 	mux.HandleFunc("/suno/submit/", s.handleSunoSubmit)
 	mux.HandleFunc("/suno/fetch", s.handleSunoFetch)
+	mux.HandleFunc("/api/v1/generate", s.handleSunoAPIV1Generate)
+	mux.HandleFunc("/api/v1/generate/record-info", s.handleSunoAPIV1Record)
 	mux.HandleFunc("/mock-assets/videos/", s.handleMockVideo)
 	mux.HandleFunc("/mock-assets/images/", s.handleMockImage)
 	mux.HandleFunc("/mock-assets/music/", s.handleMockMusic)
@@ -242,7 +246,7 @@ func (s *mockServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"ok":             true,
 		"video_bytes":    len(s.videoRenderer.cache[1]),
 		"model_families": []string{"wan", "happyhorse", "kling", "minimax", "seedance", "veo", "image", "music"},
-		"providers":      []string{"alibaba", "doubao", "gemini", "vertex", "openrouter", "openai-images", "suno"},
+		"providers":      []string{"alibaba", "doubao", "gemini", "vertex", "openrouter", "openai-images", "suno", "sunoapi-v1"},
 	})
 }
 

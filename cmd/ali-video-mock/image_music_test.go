@@ -5,6 +5,7 @@ import (
 	"image/png"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -100,4 +101,81 @@ func TestSunoMusicLifecycleReturnsPlayableTracksAndCapturesProtocol(t *testing.T
 	assert.Equal(t, "/suno/fetch", history.Records[0].Path)
 	assert.Equal(t, "Suno", history.Records[1].Protocol)
 	assert.Equal(t, submitBody, history.Records[1].Body)
+}
+
+func TestSunoAPIV1LifecycleReturnsExactlyTwoPlayableTracks(t *testing.T) {
+	server := newMockServerWithConfig(mockConfig{CompleteAfterPoll: 2})
+	handler := server.routes()
+	submitBody := `{"customMode":true,"instrumental":false,"model":"V5_5","callBackUrl":"https://app.test/api/sunoapi/callback","prompt":"city lights","style":"ambient pop","title":"Night Drive","duration":180}`
+	submit := performRequest(t, handler, http.MethodPost, "/api/v1/generate", submitBody)
+	require.Equal(t, http.StatusOK, submit.Code, submit.Body.String())
+	var submitted relaydto.SunoAPIResponse[relaydto.SunoAPISubmitData]
+	require.NoError(t, common.Unmarshal(submit.Body.Bytes(), &submitted))
+	assert.Equal(t, http.StatusOK, submitted.Code)
+	require.NotEmpty(t, submitted.Data.TaskID)
+
+	firstFetch := performRequest(t, handler, http.MethodGet, "/api/v1/generate/record-info?taskId="+submitted.Data.TaskID, "")
+	require.Equal(t, http.StatusOK, firstFetch.Code, firstFetch.Body.String())
+	var pending relaydto.SunoAPIResponse[relaydto.SunoAPIRecordData]
+	require.NoError(t, common.Unmarshal(firstFetch.Body.Bytes(), &pending))
+	assert.Equal(t, "PENDING", pending.Data.Status)
+
+	secondFetch := performRequest(t, handler, http.MethodGet, "/api/v1/generate/record-info?taskId="+submitted.Data.TaskID, "")
+	require.Equal(t, http.StatusOK, secondFetch.Code, secondFetch.Body.String())
+	var completed relaydto.SunoAPIResponse[relaydto.SunoAPIRecordData]
+	require.NoError(t, common.Unmarshal(secondFetch.Body.Bytes(), &completed))
+	assert.Equal(t, "SUCCESS", completed.Data.Status)
+	assert.Equal(t, submitted.Data.TaskID, completed.Data.Response.TaskID)
+	require.Len(t, completed.Data.Response.SunoData, 2)
+	for index, song := range completed.Data.Response.SunoData {
+		assert.Equal(t, submitted.Data.TaskID+"-"+strconv.Itoa(index+1), song.ID)
+		assert.Equal(t, "V5_5", song.ModelName)
+		assert.Equal(t, "city lights", song.Prompt)
+		assert.Equal(t, "ambient pop", song.Tags)
+		assert.Equal(t, float64(180), song.Duration)
+		assert.NotEmpty(t, song.StreamAudioURL)
+
+		audioRequest := httptest.NewRequest(http.MethodGet, song.AudioURL, nil)
+		audio := httptest.NewRecorder()
+		handler.ServeHTTP(audio, audioRequest)
+		require.Equal(t, http.StatusOK, audio.Code)
+		assert.Equal(t, "audio/wav", audio.Header().Get("Content-Type"))
+		assert.True(t, strings.HasPrefix(audio.Body.String(), "RIFF"))
+	}
+
+	historyResponse := performRequest(t, handler, http.MethodGet, "/api/mock/history", "")
+	var history mockHistoryResponse
+	require.NoError(t, common.Unmarshal(historyResponse.Body.Bytes(), &history))
+	require.Len(t, history.Records, 3)
+	for _, record := range history.Records {
+		assert.Equal(t, "SunoAPI v1", record.Protocol)
+	}
+	assert.Equal(t, submitBody, history.Records[2].Body)
+}
+
+func TestSunoAPIV1GenerateRejectsInvalidRequests(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		msg  string
+	}{
+		{name: "unsupported model", body: `{"model":"V6","callBackUrl":"https://app.test/callback","prompt":"music"}`, msg: "unsupported music model"},
+		{name: "missing callback", body: `{"model":"V5_5","prompt":"music"}`, msg: "callBackUrl is required"},
+		{name: "missing simple prompt", body: `{"model":"V5_5","callBackUrl":"https://app.test/callback"}`, msg: "prompt is required"},
+		{name: "incomplete custom mode", body: `{"customMode":true,"model":"V5_5","callBackUrl":"https://app.test/callback","prompt":"lyrics","title":"Song"}`, msg: "custom mode requires style, title, and vocal prompt"},
+		{name: "duration on unsupported model", body: `{"model":"V5","callBackUrl":"https://app.test/callback","prompt":"music","duration":120}`, msg: "duration requires V5_5 and must be between 10 and 360"},
+		{name: "duration out of range", body: `{"model":"V5_5","callBackUrl":"https://app.test/callback","prompt":"music","duration":361}`, msg: "duration requires V5_5 and must be between 10 and 360"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := newMockServerWithConfig(mockConfig{CompleteAfterPoll: 1})
+			response := performRequest(t, server.routes(), http.MethodPost, "/api/v1/generate", test.body)
+			require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+			var result relaydto.SunoAPIResponse[any]
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+			assert.Equal(t, http.StatusBadRequest, result.Code)
+			assert.Equal(t, test.msg, result.Msg)
+		})
+	}
 }
