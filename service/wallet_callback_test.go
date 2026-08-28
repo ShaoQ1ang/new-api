@@ -131,8 +131,8 @@ func TestBillingSessionSettleEqualAmountStillConfirmsWallet(t *testing.T) {
 	assert.Equal(t, int64(7_300_000), *record.FinalAmount)
 	mu.Lock()
 	assert.Equal(t, []string{
-		"/wallet/callback/v1/api-platform/usage/reserve",
-		"/wallet/callback/v1/api-platform/usage/confirm",
+		"/api/v1/callback/wallet/api-platform/usage/reserve",
+		"/api/v1/callback/wallet/api-platform/usage/confirm",
 	}, paths)
 	mu.Unlock()
 }
@@ -219,7 +219,7 @@ func TestWalletUncertainReserveFailureRetriesReserveBeforeCancel(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		mu.Lock()
 		paths = append(paths, request.URL.Path)
-		if request.URL.Path == "/wallet/callback/v1/api-platform/usage/reserve" {
+		if request.URL.Path == "/api/v1/callback/wallet/api-platform/usage/reserve" {
 			var payload walletReserveRequest
 			require.NoError(t, common.DecodeJson(request.Body, &payload))
 			reserveRequests = append(reserveRequests, payload)
@@ -255,9 +255,9 @@ func TestWalletUncertainReserveFailureRetriesReserveBeforeCancel(t *testing.T) {
 	assert.Positive(t, record.ReservedAtMS)
 	mu.Lock()
 	assert.Equal(t, []string{
-		"/wallet/callback/v1/api-platform/usage/reserve",
-		"/wallet/callback/v1/api-platform/usage/reserve",
-		"/wallet/callback/v1/api-platform/usage/cancel",
+		"/api/v1/callback/wallet/api-platform/usage/reserve",
+		"/api/v1/callback/wallet/api-platform/usage/reserve",
+		"/api/v1/callback/wallet/api-platform/usage/cancel",
 	}, paths)
 	require.Len(t, reserveRequests, 2)
 	for _, request := range reserveRequests {
@@ -322,7 +322,7 @@ func TestWalletReserveBusinessRejectionDoesNotCancel(t *testing.T) {
 	assert.Equal(t, walletFailureInsufficientFunds, record.FailureCode)
 	assert.Zero(t, record.ReservedAtMS)
 	mu.Lock()
-	assert.Equal(t, []string{"/wallet/callback/v1/api-platform/usage/reserve"}, paths)
+	assert.Equal(t, []string{"/api/v1/callback/wallet/api-platform/usage/reserve"}, paths)
 	mu.Unlock()
 }
 
@@ -368,7 +368,7 @@ func TestCoveredBillingSkipsLocalQuotaAndCarriesOrderNo(t *testing.T) {
 	var bodies []map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
-		if r.URL.Path == "/wallet/callback/v1/api-platform/usage/reserve" {
+		if r.URL.Path == "/api/v1/callback/wallet/api-platform/usage/reserve" {
 			var body map[string]any
 			_ = common.DecodeJson(r.Body, &body)
 			bodies = append(bodies, body)

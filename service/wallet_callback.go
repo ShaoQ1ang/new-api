@@ -294,7 +294,7 @@ func processWalletUsageCallback(ctx context.Context, record *model.WalletUsageCa
 			BusinessOrderNo:   record.BusinessOrderNo,
 			Extra:             extra,
 		}
-		if err := sendWalletCallback(ctx, config, "/wallet/callback/v1/api-platform/usage/reserve", request); err != nil {
+		if err := sendWalletCallback(ctx, config, "/api/v1/callback/wallet/api-platform/usage/reserve", request); err != nil {
 			handleWalletCallbackFailure(record, config, err)
 			return err
 		}
@@ -320,7 +320,7 @@ func processWalletUsageCallback(ctx context.Context, record *model.WalletUsageCa
 			FinalAmount:       strconv.FormatInt(*record.FinalAmount, 10),
 			UsageDetail:       fmt.Sprintf("newapi_quota=%d;exchange_rate=%s", *record.FinalQuota, record.ExchangeRate),
 		}
-		if err := sendWalletCallback(ctx, config, "/wallet/callback/v1/api-platform/usage/confirm", request); err != nil {
+		if err := sendWalletCallback(ctx, config, "/api/v1/callback/wallet/api-platform/usage/confirm", request); err != nil {
 			handleWalletCallbackFailure(record, config, err)
 			return err
 		}
@@ -328,7 +328,7 @@ func processWalletUsageCallback(ctx context.Context, record *model.WalletUsageCa
 		return model.MarkWalletUsageFinalized(record.APIRequestID, model.WalletCallbackStatusConfirmed)
 	case model.WalletCallbackStatusCancelPending:
 		request := walletCancelRequest{APIPlatformUserID: record.APIPlatformUserID, APIRequestID: record.APIRequestID}
-		if err := sendWalletCallback(ctx, config, "/wallet/callback/v1/api-platform/usage/cancel", request); err != nil {
+		if err := sendWalletCallback(ctx, config, "/api/v1/callback/wallet/api-platform/usage/cancel", request); err != nil {
 			handleWalletCallbackFailure(record, config, err)
 			return err
 		}
