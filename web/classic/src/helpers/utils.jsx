@@ -29,23 +29,20 @@ import { TABLE_COMPACT_MODES_KEY } from '../constants';
 import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile';
 import i18n from '../i18n/i18n';
 import { splitBillingExprAndRequestRules } from '../pages/Setting/Ratio/components/requestRuleExpr';
+import { getStoredUser } from './managementPermissions';
 
 const HTMLToastContent = ({ htmlContent }) => {
   return <div dangerouslySetInnerHTML={{ __html: htmlContent }} />;
 };
 export default HTMLToastContent;
 export function isAdmin() {
-  let user = localStorage.getItem('user');
-  if (!user) return false;
-  user = JSON.parse(user);
-  return user.role >= 10;
+  const user = getStoredUser();
+  return Number(user?.role) >= 10;
 }
 
 export function isRoot() {
-  let user = localStorage.getItem('user');
-  if (!user) return false;
-  user = JSON.parse(user);
-  return user.role >= 100;
+  const user = getStoredUser();
+  return Number(user?.role) >= 100;
 }
 
 export function getSystemName() {
@@ -62,10 +59,8 @@ export function getLogo() {
 }
 
 export function getUserIdFromLocalStorage() {
-  let user = localStorage.getItem('user');
-  if (!user) return -1;
-  user = JSON.parse(user);
-  return user.id;
+  const user = getStoredUser();
+  return user?.id ?? -1;
 }
 
 export function getFooterHTML() {

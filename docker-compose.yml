@@ -16,7 +16,10 @@ version: '3.4' # For compatibility with older Docker versions
 
 services:
   new-api:
-    image: calciumion/new-api:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lingentic/new-api:local
     container_name: new-api
     restart: always
     command: --log-dir /app/logs
@@ -57,6 +60,61 @@ services:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' || exit 1"]
       interval: 30s
       timeout: 10s
+      retries: 3
+
+  # Opt-in IAM control plane. Default `docker compose up` deployments do not
+  # create this service; enable the `iam-control` profile explicitly. The port
+  # is safe to expose only when the host firewall restricts it to the cluster
+  # egress range; every request still requires a client certificate issued by
+  # the dedicated Integration CA.
+  new-api-control:
+    profiles:
+      - iam-control
+    build:
+      context: .
+      dockerfile: Dockerfile.control
+    image: lingentic/new-api-control:local
+    container_name: new-api-control
+    restart: always
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    ports:
+      - "3010:3010"
+    environment:
+      - SQL_DSN=postgresql://root:123456@postgres:5432/new-api # ⚠️ use the same production secret as new-api
+      - REDIS_CONN_STRING=redis://:123456@redis:6379 # ⚠️ use the same production secret as new-api
+      - NODE_TYPE=slave
+      - NODE_NAME=new-api-control-1
+      - NEW_API_CONTROL_LISTEN_ADDRESS=:3010
+      - NEW_API_CONTROL_TLS_CERT_FILE=/run/new-api-control/tls.crt
+      - NEW_API_CONTROL_TLS_KEY_FILE=/run/new-api-control/tls.key
+      - NEW_API_CONTROL_CLIENT_CA_FILE=/run/new-api-control/client-ca.crt
+      - NEW_API_CONTROL_ALLOWED_CLIENT_ID=spiffe://lingentic.internal/new-api-integration
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./deploy/new-api-control/certs:/run/new-api-control:ro
+    tmpfs:
+      - /data/logs:uid=65532,gid=65532,mode=0750
+    depends_on:
+      new-api:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_started
+    networks:
+      - new-api-network
+    healthcheck:
+      # Health probes intentionally use mTLS as well. Production deployments
+      # should supply a short-lived probe certificate or use runtime-native TCP probes.
+      test: ["CMD-SHELL", "test -r /run/new-api-control/tls.crt && test -r /run/new-api-control/tls.key && test -r /run/new-api-control/client-ca.crt"]
+      interval: 30s
+      timeout: 5s
       retries: 3
 
   redis:
