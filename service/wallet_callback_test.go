@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/shopspring/decimal"
@@ -141,17 +142,19 @@ func TestWalletReserveFailureMode(t *testing.T) {
 	tests := []struct {
 		name          string
 		failClosed    string
+		initialQuota  int
 		expectError   bool
 		expectedQuota int
 		expectedState string
 	}{
-		{name: "fail open by default", failClosed: "", expectError: false, expectedQuota: 900, expectedState: model.WalletCallbackStatusReservePending},
-		{name: "fail closed compensates local charge", failClosed: "true", expectError: true, expectedQuota: 1000, expectedState: model.WalletCallbackStatusCancelPending},
+		{name: "fail open by default", failClosed: "", initialQuota: 1000, expectError: false, expectedQuota: 900, expectedState: model.WalletCallbackStatusReservePending},
+		{name: "fail closed preserves local charge", failClosed: "true", initialQuota: 1000, expectError: true, expectedQuota: 900, expectedState: model.WalletCallbackStatusCancelPending},
+		{name: "fail closed allows overdraft", failClosed: "true", initialQuota: 0, expectError: true, expectedQuota: -100, expectedState: model.WalletCallbackStatusCancelPending},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			useWalletCallbackTestDB(t, &model.User{}, &model.WalletUsageCallback{})
-			require.NoError(t, model.DB.Create(&model.User{Id: 42, Username: "wallet_callback_user", Quota: 1000}).Error)
+			require.NoError(t, model.DB.Create(&model.User{Id: 42, Username: "wallet_callback_user", Quota: test.initialQuota}).Error)
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				http.Error(w, "wallet unavailable", http.StatusServiceUnavailable)
@@ -187,6 +190,78 @@ func TestWalletReserveFailureMode(t *testing.T) {
 			assert.Equal(t, test.expectedState, record.Status)
 		})
 	}
+}
+
+func TestWalletFailOpenStillRejectsInsufficientLocalQuota(t *testing.T) {
+	useWalletCallbackTestDB(t, &model.User{}, &model.WalletUsageCallback{})
+	require.NoError(t, model.DB.Create(&model.User{Id: 42, Username: "wallet_callback_user", Quota: 0}).Error)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "wallet unavailable", http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("WALLET_CALLBACK_BASE_URL", server.URL)
+	t.Setenv("WALLET_CALLBACK_ENABLED", "true")
+	t.Setenv("WALLET_CALLBACK_FAIL_CLOSED", "false")
+
+	ginContext, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		RequestId:       "wallet-fail-open-local-insufficient",
+		UserId:          42,
+		StartTime:       time.Now(),
+		IsPlayground:    true,
+		ForcePreConsume: true,
+		OriginModelName: "gpt-5",
+		TokenName:       "desktop",
+		UserSetting:     dto.UserSetting{BillingPreference: "wallet_only"},
+	}
+
+	apiErr := PreConsumeBilling(ginContext, 100, relayInfo)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, types.ErrorCodeInsufficientUserQuota, apiErr.GetErrorCode())
+	assert.ErrorIs(t, model.DB.First(&model.WalletUsageCallback{}, "api_request_id = ?", relayInfo.RequestId).Error, gorm.ErrRecordNotFound)
+
+	var user model.User
+	require.NoError(t, model.DB.First(&user, 42).Error)
+	assert.Equal(t, 0, user.Quota)
+}
+
+func TestWalletReserveInsufficientFundsRefundsLocalCharge(t *testing.T) {
+	useWalletCallbackTestDB(t, &model.User{}, &model.WalletUsageCallback{})
+	require.NoError(t, model.DB.Create(&model.User{Id: 42, Username: "wallet_callback_user", Quota: 1000}).Error)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"code":210008,"message":"insufficient funds"}`))
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("WALLET_CALLBACK_BASE_URL", server.URL)
+	t.Setenv("WALLET_CALLBACK_ENABLED", "true")
+	t.Setenv("WALLET_CALLBACK_FAIL_CLOSED", "true")
+
+	ginContext, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		RequestId:       "wallet-insufficient-funds-refund",
+		UserId:          42,
+		StartTime:       time.Now(),
+		IsPlayground:    true,
+		ForcePreConsume: true,
+		OriginModelName: "gpt-5",
+		TokenName:       "desktop",
+		UserSetting:     dto.UserSetting{BillingPreference: "wallet_only"},
+	}
+
+	apiErr := PreConsumeBilling(ginContext, 100, relayInfo)
+	require.NotNil(t, apiErr)
+
+	var user model.User
+	require.NoError(t, model.DB.First(&user, 42).Error)
+	assert.Equal(t, 1000, user.Quota)
+	record, err := model.GetWalletUsageCallback(relayInfo.RequestId)
+	require.NoError(t, err)
+	assert.Equal(t, model.WalletCallbackStatusRejected, record.Status)
+	assert.Equal(t, walletFailureInsufficientFunds, record.FailureCode)
 }
 
 func TestWalletReserveCompletionDoesNotOverwriteNewerCancelTarget(t *testing.T) {

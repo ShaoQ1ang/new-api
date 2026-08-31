@@ -51,15 +51,19 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 	walletCallback, callbackErr := newWalletUsageCallbackSession(relayInfo, preConsumedQuota)
 	session.walletCallback = walletCallback
 	if callbackErr != nil {
-		if loadWalletCallbackConfig().FailClosed {
+		config := loadWalletCallbackConfig()
+		if config.FailClosed {
 			if walletCallback != nil {
 				if cancelErr := walletCallback.Cancel(); cancelErr != nil {
 					logger.LogWarn(c, fmt.Sprintf("wallet callback compensation pending retry: %v", cancelErr))
 				}
 			}
-			if rollbackErr := session.rollbackPreConsume(); rollbackErr != nil {
-				logger.LogWarn(c, fmt.Sprintf("local billing rollback failed after wallet reserve error: %v", rollbackErr))
-			}
+			failureCode, _ := classifyWalletCallbackFailure(callbackErr)
+			if failureCode == walletFailureInsufficientFunds {
+				if rollbackErr := session.rollbackPreConsume(); rollbackErr != nil {
+					logger.LogWarn(c, fmt.Sprintf("local billing rollback failed after wallet insufficient funds: %v", rollbackErr))
+				}
+			} // Other failures are ambiguous; retain the local pre-consume.
 			return types.NewError(callbackErr, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 		}
 		logger.LogWarn(c, fmt.Sprintf("wallet reserve callback pending retry (request_id=%s): %v", relayInfo.RequestId, callbackErr))

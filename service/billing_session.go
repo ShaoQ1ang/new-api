@@ -379,6 +379,11 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	}
 
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
+	walletCallbackConfig := loadWalletCallbackConfig()
+	// In fail-closed mode, the remote wallet is authoritative for availability,
+	// so local quota checks must allow an overdraft. In fail-open mode, local
+	// quota remains a required guard even when the callback is unavailable.
+	allowWalletOverdraft := walletCallbackConfig.FailClosed
 
 	// 覆盖模式：受信调用方通过 X-Business-Order 指定父订单，资金由父 CHARGE 承担，
 	// 不做本地 user/token 额度扣减；钱包回调 reserve 失败即拒绝请求。
@@ -397,13 +402,13 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		if err != nil {
 			return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 		}
-		if userQuota <= 0 {
+		if !allowWalletOverdraft && userQuota <= 0 {
 			return nil, types.NewErrorWithStatusCode(
 				fmt.Errorf("用户额度不足, 剩余额度: %s", logger.FormatQuota(userQuota)),
 				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
 				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 		}
-		if userQuota-preConsumedQuota < 0 {
+		if !allowWalletOverdraft && userQuota-preConsumedQuota < 0 {
 			return nil, types.NewErrorWithStatusCode(
 				fmt.Errorf("预扣费额度失败, 用户剩余额度: %s, 需要预扣费额度: %s", logger.FormatQuota(userQuota), logger.FormatQuota(preConsumedQuota)),
 				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
