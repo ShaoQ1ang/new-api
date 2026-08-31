@@ -79,6 +79,20 @@ export const IMAGE_SIZE_OPTIONS = [
   '1140x1472',
 ];
 
+// The visual image-size picker uses these canonical dimensions while the
+// persisted capability format continues to store plain `WIDTHxHEIGHT` sizes.
+export const IMAGE_SIZE_PRESETS = {
+  '16:9': { '1K': '1024x576', '2K': '2048x1152', '4K': '3840x2160' },
+  '3:2': { '1K': '1008x672', '2K': '2016x1344', '4K': '3504x2336' },
+  '4:3': { '1K': '1024x768', '2K': '2048x1536', '4K': '3264x2448' },
+  '1:1': { '1K': '1024x1024', '2K': '2048x2048', '4K': '2880x2880' },
+  '3:4': { '1K': '768x1024', '2K': '1536x2048', '4K': '2448x3264' },
+  '2:3': { '1K': '672x1008', '2K': '1344x2016', '4K': '2336x3504' },
+  '9:16': { '1K': '576x1024', '2K': '1152x2048', '4K': '2160x3840' },
+};
+export const IMAGE_ASPECT_RATIOS = Object.keys(IMAGE_SIZE_PRESETS);
+export const IMAGE_RESOLUTIONS = ['1K', '2K', '4K'];
+
 export const VIDEO_RESOLUTION_OPTIONS = ['480p', '720p', '1080p', '2k', '4k'];
 export const VIDEO_RATIO_OPTIONS = [
   '16:9',

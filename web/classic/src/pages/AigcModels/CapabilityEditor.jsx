@@ -36,8 +36,10 @@ import { Plus, Trash2 } from 'lucide-react';
 import {
   combinationValue,
   IMAGE_COUNT_OPTIONS,
+  IMAGE_ASPECT_RATIOS,
+  IMAGE_RESOLUTIONS,
   IMAGE_MODES,
-  IMAGE_SIZE_OPTIONS,
+  IMAGE_SIZE_PRESETS,
   MUSIC_PROTOCOL_LEGACY,
   MUSIC_PROTOCOL_SUNOAPI_V1,
   musicProtocol,
@@ -145,6 +147,111 @@ function StringMultiSelect({ value, presets, onChange, placeholder }) {
       style={{ width: '100%' }}
       onChange={(next) => onChange(Array.isArray(next) ? next : [])}
     />
+  );
+}
+
+function ImageSizePicker({ value, onChange }) {
+  const configuredSizes = value || [];
+  const matchedRatios = IMAGE_ASPECT_RATIOS.filter((ratio) =>
+    IMAGE_RESOLUTIONS.some((resolution) =>
+      configuredSizes.includes(IMAGE_SIZE_PRESETS[ratio][resolution]),
+    ),
+  );
+  const selectedRatios = matchedRatios.length ? matchedRatios : ['1:1'];
+  const matchedResolutions = IMAGE_RESOLUTIONS.filter((resolution) =>
+    selectedRatios.some((ratio) =>
+      configuredSizes.includes(IMAGE_SIZE_PRESETS[ratio][resolution]),
+    ),
+  );
+  const selectedResolutions = matchedResolutions.length
+    ? matchedResolutions
+    : ['1K'];
+  const update = (ratios, resolutions) => {
+    const sizes = ratios.flatMap((ratio) =>
+      resolutions.map((resolution) => IMAGE_SIZE_PRESETS[ratio][resolution]),
+    );
+    const canonicalSizes = new Set(
+      Object.values(IMAGE_SIZE_PRESETS).flatMap(Object.values),
+    );
+    const customSizes = configuredSizes.filter(
+      (size) => !canonicalSizes.has(size),
+    );
+    onChange([...new Set([...customSizes, ...sizes])]);
+  };
+  const toggle = (items, item) => {
+    if (items.includes(item)) {
+      return items.length > 1
+        ? items.filter((current) => current !== item)
+        : items;
+    }
+    return [...items, item];
+  };
+
+  return (
+    <div className='flex flex-col gap-3'>
+      <div className='grid grid-cols-4 gap-2 sm:grid-cols-7'>
+        {IMAGE_ASPECT_RATIOS.map((ratio) => {
+          const [width, height] = ratio.split(':').map(Number);
+          const active = selectedRatios.includes(ratio);
+          return (
+            <button
+              key={ratio}
+              type='button'
+              className='flex min-h-16 flex-col items-center justify-center gap-1 rounded-md border px-2 py-2 transition-colors'
+              style={{
+                borderColor: active
+                  ? 'var(--semi-color-primary)'
+                  : 'var(--semi-color-border)',
+                background: active
+                  ? 'var(--semi-color-primary-light-default)'
+                  : undefined,
+                color: active ? 'var(--semi-color-primary)' : undefined,
+              }}
+              aria-pressed={active}
+              onClick={() =>
+                update(toggle(selectedRatios, ratio), selectedResolutions)
+              }
+            >
+              <span
+                className='block rounded-[4px] border-2 border-current'
+                style={{
+                  width: `${18 + (width / height) * 10}px`,
+                  height: `${18 + (height / width) * 10}px`,
+                }}
+              />
+              <span className='text-xs'>{ratio}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className='grid grid-cols-3 gap-2'>
+        {IMAGE_RESOLUTIONS.map((resolution) => {
+          const active = selectedResolutions.includes(resolution);
+          return (
+            <button
+              key={resolution}
+              type='button'
+              className='rounded-md border px-3 py-2 text-sm transition-colors'
+              style={{
+                borderColor: active
+                  ? 'var(--semi-color-primary)'
+                  : 'var(--semi-color-border)',
+                background: active
+                  ? 'var(--semi-color-primary-light-default)'
+                  : undefined,
+                color: active ? 'var(--semi-color-primary)' : undefined,
+              }}
+              aria-pressed={active}
+              onClick={() =>
+                update(selectedRatios, toggle(selectedResolutions, resolution))
+              }
+            >
+              {resolution}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -262,12 +369,10 @@ function ImageCapabilityEditor({ config, onChange }) {
             <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
               <Field
                 label={t('可选图片尺寸')}
-                hint={t('可选择预设，也可输入自定义像素尺寸')}
+                hint={t('选择比例和分辨率，保存时仍使用像素尺寸')}
               >
-                <StringMultiSelect
+                <ImageSizePicker
                   value={output.sizes}
-                  presets={IMAGE_SIZE_OPTIONS}
-                  placeholder='1024x1024'
                   onChange={(value) => updateOutput(modeName, 'sizes', value)}
                 />
               </Field>
