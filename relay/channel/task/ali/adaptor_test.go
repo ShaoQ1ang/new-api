@@ -322,11 +322,37 @@ func TestKlingMapsCanonicalVideoOptions(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, aliReq.Parameters.Mode)
-	assert.Equal(t, "pro", *aliReq.Parameters.Mode)
+	assert.Equal(t, "std", *aliReq.Parameters.Mode)
 	require.NotNil(t, aliReq.Parameters.AspectRatio)
 	assert.Equal(t, "9:16", *aliReq.Parameters.AspectRatio)
 	require.NotNil(t, aliReq.Parameters.Audio)
 	assert.False(t, *aliReq.Parameters.Audio)
+}
+
+func TestKlingMapsResolutionToUpstreamMode(t *testing.T) {
+	tests := []struct {
+		name       string
+		resolution string
+		want       string
+	}{
+		{name: "720p", resolution: "720p", want: "std"},
+		{name: "1080p", resolution: "1080p", want: "pro"},
+		{name: "4k", resolution: "4K", want: "4k"},
+		{name: "4k dimensions", resolution: "3840x2160", want: "4k"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			aliReq, err := (&TaskAdaptor{}).buildKlingRequest(
+				"kling/kling-v3-omni-video-generation",
+				relaycommon.TaskSubmitReq{
+					Model: tt.name, Mode: "reference", Prompt: "move", Resolution: tt.resolution,
+				},
+			)
+			require.NoError(t, err)
+			require.NotNil(t, aliReq.Parameters.Mode)
+			assert.Equal(t, tt.want, *aliReq.Parameters.Mode)
+		})
+	}
 }
 
 func TestHappyHorseUnifiedOptionsOverrideLegacyMetadata(t *testing.T) {

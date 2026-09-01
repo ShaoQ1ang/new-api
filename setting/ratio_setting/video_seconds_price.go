@@ -78,6 +78,26 @@ func UpdateVideoSecondsPriceByJSONString(jsonStr string) error {
 }
 
 func GetVideoSecondsPrice(modelName, tier string, audioEnabled bool) (float64, bool) {
+	if !audioEnabled {
+		if price, ok := getVideoSecondsPriceByKey(modelName, tier, "silent"); ok {
+			return price, true
+		}
+	}
+	return getVideoSecondsPriceByKey(modelName, tier, "default")
+}
+
+// GetVideoSecondsPriceByKey resolves a direct per-second price variant and
+// falls back to the normal audio-sensitive price when the variant is absent.
+func GetVideoSecondsPriceByKey(modelName, tier, key string, audioEnabled bool) (float64, bool) {
+	if strings.TrimSpace(key) != "" {
+		if price, ok := getVideoSecondsPriceByKey(modelName, tier, key); ok {
+			return price, true
+		}
+	}
+	return GetVideoSecondsPrice(modelName, tier, audioEnabled)
+}
+
+func getVideoSecondsPriceByKey(modelName, tier, key string) (float64, bool) {
 	modelMap, ok := videoSecondsPriceMap.Get(FormatMatchingModelName(modelName))
 	if !ok || modelMap == nil {
 		return 0, false
@@ -86,12 +106,7 @@ func GetVideoSecondsPrice(modelName, tier string, audioEnabled bool) (float64, b
 	if !ok || tierMap == nil {
 		return 0, false
 	}
-	if !audioEnabled {
-		if price, ok := tierMap["silent"]; ok {
-			return price, true
-		}
-	}
-	price, ok := tierMap["default"]
+	price, ok := tierMap[strings.ToLower(strings.TrimSpace(key))]
 	return price, ok
 }
 

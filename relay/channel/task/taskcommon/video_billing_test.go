@@ -210,3 +210,21 @@ func TestAliKlingConverterUsesMappedUpstreamModel(t *testing.T) {
 	assert.Equal(t, 5, params.DurationSeconds)
 	assert.False(t, params.AudioEnabled)
 }
+
+func TestAliKlingConverterAddsReferenceVideoUnit(t *testing.T) {
+	params, err := ConvertVideoBillingParams(nil, relaycommon.TaskSubmitReq{
+		Model: "kling/kling-v3-omni-video-generation", Resolution: "720p", Duration: 3,
+		Videos: []string{"https://example.test/source.mp4"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "reference_video_silent", params.PriceKey)
+	require.Equal(t, "720p", params.Tier)
+}
+
+func TestAliKlingConverterSupports4KTier(t *testing.T) {
+	params, err := ConvertVideoBillingParams(nil, relaycommon.TaskSubmitReq{
+		Model: "kling/kling-v3-omni-video-generation", Resolution: "4K", Duration: 3,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "4k", params.Tier)
+}

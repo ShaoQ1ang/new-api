@@ -339,10 +339,10 @@ func applyVideoSecondsBilling(c *gin.Context, info *relaycommon.RelayInfo) error
 		return err
 	}
 	priceModel := info.OriginModelName
-	unitPrice, ok := ratio_setting.GetVideoSecondsPrice(priceModel, videoParams.Tier, videoParams.AudioEnabled)
+	unitPrice, ok := ratio_setting.GetVideoSecondsPriceByKey(priceModel, videoParams.Tier, videoParams.PriceKey, videoParams.AudioEnabled)
 	if !ok && info.ChannelMeta != nil && strings.TrimSpace(info.UpstreamModelName) != "" && info.UpstreamModelName != info.OriginModelName {
 		priceModel = info.UpstreamModelName
-		unitPrice, ok = ratio_setting.GetVideoSecondsPrice(priceModel, videoParams.Tier, videoParams.AudioEnabled)
+		unitPrice, ok = ratio_setting.GetVideoSecondsPriceByKey(priceModel, videoParams.Tier, videoParams.PriceKey, videoParams.AudioEnabled)
 	}
 	if !ok {
 		return fmt.Errorf("video seconds price not configured for %s tier %s", priceModel, videoParams.Tier)
@@ -354,6 +354,12 @@ func applyVideoSecondsBilling(c *gin.Context, info *relaycommon.RelayInfo) error
 		}
 		extraUnitPrice, ok := ratio_setting.GetVideoSecondsExtraPrice(priceModel, videoParams.Tier, key)
 		if !ok {
+			// Reference-video pricing is an optional extension of the existing
+			// Kling price table. Keep legacy configurations valid when they do
+			// not define this dimension.
+			if key == "reference_video" || key == "reference_video_silent" {
+				continue
+			}
 			return fmt.Errorf("video extra price not configured for %s tier %s key %s", priceModel, videoParams.Tier, key)
 		}
 		fixedPrice += extraUnitPrice * float64(units)

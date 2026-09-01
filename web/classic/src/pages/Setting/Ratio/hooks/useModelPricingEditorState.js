@@ -56,6 +56,8 @@ const VIDEO_SECONDS_TIER_FIELD_PREFIX = {
 const VIDEO_SECONDS_PRICE_KEY_SUFFIX = {
   default: 'Default',
   silent: 'Silent',
+  reference_video: 'ReferenceVideo',
+  reference_video_silent: 'ReferenceVideoSilent',
 };
 
 const getVideoSecondsFieldName = (tier, priceKey) =>

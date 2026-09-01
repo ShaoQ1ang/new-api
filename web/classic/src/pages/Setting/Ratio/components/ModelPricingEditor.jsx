@@ -66,6 +66,8 @@ const VIDEO_SECONDS_TIER_FIELD_PREFIX = {
 const VIDEO_SECONDS_PRICE_KEY_SUFFIX = {
   default: 'Default',
   silent: 'Silent',
+  reference_video: 'ReferenceVideo',
+  reference_video_silent: 'ReferenceVideoSilent',
 };
 
 const getVideoSecondsFieldName = (tier, priceKey) =>
@@ -530,45 +532,34 @@ export default function ModelPricingEditor({
                       <div className='font-medium'>{t('视频按秒价格')}</div>
                       <div className='text-xs text-gray-500 mt-1'>
                         {t(
-                          '按模型配置 480p / 720p / 1080p / 2k / 4k 档位价格，default 为模型默认价格，silent 为 audio=false 时的静音价。',
+                          '按模型配置 480p / 720p / 1080p / 2k / 4k 档位价格；default 为默认单价，silent 为 audio=false 时的静音单价，Reference Video 为包含参考视频时的直接单价。',
                         )}
                       </div>
                     </div>
                     {VIDEO_SECONDS_CONTROLLED_TIERS.map((tier) => (
                       <div key={tier}>
                         <div className='font-medium mb-3'>{t(tier)}</div>
-                        <PriceInput
-                          label={t(`${tier} Default Price`)}
-                          value={
-                            selectedModel[
-                              getVideoSecondsFieldName(tier, 'default')
-                            ]
-                          }
-                          placeholder={t('Enter USD / second')}
-                          suffix={t('$/sec')}
-                          onChange={(value) =>
-                            handleNumericFieldChange(
-                              getVideoSecondsFieldName(tier, 'default'),
-                              value,
-                            )
-                          }
-                        />
-                        <PriceInput
-                          label={t(`${tier} Silent Price`)}
-                          value={
-                            selectedModel[
-                              getVideoSecondsFieldName(tier, 'silent')
-                            ]
-                          }
-                          placeholder={t('Enter USD / second')}
-                          suffix={t('$/sec')}
-                          onChange={(value) =>
-                            handleNumericFieldChange(
-                              getVideoSecondsFieldName(tier, 'silent'),
-                              value,
-                            )
-                          }
-                        />
+                        {VIDEO_SECONDS_CONTROLLED_PRICE_KEYS.map((priceKey) => (
+                          <PriceInput
+                            key={priceKey}
+                            label={t(
+                              `${tier} ${priceKey === 'reference_video' ? 'Reference Video' : priceKey === 'reference_video_silent' ? 'Reference Video Silent' : priceKey === 'default' ? 'Default' : 'Silent'} Price`,
+                            )}
+                            value={
+                              selectedModel[
+                                getVideoSecondsFieldName(tier, priceKey)
+                              ]
+                            }
+                            placeholder={t('Enter USD / second')}
+                            suffix={t('$/sec')}
+                            onChange={(value) =>
+                              handleNumericFieldChange(
+                                getVideoSecondsFieldName(tier, priceKey),
+                                value,
+                              )
+                            }
+                          />
+                        ))}
                       </div>
                     ))}
                   </Card>

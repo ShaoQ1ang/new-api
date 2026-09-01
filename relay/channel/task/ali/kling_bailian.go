@@ -88,9 +88,20 @@ func (a *TaskAdaptor) buildKlingRequest(upstreamModel string, req relaycommon.Ta
 }
 
 func normalizeKlingMode(mode string, size string) string {
+	switch strings.ToLower(strings.ReplaceAll(strings.TrimSpace(size), " ", "")) {
+	case "720p", "1280x720", "720x1280", "720x720", "std":
+		return "std"
+	case "1080p", "1920x1080", "1080x1920", "1080x1080", "pro":
+		return "pro"
+	case "4k", "2160p", "3840x2160", "2160x3840", "2160x2160":
+		return "4k"
+	}
 	if mode = strings.TrimSpace(mode); mode != "" {
 		if strings.EqualFold(mode, "std") {
 			return "std"
+		}
+		if strings.EqualFold(mode, "4k") {
+			return "4k"
 		}
 		return "pro"
 	}
