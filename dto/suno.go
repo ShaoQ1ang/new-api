@@ -80,16 +80,18 @@ type SunoAPISubmitData struct {
 }
 
 type SunoAPISong struct {
-	ID             string  `json:"id"`
-	AudioURL       string  `json:"audioUrl"`
-	StreamAudioURL string  `json:"streamAudioUrl"`
-	ImageURL       string  `json:"imageUrl"`
-	Prompt         string  `json:"prompt"`
-	ModelName      string  `json:"modelName"`
-	Title          string  `json:"title"`
-	Tags           string  `json:"tags"`
-	CreateTime     string  `json:"createTime"`
-	Duration       float64 `json:"duration"`
+	ID             string `json:"id"`
+	AudioURL       string `json:"audioUrl"`
+	StreamAudioURL string `json:"streamAudioUrl"`
+	ImageURL       string `json:"imageUrl"`
+	Prompt         string `json:"prompt"`
+	ModelName      string `json:"modelName"`
+	Title          string `json:"title"`
+	Tags           string `json:"tags"`
+	// SunoAPI v1 has returned this field as both a JSON string and a number.
+	// json.Number accepts either representation while preserving the value.
+	CreateTime json.Number `json:"createTime"`
+	Duration   float64     `json:"duration"`
 }
 
 type SunoAPIGenerationResponse struct {

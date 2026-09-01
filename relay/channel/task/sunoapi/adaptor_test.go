@@ -79,3 +79,13 @@ func TestParseTaskResultMapsProviderLifecycle(t *testing.T) {
 		})
 	}
 }
+
+func TestParseTaskResultAcceptsNumericCreateTime(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	body := []byte(`{"code":200,"msg":"success","data":{"taskId":"native","status":"SUCCESS","response":{"sunoData":[{"audioUrl":"https://cdn.test/1.mp3","createTime":1750000000000},{"audioUrl":"https://cdn.test/2.mp3","createTime":"1750000000000"}]}}}`)
+
+	result, err := adaptor.ParseTaskResult(body)
+	require.NoError(t, err)
+	assert.Equal(t, string(model.TaskStatusSuccess), result.Status)
+	assert.Equal(t, "100%", result.Progress)
+}
