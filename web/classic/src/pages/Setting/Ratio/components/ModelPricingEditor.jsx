@@ -49,7 +49,10 @@ import {
   hasValue,
   useModelPricingEditorState,
 } from '../hooks/useModelPricingEditorState';
-import { VIDEO_SECONDS_CONTROLLED_TIERS } from '../modelPricingVideoSecondsPrice';
+import {
+  VIDEO_SECONDS_CONTROLLED_PRICE_KEYS,
+  VIDEO_SECONDS_CONTROLLED_TIERS,
+} from '../modelPricingVideoSecondsPrice';
 import { IMAGE_INPUT_PRICE_KEYS } from '../modelPricingImageInputPrice';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import TieredPricingEditor from './TieredPricingEditor';
