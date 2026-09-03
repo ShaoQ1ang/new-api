@@ -1,9 +1,0 @@
-## 1. Image Edit Contract
-
-- [ ] 1.1 Update the AIGC synchronous image request regression test to require ordered `images[].image_url` objects for multiple source URLs.
-- [ ] 1.2 Change the AIGC image-edit request builder to serialize structured `image_url` items while preserving `/v1/images/edits` routing.
-
-## 2. Verification
-
-- [ ] 2.1 Run focused AIGC execution tests covering image generation, image editing, and video task request conversion.
-- [ ] 2.2 Run formatting and the broader affected Go package test suite.
