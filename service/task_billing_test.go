@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
+	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
@@ -285,6 +287,59 @@ func countLogs(t *testing.T) int64 {
 	var count int64
 	model.LOG_DB.Model(&model.Log{}).Count(&count)
 	return count
+}
+
+func TestTaskBillingOtherIncludesVideoSecondsContext(t *testing.T) {
+	audioEnabled := false
+	task := &model.Task{PrivateData: model.TaskPrivateData{BillingContext: &model.TaskBillingContext{
+		ModelPrice: 1, GroupRatio: 2, ConditionalInputPrice: 31,
+		VideoSecondsUnitPrice: 0.6, VideoSecondsTier: "720p",
+		VideoDurationSeconds: 5, VideoAudioEnabled: &audioEnabled,
+	}}}
+
+	other := taskBillingOther(task)
+
+	assert.Equal(t, 31.0, other["conditional_input_price"])
+	assert.Equal(t, "video_seconds", other["billing_mode"])
+	assert.Equal(t, 0.6, other["video_seconds_unit_price"])
+	assert.Equal(t, "720p", other["video_seconds_tier"])
+	assert.Equal(t, 5, other["video_duration_seconds"])
+	assert.Equal(t, false, other["video_audio_enabled"])
+}
+
+func TestLogTaskConsumptionIncludesVideoSecondsContext(t *testing.T) {
+	truncate(t)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+	audioEnabled := false
+	info := &relaycommon.RelayInfo{
+		UserId:          1,
+		ChannelMeta:     &relaycommon.ChannelMeta{ChannelId: 3},
+		OriginModelName: "happyhorse-1.1-t2v",
+		TaskRelayInfo:   &relaycommon.TaskRelayInfo{Action: "textGenerate"},
+	}
+	info.PriceData = types.PriceData{
+		Quota:                 int(3 * common.QuotaPerUnit),
+		VideoSecondsUnitPrice: 0.6,
+		VideoSecondsTier:      "720p",
+		VideoDurationSeconds:  5,
+		VideoAudioEnabled:     &audioEnabled,
+		VideoFixedPrice:       0.25,
+		GroupRatioInfo:        types.GroupRatioInfo{GroupRatio: 1},
+	}
+
+	LogTaskConsumption(ctx, info)
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	var other map[string]interface{}
+	require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+	assert.Equal(t, "video_seconds", other["billing_mode"])
+	assert.Equal(t, 0.6, other["video_seconds_unit_price"])
+	assert.Equal(t, "720p", other["video_seconds_tier"])
+	assert.Equal(t, float64(5), other["video_duration_seconds"])
+	assert.Equal(t, false, other["video_audio_enabled"])
+	assert.Equal(t, 0.25, other["video_fixed_price"])
 }
 
 // ===========================================================================

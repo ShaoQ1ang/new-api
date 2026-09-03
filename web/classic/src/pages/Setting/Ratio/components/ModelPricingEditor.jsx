@@ -45,12 +45,15 @@ import {
   PAGE_SIZE,
   PRICE_SUFFIX,
   buildSummaryText,
+  getImageInputPriceFieldName,
   hasValue,
   useModelPricingEditorState,
 } from '../hooks/useModelPricingEditorState';
 import {
+  VIDEO_SECONDS_CONTROLLED_PRICE_KEYS,
   VIDEO_SECONDS_CONTROLLED_TIERS,
 } from '../modelPricingVideoSecondsPrice';
+import { IMAGE_INPUT_PRICE_KEYS } from '../modelPricingImageInputPrice';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import TieredPricingEditor from './TieredPricingEditor';
 
@@ -66,6 +69,8 @@ const VIDEO_SECONDS_TIER_FIELD_PREFIX = {
 const VIDEO_SECONDS_PRICE_KEY_SUFFIX = {
   default: 'Default',
   silent: 'Silent',
+  reference_video: 'ReferenceVideo',
+  reference_video_silent: 'ReferenceVideoSilent',
 };
 
 const getVideoSecondsFieldName = (tier, priceKey) =>
@@ -475,16 +480,49 @@ export default function ModelPricingEditor({
                 ) : null}
 
                 {selectedModel.billingMode === 'per-request' ? (
-                  <PriceInput
-                    label={t('固定价格')}
-                    value={selectedModel.fixedPrice}
-                    placeholder={t('输入每次调用价格')}
-                    suffix={t('$/次')}
-                    onChange={(value) =>
-                      handleNumericFieldChange('fixedPrice', value)
-                    }
-                    extraText={t('适合 MJ / 任务类等按次收费模型。')}
-                  />
+                  <>
+                    <PriceInput
+                      label={t('固定价格')}
+                      value={selectedModel.fixedPrice}
+                      placeholder={t('输入每次调用价格')}
+                      suffix={t('$/次')}
+                      onChange={(value) =>
+                        handleNumericFieldChange('fixedPrice', value)
+                      }
+                      extraText={t('适合 MJ / 任务类等按次收费模型。')}
+                    />
+                    <Card
+                      bodyStyle={{ padding: 16 }}
+                      style={{
+                        marginBottom: 16,
+                        background: 'var(--semi-color-fill-0)',
+                      }}
+                    >
+                      <div className='mb-3'>
+                        <div className='font-medium'>
+                          {t('图片输入价格')} (1K / 2K / 4K)
+                        </div>
+                        <div className='text-xs text-gray-500 mt-1'>
+                          {t('这些价格都是可选项，不填也可以。')}
+                        </div>
+                      </div>
+                      {['1K', '2K', '4K'].map((tier) => (
+                        <PriceInput
+                          key={tier}
+                          label={`${tier} ${t('价格')}`}
+                          value={selectedModel[`imageResolution${tier}Price`]}
+                          placeholder={t('输入每次调用价格')}
+                          suffix={t('$/次')}
+                          onChange={(value) =>
+                            handleNumericFieldChange(
+                              `imageResolution${tier}Price`,
+                              value,
+                            )
+                          }
+                        />
+                      ))}
+                    </Card>
+                  </>
                 ) : selectedModel.billingMode === 'video-seconds' ? (
                   <Card
                     bodyStyle={{ padding: 16 }}
@@ -497,41 +535,34 @@ export default function ModelPricingEditor({
                       <div className='font-medium'>{t('视频按秒价格')}</div>
                       <div className='text-xs text-gray-500 mt-1'>
                         {t(
-                          '按模型配置 480p / 720p / 1080p / 2k / 4k 档位价格，default 为模型默认价格，silent 为 audio=false 时的静音价。',
+                          '按模型配置 480p / 720p / 1080p / 2k / 4k 档位价格；default 为默认单价，silent 为 audio=false 时的静音单价，Reference Video 为包含参考视频时的直接单价。',
                         )}
                       </div>
                     </div>
                     {VIDEO_SECONDS_CONTROLLED_TIERS.map((tier) => (
                       <div key={tier}>
                         <div className='font-medium mb-3'>{t(tier)}</div>
-                        <PriceInput
-                          label={t(`${tier} Default Price`)}
-                          value={
-                            selectedModel[getVideoSecondsFieldName(tier, 'default')]
-                          }
-                          placeholder={t('Enter USD / second')}
-                          suffix={t('$/sec')}
-                          onChange={(value) =>
-                            handleNumericFieldChange(
-                              getVideoSecondsFieldName(tier, 'default'),
-                              value,
-                            )
-                          }
-                        />
-                        <PriceInput
-                          label={t(`${tier} Silent Price`)}
-                          value={
-                            selectedModel[getVideoSecondsFieldName(tier, 'silent')]
-                          }
-                          placeholder={t('Enter USD / second')}
-                          suffix={t('$/sec')}
-                          onChange={(value) =>
-                            handleNumericFieldChange(
-                              getVideoSecondsFieldName(tier, 'silent'),
-                              value,
-                            )
-                          }
-                        />
+                        {VIDEO_SECONDS_CONTROLLED_PRICE_KEYS.map((priceKey) => (
+                          <PriceInput
+                            key={priceKey}
+                            label={t(
+                              `${tier} ${priceKey === 'reference_video' ? 'Reference Video' : priceKey === 'reference_video_silent' ? 'Reference Video Silent' : priceKey === 'default' ? 'Default' : 'Silent'} Price`,
+                            )}
+                            value={
+                              selectedModel[
+                                getVideoSecondsFieldName(tier, priceKey)
+                              ]
+                            }
+                            placeholder={t('Enter USD / second')}
+                            suffix={t('$/sec')}
+                            onChange={(value) =>
+                              handleNumericFieldChange(
+                                getVideoSecondsFieldName(tier, priceKey),
+                                value,
+                              )
+                            }
+                          />
+                        ))}
                       </div>
                     ))}
                   </Card>
@@ -956,6 +987,54 @@ export default function ModelPricingEditor({
                     </Card>
                   </>
                 )}
+
+                {selectedModel.billingMode === 'per-request' ||
+                selectedModel.billingMode === 'video-seconds' ? (
+                  <Card
+                    bodyStyle={{ padding: 16 }}
+                    style={{
+                      marginBottom: 16,
+                      background: 'var(--semi-color-fill-0)',
+                    }}
+                  >
+                    <div className='font-medium mb-3'>{t('图片输入价格')}</div>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns:
+                          'repeat(auto-fit, minmax(180px, 1fr))',
+                        columnGap: 12,
+                      }}
+                    >
+                      {IMAGE_INPUT_PRICE_KEYS.map((key) => {
+                        const isFreeCount = key === 'free_count';
+                        const label =
+                          key === 'default'
+                            ? t('默认')
+                            : isFreeCount
+                              ? t('免费图片数量')
+                              : key.toUpperCase();
+                        return (
+                          <PriceInput
+                            key={key}
+                            label={label}
+                            value={
+                              selectedModel[getImageInputPriceFieldName(key)]
+                            }
+                            placeholder='0'
+                            suffix={isFreeCount ? null : t('每张图片')}
+                            onChange={(value) =>
+                              handleNumericFieldChange(
+                                getImageInputPriceFieldName(key),
+                                value,
+                              )
+                            }
+                          />
+                        );
+                      })}
+                    </div>
+                  </Card>
+                ) : null}
 
                 <Card
                   bodyStyle={{ padding: 16 }}

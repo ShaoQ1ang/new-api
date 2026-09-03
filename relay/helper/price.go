@@ -68,6 +68,11 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.
 
 func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (types.PriceData, error) {
 	modelPrice, usePrice := ratio_setting.GetModelPrice(info.OriginModelName, false)
+	resolutionPrice, imageResolutionTier, useResolutionPrice := ratio_setting.GetImageResolutionPrice(info.OriginModelName, meta.ImageSize)
+	if useResolutionPrice {
+		modelPrice = resolutionPrice
+		usePrice = true
+	}
 
 	groupRatioInfo := HandleGroupRatio(c, info)
 
@@ -120,10 +125,9 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		}
 		preConsumedQuota = quota
 	} else {
-		if meta.ImagePriceRatio != 0 {
+		if !useResolutionPrice && meta.ImagePriceRatio != 0 {
 			modelPrice = modelPrice * meta.ImagePriceRatio
 		}
-		preConsumedQuota = int(modelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
 	}
 
 	// check if free model pre-consume is disabled
@@ -154,6 +158,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		UsePrice:             usePrice,
 		CacheRatio:           cacheRatio,
 		ImageRatio:           imageRatio,
+		ImageSize:            meta.ImageSize,
 		AudioRatio:           audioRatio,
 		AudioCompletionRatio: audioCompletionRatio,
 		CacheCreationRatio:   cacheCreationRatio,
@@ -161,11 +166,19 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		CacheCreation1hRatio: cacheCreationRatio1h,
 		QuotaToPreConsume:    preConsumedQuota,
 	}
+	if useResolutionPrice {
+		priceData.ImageResolutionTier = imageResolutionTier
+	}
 	if usePrice {
+		ApplyImageInputPricing(info, &priceData, meta.InputImageTiers)
+		if priceData.InputImageCost > 0 {
+			priceData.FreeModel = false
+		}
 		for name, ratio := range meta.BillingRatios {
 			priceData.AddOtherRatio(name, ratio)
 		}
-		quotaToPreConsume := priceData.ApplyOtherRatiosToFloat(modelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
+		priceBeforeGroup := priceData.ApplyOtherRatiosToFloat(modelPrice) + priceData.InputImageCost
+		quotaToPreConsume := priceBeforeGroup * common.QuotaPerUnit * groupRatioInfo.GroupRatio
 		quota, err := common.QuotaFromFloatStrict(quotaToPreConsume)
 		if err != nil {
 			return types.PriceData{}, err
@@ -180,10 +193,27 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	return priceData, nil
 }
 
+func ApplyImageInputPricing(info *relaycommon.RelayInfo, priceData *types.PriceData, tiers []string) {
+	if info == nil || priceData == nil || !priceData.UsePrice || len(tiers) == 0 {
+		return
+	}
+	cost, counts, freeCount, configured := ratio_setting.CalculateImageInputCost(
+		info.OriginModelName,
+		info.GetUpstreamModelName(),
+		tiers,
+	)
+	if !configured {
+		return
+	}
+	priceData.InputImageCost = cost
+	priceData.InputImageCounts = counts
+	priceData.InputImageFreeCount = freeCount
+}
+
 // ModelPriceHelperPerCall 按次/按量计费的 PriceHelper (MJ、Task)
 func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types.PriceData, error) {
 	groupRatioInfo := HandleGroupRatio(c, info)
-	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeVideoSeconds {
+	if billing_setting.ResolveBillingMode(info.OriginModelName, info.GetUpstreamModelName()) == billing_setting.BillingModeVideoSeconds {
 		return types.PriceData{
 			UsePrice:       true,
 			GroupRatioInfo: groupRatioInfo,
@@ -261,6 +291,9 @@ func HasModelBillingConfig(modelName string) bool {
 		return ok
 	}
 	if _, ok := ratio_setting.GetModelPrice(modelName, false); ok {
+		return true
+	}
+	if prices, ok := ratio_setting.GetImageResolutionPriceCopy()[ratio_setting.FormatMatchingModelName(modelName)]; ok && len(prices) > 0 {
 		return true
 	}
 	if _, ok, _ := ratio_setting.GetModelRatio(modelName); ok {

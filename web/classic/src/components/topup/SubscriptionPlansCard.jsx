@@ -49,6 +49,20 @@ function getEpayMethods(payMethods = []) {
   );
 }
 
+function isSuccessfulPaymentResponse(response) {
+  return response?.success === true || response?.message === 'success';
+}
+
+function getPaymentErrorMessage(response, fallback) {
+  if (typeof response?.data === 'string') {
+    return response.data;
+  }
+  if (response?.message && response.message !== 'success') {
+    return response.message;
+  }
+  return fallback;
+}
+
 // 提交易支付表单
 function submitEpayForm({ url, params }) {
   const form = document.createElement('form');
@@ -137,19 +151,14 @@ const SubscriptionPlansCard = ({
           plan_id: selectedPlan.plan.id,
         },
       );
-      // ApiSuccess uses success=true and message="" (not message="success").
       const payUrl =
         res.data?.data?.checkout_url || res.data?.data?.pay_link;
-      if (res.data?.success && payUrl) {
+      if (isSuccessfulPaymentResponse(res.data) && payUrl) {
         redirectToPaymentUrl(payUrl);
         showSuccess(t('已打开支付页面'));
         closeBuy();
       } else {
-        const errorMsg =
-          typeof res.data?.data === 'string'
-            ? res.data.data
-            : res.data?.message || t('支付失败');
-        showError(errorMsg);
+        showError(getPaymentErrorMessage(res.data, t('支付失败')));
       }
     } catch (e) {
       showError(t('支付请求失败'));
@@ -194,16 +203,12 @@ const SubscriptionPlansCard = ({
         plan_id: selectedPlan.plan.id,
       });
       const payUrl = res.data?.data?.checkout_url || res.data?.data?.pay_link;
-      if (res.data?.success && payUrl) {
+      if (isSuccessfulPaymentResponse(res.data) && payUrl) {
         redirectToPaymentUrl(payUrl);
         showSuccess(t('已打开支付页面'));
         closeBuy();
       } else {
-        const errorMsg =
-          typeof res.data?.data === 'string'
-            ? res.data.data
-            : res.data?.message || t('支付失败');
-        showError(errorMsg);
+        showError(getPaymentErrorMessage(res.data, t('支付失败')));
       }
     } catch (e) {
       showError(t('支付请求失败'));
@@ -231,16 +236,12 @@ const SubscriptionPlansCard = ({
         res.data?.data?.checkout_url ||
         res.data?.data?.pay_url ||
         res.data?.data?.pay_link;
-      if (res.data?.success && payUrl) {
+      if (isSuccessfulPaymentResponse(res.data) && payUrl) {
         redirectToPaymentUrl(payUrl);
         showSuccess(t('已打开支付页面'));
         closeBuy();
       } else {
-        const errorMsg =
-          typeof res.data?.data === 'string'
-            ? res.data.data
-            : res.data?.message || t('支付失败');
-        showError(errorMsg);
+        showError(getPaymentErrorMessage(res.data, t('支付失败')));
       }
     } catch (e) {
       showError(t('支付请求失败'));
@@ -260,16 +261,12 @@ const SubscriptionPlansCard = ({
         plan_id: selectedPlan.plan.id,
         payment_method: selectedEpayMethod,
       });
-      if (res.data?.success && res.data?.url) {
+      if (isSuccessfulPaymentResponse(res.data) && res.data?.url) {
         submitEpayForm({ url: res.data.url, params: res.data.data });
         showSuccess(t('已发起支付'));
         closeBuy();
       } else {
-        const errorMsg =
-          typeof res.data?.data === 'string'
-            ? res.data.data
-            : res.data?.message || t('支付失败');
-        showError(errorMsg);
+        showError(getPaymentErrorMessage(res.data, t('支付失败')));
       }
     } catch (e) {
       showError(t('支付请求失败'));

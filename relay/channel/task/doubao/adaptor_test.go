@@ -6,10 +6,39 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestConvertToRequestPayloadMapsCanonicalVideoContract(t *testing.T) {
+	audio := false
+	body, err := (&TaskAdaptor{}).convertToRequestPayload(&relaycommon.TaskSubmitReq{
+		Model: "doubao-seedance-2-0-260128", Mode: "reference", Prompt: "preserve the subject",
+		Images: []string{"first", "reference"}, ImageRoles: []string{"first_frame", "general_reference"},
+		Videos: []string{"video"}, VideoRoles: []string{"general_reference"},
+		Audios: []string{"audio"}, AudioRoles: []string{"general_reference"},
+		Resolution: "720p", AspectRatio: "16:9", Duration: 5, GenerateAudio: &audio,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "720p", body.Resolution)
+	assert.Equal(t, "16:9", body.Ratio)
+	require.NotNil(t, body.GenerateAudio)
+	assert.False(t, bool(*body.GenerateAudio))
+	require.NotNil(t, body.Watermark)
+	assert.False(t, bool(*body.Watermark))
+	require.Len(t, body.Content, 5)
+	assert.Equal(t, "first_frame", body.Content[0].Role)
+	assert.Equal(t, "reference_image", body.Content[1].Role)
+	assert.Equal(t, "reference_video", body.Content[2].Role)
+	assert.Equal(t, "reference_audio", body.Content[3].Role)
+	assert.Equal(t, ContentItem{Type: "text", Text: "preserve the subject"}, body.Content[4])
+	assert.Equal(t, dto.IntValue(5), *body.Duration)
+}
 
 func TestEstimateBillingUsesConfiguredVideoInputRatio(t *testing.T) {
 	t.Cleanup(func() {

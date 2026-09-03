@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAliHappyHorseConverterResolves720PTier(t *testing.T) {
@@ -67,6 +69,47 @@ func TestAliHappyHorseConverterResolves720PFromResolutionSizeEnum(t *testing.T) 
 	}
 }
 
+func TestAliHappyHorseConverterPrefersCanonicalResolution(t *testing.T) {
+	req := relaycommon.TaskSubmitReq{Model: "happyhorse-1.1-r2v", Duration: 5, Resolution: "720p", Size: "1080p"}
+
+	params, err := ConvertVideoBillingParams(nil, req)
+
+	require.NoError(t, err)
+	assert.Equal(t, "720p", params.Tier)
+}
+
+func TestAliHappyHorseConverterUsesExplicitGenerateAudio(t *testing.T) {
+	generateAudio := false
+	req := relaycommon.TaskSubmitReq{
+		Model:         "happyhorse-1.1-r2v",
+		Duration:      5,
+		GenerateAudio: &generateAudio,
+		Metadata: map[string]any{
+			"audio": true,
+		},
+	}
+
+	params, err := ConvertVideoBillingParams(nil, req)
+
+	require.NoError(t, err)
+	assert.False(t, params.AudioEnabled)
+}
+
+func TestAliHappyHorseConverterSupportsLegacyGenerateAudio(t *testing.T) {
+	req := relaycommon.TaskSubmitReq{
+		Model:    "happyhorse-1.1-r2v",
+		Duration: 5,
+		Metadata: map[string]any{
+			"generateAudio": false,
+		},
+	}
+
+	params, err := ConvertVideoBillingParams(nil, req)
+
+	require.NoError(t, err)
+	assert.False(t, params.AudioEnabled)
+}
+
 func TestAliKlingConverterResolvesStdTo720P(t *testing.T) {
 	req := relaycommon.TaskSubmitReq{
 		Model:    "kling/kling-v3-video-generation",
@@ -127,4 +170,61 @@ func TestAliKlingConverterResolvesSilentFromAudioFalse(t *testing.T) {
 	if params.AudioEnabled {
 		t.Fatalf("expected audio disabled")
 	}
+}
+
+func TestAliKlingConverterPrefersCanonicalOutput(t *testing.T) {
+	audio := false
+	req := relaycommon.TaskSubmitReq{
+		Model: "kling/kling-v3-video-generation", Mode: "text_to_video", Resolution: "720p", Duration: 3, GenerateAudio: &audio,
+		Metadata: map[string]any{"mode": "pro", "audio": true},
+	}
+
+	params, err := ConvertVideoBillingParams(nil, req)
+
+	require.NoError(t, err)
+	assert.Equal(t, "720p", params.Tier)
+	assert.False(t, params.AudioEnabled)
+}
+
+func TestAliKlingConverterUsesMappedUpstreamModel(t *testing.T) {
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "kling-v3-video-generation",
+		ChannelMeta: &relaycommon.ChannelMeta{
+			UpstreamModelName: "kling/kling-v3-video-generation",
+			IsModelMapped:     true,
+		},
+	}
+	req := relaycommon.TaskSubmitReq{
+		Model:   "kling-v3-video-generation",
+		Seconds: "5",
+		Size:    "720p",
+		Metadata: map[string]any{
+			"audio": false,
+		},
+	}
+
+	params, err := ConvertVideoBillingParams(info, req)
+
+	require.NoError(t, err)
+	assert.Equal(t, "720p", params.Tier)
+	assert.Equal(t, 5, params.DurationSeconds)
+	assert.False(t, params.AudioEnabled)
+}
+
+func TestAliKlingConverterAddsReferenceVideoUnit(t *testing.T) {
+	params, err := ConvertVideoBillingParams(nil, relaycommon.TaskSubmitReq{
+		Model: "kling/kling-v3-omni-video-generation", Resolution: "720p", Duration: 3,
+		Videos: []string{"https://example.test/source.mp4"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "reference_video_silent", params.PriceKey)
+	require.Equal(t, "720p", params.Tier)
+}
+
+func TestAliKlingConverterSupports4KTier(t *testing.T) {
+	params, err := ConvertVideoBillingParams(nil, relaycommon.TaskSubmitReq{
+		Model: "kling/kling-v3-omni-video-generation", Resolution: "4K", Duration: 3,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "4k", params.Tier)
 }

@@ -1,0 +1,61 @@
+ARG BUN_IMAGE=oven/bun:1
+ARG GO_IMAGE=golang:1.26.1
+ARG RUNTIME_IMAGE=debian:bookworm-slim
+
+FROM --platform=$BUILDPLATFORM ${BUN_IMAGE} AS classic-deps
+
+ARG BUN_REGISTRY=https://registry.npmjs.org
+WORKDIR /build/web/classic
+COPY web/classic/package.json web/classic/bun.lock ./
+RUN --mount=type=cache,id=new-api-classic-bun,target=/root/.bun/install/cache,sharing=locked \
+    bun install --frozen-lockfile --registry=${BUN_REGISTRY}
+
+FROM classic-deps AS classic-builder
+
+ARG VITE_HOME_ENTRY=en
+COPY web/classic ./
+COPY web/shared /build/web/shared
+COPY VERSION /build/VERSION
+RUN VITE_REACT_APP_VERSION=$(cat /build/VERSION) \
+    VITE_HOME_ENTRY=${VITE_HOME_ENTRY} \
+    NODE_OPTIONS=--max-old-space-size=6144 \
+    node node_modules/vite/bin/vite.js build
+
+FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS go-builder
+
+ARG GOPROXY=https://proxy.golang.org,direct
+ARG GOSUMDB=sum.golang.org
+ARG TARGETOS
+ARG TARGETARCH
+ENV GO111MODULE=on \
+    CGO_ENABLED=0 \
+    GOEXPERIMENT=greenteagc \
+    GOPROXY=${GOPROXY} \
+    GOSUMDB=${GOSUMDB}
+
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN --mount=type=cache,id=new-api-go-mod,target=/go/pkg/mod,sharing=locked \
+    go mod download
+
+COPY . .
+COPY --from=classic-builder /build/web/classic/dist ./web/classic/dist
+RUN mkdir -p web/default/dist && \
+    printf '%s\n' '<!doctype html><html><body>Classic frontend only</body></html>' > web/default/dist/index.html
+RUN --mount=type=cache,id=new-api-go-mod,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=new-api-go-build-${TARGETOS}-${TARGETARCH},target=/root/.cache/go-build,sharing=locked \
+    GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
+    go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'" -o /out/new-api
+
+FROM ${RUNTIME_IMAGE}
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates tzdata libasan8 wget \
+    && rm -rf /var/lib/apt/lists/* \
+    && update-ca-certificates
+
+COPY --from=go-builder /out/new-api /
+COPY LICENSE NOTICE THIRD-PARTY-LICENSES.md /licenses/
+EXPOSE 3000
+WORKDIR /data
+ENTRYPOINT ["/new-api"]

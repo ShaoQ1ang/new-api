@@ -13,7 +13,7 @@ const (
 	BillingModeTieredExpr   = "tiered_expr"
 	BillingModeVideoSeconds = "video_seconds"
 	BillingModeField        = "billing_mode"
-	BillingExprField      = "billing_expr"
+	BillingExprField        = "billing_expr"
 )
 
 // BillingSetting is managed by config.GlobalConfig.Register.
@@ -24,7 +24,22 @@ type BillingSetting struct {
 }
 
 var billingSetting = BillingSetting{
-	BillingMode: make(map[string]string),
+	BillingMode: map[string]string{
+		"alibaba/happyhorse-1.0":               BillingModeVideoSeconds,
+		"alibaba/happyhorse-1.1":               BillingModeVideoSeconds,
+		"kwaivgi/kling-v3.0-std":               BillingModeVideoSeconds,
+		"kwaivgi/kling-v3.0-pro":               BillingModeVideoSeconds,
+		"kwaivgi/kling-video-o1":               BillingModeVideoSeconds,
+		"kling/kling-v3-video-generation":      BillingModeVideoSeconds,
+		"kling/kling-v3-omni-video-generation": BillingModeVideoSeconds,
+		"minimax/hailuo-3":                     BillingModeVideoSeconds,
+		"minimax/hailuo-2.3":                   BillingModeVideoSeconds,
+		"wan2.7-t2v":                           BillingModeVideoSeconds,
+		"wan2.7-i2v":                           BillingModeVideoSeconds,
+		"wan2.7-r2v":                           BillingModeVideoSeconds,
+		"wan2.7-videoedit":                     BillingModeVideoSeconds,
+		"alibaba/wan-2.7":                      BillingModeVideoSeconds,
+	},
 	BillingExpr: make(map[string]string),
 }
 
@@ -38,6 +53,18 @@ func init() {
 
 func GetBillingMode(model string) string {
 	if mode, ok := billingSetting.BillingMode[model]; ok {
+		return mode
+	}
+	return BillingModeRatio
+}
+
+// ResolveBillingMode prefers an explicit setting for the requested model and
+// falls back to the mapped upstream model when the request model has none.
+func ResolveBillingMode(model, upstreamModel string) string {
+	if mode, ok := billingSetting.BillingMode[model]; ok {
+		return mode
+	}
+	if mode, ok := billingSetting.BillingMode[upstreamModel]; ok {
 		return mode
 	}
 	return BillingModeRatio

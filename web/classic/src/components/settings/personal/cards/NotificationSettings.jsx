@@ -96,6 +96,7 @@ const NotificationSettings = ({
       enabled: true,
       channel: true,
       models: true,
+      aigcModels: true,
       deployment: true,
       subscription: true,
       clientRelease: true,
@@ -189,6 +190,7 @@ const NotificationSettings = ({
         enabled: true,
         channel: true,
         models: true,
+        aigcModels: true,
         deployment: true,
         subscription: true,
         clientRelease: true,
@@ -339,6 +341,11 @@ const NotificationSettings = ({
       modules: [
         { key: 'channel', title: t('渠道管理'), description: t('API渠道配置') },
         { key: 'models', title: t('模型管理'), description: t('AI模型配置') },
+        {
+          key: 'aigcModels',
+          title: t('AIGC 模型管理'),
+          description: t('生成模型能力与分配'),
+        },
         {
           key: 'deployment',
           title: t('模型部署'),

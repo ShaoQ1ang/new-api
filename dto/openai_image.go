@@ -2,6 +2,8 @@ package dto
 
 import (
 	"encoding/json"
+	"fmt"
+	"math"
 	"reflect"
 	"strings"
 
@@ -20,8 +22,11 @@ type ImageRequest struct {
 	Prompt            string          `json:"prompt" binding:"required"`
 	N                 *uint           `json:"n,omitempty"`
 	Size              string          `json:"size,omitempty"`
+	Resolution        string          `json:"resolution,omitempty"`
+	AspectRatio       string          `json:"aspect_ratio,omitempty"`
 	Quality           string          `json:"quality,omitempty"`
 	ResponseFormat    string          `json:"response_format,omitempty"`
+	Seed              *int64          `json:"seed,omitempty"`
 	Style             json.RawMessage `json:"style,omitempty"`
 	User              json.RawMessage `json:"user,omitempty"`
 	ExtraFields       json.RawMessage `json:"extra_fields,omitempty"`
@@ -32,13 +37,16 @@ type ImageRequest struct {
 	PartialImages     json.RawMessage `json:"partial_images,omitempty"`
 	Stream            *bool           `json:"stream,omitempty"`
 	Images            json.RawMessage `json:"images,omitempty"`
+	InputReferences   json.RawMessage `json:"input_references,omitempty"`
 	Mask              json.RawMessage `json:"mask,omitempty"`
 	InputFidelity     json.RawMessage `json:"input_fidelity,omitempty"`
 	Watermark         *bool           `json:"watermark,omitempty"`
+	Provider          json.RawMessage `json:"provider,omitempty"`
 	// zhipu 4v
-	WatermarkEnabled json.RawMessage `json:"watermark_enabled,omitempty"`
-	UserId           json.RawMessage `json:"user_id,omitempty"`
-	Image            json.RawMessage `json:"image,omitempty"`
+	WatermarkEnabled      json.RawMessage `json:"watermark_enabled,omitempty"`
+	UserId                json.RawMessage `json:"user_id,omitempty"`
+	Image                 json.RawMessage `json:"image,omitempty"`
+	ParsedInputImageTiers []string        `json:"-"`
 	// 用匿名参数接收额外参数
 	Extra map[string]json.RawMessage `json:"-"`
 }
@@ -167,8 +175,102 @@ func (i *ImageRequest) GetTokenCountMeta() *types.TokenCountMeta {
 		CombineText:     i.Prompt,
 		MaxTokens:       1584,
 		ImagePriceRatio: sizeRatio * qualityRatio,
+		ImageSize:       i.Size,
 		BillingRatios:   map[string]float64{"n": float64(imageN)},
+		InputImageTiers: i.GetInputImageTiers(),
 	}
+}
+
+func (i *ImageRequest) GetInputImageTiers() []string {
+	if i == nil {
+		return nil
+	}
+	if i.ParsedInputImageTiers != nil {
+		return append([]string(nil), i.ParsedInputImageTiers...)
+	}
+	tiers := imageTiersFromRawMessage(i.Image)
+	tiers = append(tiers, imageTiersFromRawMessage(i.Images)...)
+	tiers = append(tiers, imageReferenceTiersFromRawMessage(i.InputReferences)...)
+	return tiers
+}
+
+func imageTiersFromRawMessage(raw json.RawMessage) []string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var value any
+	if err := common.Unmarshal(raw, &value); err != nil {
+		return nil
+	}
+	return imageTiersFromValue(value)
+}
+
+func imageReferenceTiersFromRawMessage(raw json.RawMessage) []string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var references []map[string]any
+	if err := common.Unmarshal(raw, &references); err != nil {
+		return nil
+	}
+	tiers := make([]string, 0, len(references))
+	for _, reference := range references {
+		referenceType, _ := reference["type"].(string)
+		if referenceType != "" && referenceType != "image" && referenceType != "image_url" && referenceType != "input_image" {
+			continue
+		}
+		tiers = append(tiers, imageTierFromMap(reference))
+	}
+	return tiers
+}
+
+func imageTiersFromValue(value any) []string {
+	switch typed := value.(type) {
+	case string:
+		if strings.TrimSpace(typed) != "" {
+			return []string{"default"}
+		}
+	case []any:
+		tiers := make([]string, 0, len(typed))
+		for _, item := range typed {
+			tiers = append(tiers, imageTiersFromValue(item)...)
+		}
+		return tiers
+	case map[string]any:
+		return []string{imageTierFromMap(typed)}
+	}
+	return nil
+}
+
+func imageTierFromMap(value map[string]any) string {
+	for _, key := range []string{"resolution", "size"} {
+		if tier, ok := value[key].(string); ok && strings.TrimSpace(tier) != "" {
+			return tier
+		}
+	}
+	width, widthOK := imageDimension(value["width"])
+	height, heightOK := imageDimension(value["height"])
+	if widthOK && heightOK {
+		return fmt.Sprintf("%dx%d", width, height)
+	}
+	for _, key := range []string{"image_url", "image"} {
+		if nested, ok := value[key].(map[string]any); ok {
+			return imageTierFromMap(nested)
+		}
+	}
+	return "default"
+}
+
+func imageDimension(value any) (int, bool) {
+	switch typed := value.(type) {
+	case float64:
+		if typed > 0 && typed <= math.MaxInt32 && typed == math.Trunc(typed) {
+			return int(typed), true
+		}
+	case int:
+		return typed, typed > 0
+	}
+	return 0, false
 }
 
 func (i *ImageRequest) IsStream(c *gin.Context) bool {

@@ -16,11 +16,15 @@ func (a *TaskAdaptor) buildKlingRequest(upstreamModel string, req relaycommon.Ta
 		},
 		Parameters: &AliVideoParameters{
 			Watermark:   lo.ToPtr(false),
-			Mode:        lo.ToPtr(normalizeKlingMode(req.Mode, req.Size)),
+			Mode:        lo.ToPtr(normalizeKlingMode(req.Mode, firstNonEmptyString(req.Resolution, req.Size))),
 			Duration:    resolveTaskDuration(req, 5),
 			AspectRatio: lo.ToPtr("16:9"),
 		},
 	}
+	if ratio := strings.TrimSpace(req.AspectRatio); ratio != "" {
+		aliReq.Parameters.AspectRatio = lo.ToPtr(ratio)
+	}
+	aliReq.Parameters.Audio = req.GenerateAudio
 
 	if req.Metadata != nil {
 		if mediaValue, ok := req.Metadata["media"]; ok {
@@ -47,12 +51,12 @@ func (a *TaskAdaptor) buildKlingRequest(upstreamModel string, req relaycommon.Ta
 		if mode, ok := getStringMetadata(req.Metadata, "mode"); ok {
 			aliReq.Parameters.Mode = lo.ToPtr(normalizeKlingMode(mode, ""))
 		}
-		if aspectRatio, ok := getStringMetadata(req.Metadata, "aspect_ratio"); ok {
+		if aspectRatio, ok := getStringMetadata(req.Metadata, "aspect_ratio"); ok && strings.TrimSpace(req.AspectRatio) == "" {
 			aliReq.Parameters.AspectRatio = lo.ToPtr(aspectRatio)
-		} else if ratio, ok := getStringMetadata(req.Metadata, "ratio"); ok {
+		} else if ratio, ok := getStringMetadata(req.Metadata, "ratio"); ok && strings.TrimSpace(req.AspectRatio) == "" {
 			aliReq.Parameters.AspectRatio = lo.ToPtr(ratio)
 		}
-		if audio, ok := getBoolMetadata(req.Metadata, "audio"); ok {
+		if audio, ok := getBoolMetadata(req.Metadata, "audio"); ok && req.GenerateAudio == nil {
 			aliReq.Parameters.Audio = lo.ToPtr(audio)
 		}
 		if watermark, ok := getBoolMetadata(req.Metadata, "watermark"); ok {
@@ -84,9 +88,20 @@ func (a *TaskAdaptor) buildKlingRequest(upstreamModel string, req relaycommon.Ta
 }
 
 func normalizeKlingMode(mode string, size string) string {
+	switch strings.ToLower(strings.ReplaceAll(strings.TrimSpace(size), " ", "")) {
+	case "720p", "1280x720", "720x1280", "720x720", "std":
+		return "std"
+	case "1080p", "1920x1080", "1080x1920", "1080x1080", "pro":
+		return "pro"
+	case "4k", "2160p", "3840x2160", "2160x3840", "2160x2160":
+		return "4k"
+	}
 	if mode = strings.TrimSpace(mode); mode != "" {
 		if strings.EqualFold(mode, "std") {
 			return "std"
+		}
+		if strings.EqualFold(mode, "4k") {
+			return "4k"
 		}
 		return "pro"
 	}

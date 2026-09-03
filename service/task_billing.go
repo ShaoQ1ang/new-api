@@ -43,6 +43,27 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	if info.PriceData.ModelRatio > 0 {
 		other["model_ratio"] = info.PriceData.ModelRatio
 	}
+	if info.PriceData.VideoSecondsUnitPrice > 0 {
+		other["billing_mode"] = "video_seconds"
+		other["video_seconds_unit_price"] = info.PriceData.VideoSecondsUnitPrice
+	}
+	if info.PriceData.VideoSecondsTier != "" {
+		other["video_seconds_tier"] = info.PriceData.VideoSecondsTier
+	}
+	if info.PriceData.VideoDurationSeconds > 0 {
+		other["video_duration_seconds"] = info.PriceData.VideoDurationSeconds
+	}
+	if info.PriceData.VideoFixedPrice > 0 {
+		other["video_fixed_price"] = info.PriceData.VideoFixedPrice
+	}
+	if info.PriceData.VideoAudioEnabled != nil {
+		other["video_audio_enabled"] = *info.PriceData.VideoAudioEnabled
+	}
+	if info.PriceData.InputImageCost > 0 || info.PriceData.InputImageFreeCount > 0 {
+		other["input_image_cost"] = info.PriceData.InputImageCost
+		other["input_image_counts"] = info.PriceData.InputImageCounts
+		other["input_image_free_count"] = info.PriceData.InputImageFreeCount
+	}
 	other["group_ratio"] = info.PriceData.GroupRatioInfo.GroupRatio
 	if info.PriceData.GroupRatioInfo.HasSpecialRatio {
 		other["user_group_ratio"] = info.PriceData.GroupRatioInfo.GroupSpecialRatio
@@ -125,6 +146,30 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 		other["model_price"] = bc.ModelPrice
 		if bc.ModelRatio > 0 {
 			other["model_ratio"] = bc.ModelRatio
+		}
+		if bc.ConditionalInputPrice > 0 {
+			other["conditional_input_price"] = bc.ConditionalInputPrice
+		}
+		if bc.VideoSecondsUnitPrice > 0 {
+			other["billing_mode"] = "video_seconds"
+			other["video_seconds_unit_price"] = bc.VideoSecondsUnitPrice
+		}
+		if bc.VideoSecondsTier != "" {
+			other["video_seconds_tier"] = bc.VideoSecondsTier
+		}
+		if bc.VideoDurationSeconds > 0 {
+			other["video_duration_seconds"] = bc.VideoDurationSeconds
+		}
+		if bc.VideoFixedPrice > 0 {
+			other["video_fixed_price"] = bc.VideoFixedPrice
+		}
+		if bc.VideoAudioEnabled != nil {
+			other["video_audio_enabled"] = *bc.VideoAudioEnabled
+		}
+		if bc.InputImageCost > 0 || bc.InputImageFreeCount > 0 {
+			other["input_image_cost"] = bc.InputImageCost
+			other["input_image_counts"] = bc.InputImageCounts
+			other["input_image_free_count"] = bc.InputImageFreeCount
 		}
 		other["group_ratio"] = bc.GroupRatio
 		if priceData := taskBillingContextPriceData(bc); priceData != nil {

@@ -24,6 +24,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
+	"github.com/QuantumNous/new-api/pkg/tracelog"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/router"
 	"github.com/QuantumNous/new-api/service"
@@ -53,6 +54,8 @@ var classicBuildFS embed.FS
 var classicIndexPage []byte
 
 func main() {
+	tracelog.InitDefaultFromEnv("newapi")
+	defer tracelog.Default.Close()
 	startTime := time.Now()
 
 	err := InitResources()
@@ -132,6 +135,7 @@ func main() {
 	// Product whitelist: Alipay pending top-up reconciliation + auto-renew due charge.
 	service.StartAlipayPendingTopUpTask()
 	service.StartAlipayAutoRenewChargeTask()
+	service.StartWalletCallbackTask()
 
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.

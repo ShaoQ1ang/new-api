@@ -1,6 +1,6 @@
 services:
   gateway:
-    image: nginx:1.27-alpine
+    image: nginx:1.29-alpine
     container_name: new-api-gateway
     restart: unless-stopped
     ports:
@@ -41,7 +41,14 @@ services:
   new-api:
     build:
       context: ../..
-    image: new-api-local:seedance-endpoint-fix
+      dockerfile: deploy/newapi-local/Dockerfile.classic
+      args:
+        BUN_IMAGE: "${BUN_IMAGE:-oven/bun:local-cache}"
+        GO_IMAGE: "${GO_IMAGE:-golang:1.26.1-local-cache}"
+        RUNTIME_IMAGE: "${RUNTIME_IMAGE:-debian:bookworm-slim-local-cache}"
+        GOPROXY: "${GOPROXY:-https://goproxy.cn,direct}"
+        GOSUMDB: "${GOSUMDB:-sum.golang.google.cn}"
+    image: new-api:local
     container_name: new-api-local
     restart: unless-stopped
     command: --log-dir /app/logs
@@ -51,13 +58,24 @@ services:
       default:
         aliases:
           - new-api
+    env_file:
+      - ../../.env
     environment:
       TZ: Asia/Shanghai
       ERROR_LOG_ENABLED: "true"
       MEMORY_CACHE_ENABLED: "true"
-      OPTION_CRYPT_KEY: "${OPTION_CRYPT_KEY}"
+      TRACE_LOG_ENABLED: "true"
+      TRACE_LOG_DIR: /trace-logs
+      TRACE_LOG_BUFFER_SIZE: 256
+      OPTION_CRYPT_KEY: "${OPTION_CRYPT_KEY:-}"
+      WALLET_CALLBACK_ENABLED: "${WALLET_CALLBACK_ENABLED:-true}"
+      WALLET_CALLBACK_FAIL_CLOSED: "${WALLET_CALLBACK_FAIL_CLOSED:-true}"
+      WALLET_CALLBACK_BASE_URL: "${WALLET_CALLBACK_BASE_URL:-http://host.docker.internal:18085}"
+      WALLET_CALLBACK_TIMEOUT_MS: "${WALLET_CALLBACK_TIMEOUT_MS:-3000}"
+      WALLET_CALLBACK_TOKEN: "${WALLET_CALLBACK_TOKEN:-}"
       SYNC_UPSTREAM_BASE: "http://metadata"
-      SQL_DSN: "postgresql://${NEWAPI_POSTGRES_USER:-newapi}:${NEWAPI_POSTGRES_PASSWORD:-newapi_change_me}@postgres:5432/${NEWAPI_POSTGRES_DB:-newapi}?sslmode=disable"
+      SQL_DSN: "postgresql://${NEWAPI_POSTGRES_USER:-root}:${NEWAPI_POSTGRES_PASSWORD:-123456}@postgres:5432/${NEWAPI_POSTGRES_DB:-new-api}?sslmode=disable"
+      REDIS_CONN_STRING: "redis://:${NEWAPI_REDIS_PASSWORD:-123456}@redis:6379/0"
       SKILL_HUB_OSS_ENDPOINT: "${SKILL_HUB_OSS_ENDPOINT:-}"
       SKILL_HUB_OSS_BUCKET: "${SKILL_HUB_OSS_BUCKET:-}"
       SKILL_HUB_OSS_ACCESS_KEY_ID: "${SKILL_HUB_OSS_ACCESS_KEY_ID:-}"
@@ -71,10 +89,13 @@ services:
       SKILL_HUB_OSS_ICON_PREFIX: "${SKILL_HUB_OSS_ICON_PREFIX:-skill-hub/icons}"
       SKILL_HUB_OSS_ICON_PUBLIC_BASE_URL: "${SKILL_HUB_OSS_ICON_PUBLIC_BASE_URL:-}"
     volumes:
-      - ./data:/data
-      - ./logs:/app/logs
+      - ../../data:/data
+      - ../../logs:/app/logs
+      - ../../../trace-console/data/traces:/trace-logs
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       metadata:
         condition: service_started
@@ -85,13 +106,13 @@ services:
       retries: 5
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     container_name: new-api-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: "${NEWAPI_POSTGRES_DB:-newapi}"
-      POSTGRES_USER: "${NEWAPI_POSTGRES_USER:-newapi}"
-      POSTGRES_PASSWORD: "${NEWAPI_POSTGRES_PASSWORD:-newapi_change_me}"
+      POSTGRES_DB: "${NEWAPI_POSTGRES_DB:-new-api}"
+      POSTGRES_USER: "${NEWAPI_POSTGRES_USER:-root}"
+      POSTGRES_PASSWORD: "${NEWAPI_POSTGRES_PASSWORD:-123456}"
       TZ: Asia/Shanghai
     volumes:
       - newapi_pg_data:/var/lib/postgresql/data
@@ -101,14 +122,29 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:latest
+    container_name: new-api-local-redis
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: "${NEWAPI_REDIS_PASSWORD:-123456}"
+    command: ["redis-server", "--requirepass", "${NEWAPI_REDIS_PASSWORD:-123456}"]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli ping | grep -q '^PONG$'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   metadata:
-    image: nginx:1.27-alpine
+    image: nginx:1.29-alpine
     container_name: new-api-metadata
     restart: unless-stopped
-    ports:
-      - "0.0.0.0:8088:80"
+    expose:
+      - "80"
     volumes:
       - ./metadata:/usr/share/nginx/html:ro
 
 volumes:
   newapi_pg_data:
+    external: true
+    name: new-api-classic_new_api_classic_pg_data

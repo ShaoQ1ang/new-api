@@ -14,27 +14,33 @@ type GroupRatioInfo struct {
 }
 
 type PriceData struct {
-	FreeModel            bool
-	ModelPrice           float64
-	ModelRatio           float64
+	FreeModel             bool
+	ModelPrice            float64
+	ModelRatio            float64
 	VideoSecondsUnitPrice float64
 	VideoSecondsTier      string
 	VideoAudioEnabled     *bool
 	VideoDurationSeconds  int
+	VideoFixedPrice       float64
 	ConditionalInputPrice float64
-	CompletionRatio      float64
-	CacheRatio           float64
-	CacheCreationRatio   float64
-	CacheCreation5mRatio float64
-	CacheCreation1hRatio float64
-	ImageRatio           float64
-	AudioRatio           float64
-	AudioCompletionRatio float64
-	otherRatios          map[string]float64
-	UsePrice             bool
-	Quota                int // 按次计费的最终额度（MJ / Task）
-	QuotaToPreConsume    int // 按量计费的预消耗额度
-	GroupRatioInfo       GroupRatioInfo
+	InputImageCost        float64
+	InputImageCounts      map[string]int
+	InputImageFreeCount   int
+	CompletionRatio       float64
+	CacheRatio            float64
+	CacheCreationRatio    float64
+	CacheCreation5mRatio  float64
+	CacheCreation1hRatio  float64
+	ImageRatio            float64
+	ImageSize             string
+	ImageResolutionTier   string
+	AudioRatio            float64
+	AudioCompletionRatio  float64
+	otherRatios           map[string]float64
+	UsePrice              bool
+	Quota                 int // 按次计费的最终额度（MJ / Task）
+	QuotaToPreConsume     int // 按量计费的预消耗额度
+	GroupRatioInfo        GroupRatioInfo
 }
 
 func (p *PriceData) AddOtherRatio(key string, ratio float64) {
@@ -115,5 +121,5 @@ func isValidOtherRatio(ratio float64) bool {
 }
 
 func (p *PriceData) ToSetting() string {
-	return fmt.Sprintf("ModelPrice: %f, ModelRatio: %f, VideoSecondsUnitPrice: %f, VideoSecondsTier: %s, VideoDurationSeconds: %d, ConditionalInputPrice: %f, CompletionRatio: %f, CacheRatio: %f, GroupRatio: %f, UsePrice: %t, CacheCreationRatio: %f, CacheCreation5mRatio: %f, CacheCreation1hRatio: %f, QuotaToPreConsume: %d, ImageRatio: %f, AudioRatio: %f, AudioCompletionRatio: %f", p.ModelPrice, p.ModelRatio, p.VideoSecondsUnitPrice, p.VideoSecondsTier, p.VideoDurationSeconds, p.ConditionalInputPrice, p.CompletionRatio, p.CacheRatio, p.GroupRatioInfo.GroupRatio, p.UsePrice, p.CacheCreationRatio, p.CacheCreation5mRatio, p.CacheCreation1hRatio, p.QuotaToPreConsume, p.ImageRatio, p.AudioRatio, p.AudioCompletionRatio)
+	return fmt.Sprintf("ModelPrice: %f, ModelRatio: %f, VideoSecondsUnitPrice: %f, VideoSecondsTier: %s, VideoDurationSeconds: %d, VideoFixedPrice: %f, ConditionalInputPrice: %f, InputImageCost: %f, InputImageCounts: %v, InputImageFreeCount: %d, CompletionRatio: %f, CacheRatio: %f, GroupRatio: %f, UsePrice: %t, CacheCreationRatio: %f, CacheCreation5mRatio: %f, CacheCreation1hRatio: %f, QuotaToPreConsume: %d, ImageRatio: %f, ImageSize: %s, ImageResolutionTier: %s, AudioRatio: %f, AudioCompletionRatio: %f", p.ModelPrice, p.ModelRatio, p.VideoSecondsUnitPrice, p.VideoSecondsTier, p.VideoDurationSeconds, p.VideoFixedPrice, p.ConditionalInputPrice, p.InputImageCost, p.InputImageCounts, p.InputImageFreeCount, p.CompletionRatio, p.CacheRatio, p.GroupRatioInfo.GroupRatio, p.UsePrice, p.CacheCreationRatio, p.CacheCreation5mRatio, p.CacheCreation1hRatio, p.QuotaToPreConsume, p.ImageRatio, p.ImageSize, p.ImageResolutionTier, p.AudioRatio, p.AudioCompletionRatio)
 }

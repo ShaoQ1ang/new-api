@@ -144,6 +144,17 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
       models: 'Models exposed by this channel',
     },
   },
+  59: {
+    id: 59,
+    name: CHANNEL_TYPES[59],
+    icon: 'suno',
+    defaultBaseUrl: 'https://api.sunoapi.org',
+    hints: {
+      baseUrl: 'Default: https://api.sunoapi.org',
+      key: 'SunoAPI Bearer token',
+      models: 'V4,V4_5,V4_5PLUS,V4_5ALL,V5,V5_5',
+    },
+  },
 }
 
 /**

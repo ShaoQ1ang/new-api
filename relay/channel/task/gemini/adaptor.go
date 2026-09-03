@@ -41,7 +41,22 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 
 // ValidateRequestAndSetAction parses body, validates fields and sets default action.
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
-	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionTextGenerate)
+	if taskErr := relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionTextGenerate); taskErr != nil {
+		return taskErr
+	}
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	if len(req.Images) > 2 {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("Veo supports at most first and last frame images"), "invalid_request", http.StatusBadRequest)
+	}
+	if len(req.Images) == 2 {
+		info.Action = constant.TaskActionFirstTailGenerate
+	} else if len(req.Images) == 1 {
+		info.Action = constant.TaskActionGenerate
+	}
+	return nil
 }
 
 // BuildRequestURL constructs the Gemini API predictLongRunning endpoint for Veo.
@@ -85,6 +100,12 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 			info.Action = constant.TaskActionGenerate
 		}
 	}
+	if len(req.Images) > 1 {
+		if parsed := ParseImageInput(req.Images[1]); parsed != nil {
+			instance.LastFrame = parsed
+			info.Action = constant.TaskActionFirstTailGenerate
+		}
+	}
 
 	params := &VeoParameters{}
 	if err := taskcommon.UnmarshalMetadata(req.Metadata, params); err != nil {
@@ -93,10 +114,14 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if params.DurationSeconds == 0 && req.Duration > 0 {
 		params.DurationSeconds = req.Duration
 	}
-	if params.Resolution == "" && req.Size != "" {
+	if req.Resolution != "" {
+		params.Resolution = req.Resolution
+	} else if params.Resolution == "" && req.Size != "" {
 		params.Resolution = SizeToVeoResolution(req.Size)
 	}
-	if params.AspectRatio == "" && req.Size != "" {
+	if req.AspectRatio != "" {
+		params.AspectRatio = req.AspectRatio
+	} else if params.AspectRatio == "" && req.Size != "" {
 		params.AspectRatio = SizeToVeoAspectRatio(req.Size)
 	}
 	params.Resolution = strings.ToLower(params.Resolution)
@@ -120,19 +145,19 @@ func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, req
 }
 
 // DoResponse handles upstream response, returns taskID etc.
-func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *dto.TaskError) {
+func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, publicResponse any, taskErr *dto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", nil, service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
+		return "", nil, nil, service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 	}
 	_ = resp.Body.Close()
 
 	var s submitResponse
 	if err := common.Unmarshal(responseBody, &s); err != nil {
-		return "", nil, service.TaskErrorWrapper(err, "unmarshal_response_failed", http.StatusInternalServerError)
+		return "", nil, nil, service.TaskErrorWrapper(err, "unmarshal_response_failed", http.StatusInternalServerError)
 	}
 	if strings.TrimSpace(s.Name) == "" {
-		return "", nil, service.TaskErrorWrapper(fmt.Errorf("missing operation name"), "invalid_response", http.StatusInternalServerError)
+		return "", nil, nil, service.TaskErrorWrapper(fmt.Errorf("missing operation name"), "invalid_response", http.StatusInternalServerError)
 	}
 	taskID = taskcommon.EncodeLocalTaskID(s.Name)
 	ov := dto.NewOpenAIVideo()
@@ -140,8 +165,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	ov.TaskID = info.PublicTaskID
 	ov.CreatedAt = time.Now().Unix()
 	ov.Model = info.OriginModelName
-	c.JSON(http.StatusOK, ov)
-	return taskID, responseBody, nil
+	return taskID, responseBody, ov, nil
 }
 
 func (a *TaskAdaptor) GetModelList() []string {
@@ -169,7 +193,7 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	}
 
 	seconds := ResolveVeoDuration(req.Metadata, req.Duration, req.Seconds)
-	resolution := ResolveVeoResolution(req.Metadata, req.Size)
+	resolution := ResolveVeoResolution(req.Metadata, req.Resolution, req.Size)
 	resRatio := VeoResolutionRatio(info.UpstreamModelName, resolution)
 
 	return map[string]float64{

@@ -86,6 +86,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/alipay/notify", controller.AlipayNotify)
 		apiRouter.POST("/creem/webhook", controller.CreemWebhook)
 		apiRouter.POST("/waffo/webhook", controller.WaffoWebhook)
+		apiRouter.POST("/sunoapi/callback", controller.SunoAPICallback)
 		//apiRouter.POST("/waffo-pancake/webhook", controller.WaffoPancakeWebhook)
 
 		// Universal secure verification routes
@@ -343,6 +344,8 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.GET("/update_balance/:id", controller.UpdateChannelBalance)
 			channelRoute.POST("/", controller.AddChannel)
 			channelRoute.PUT("/", controller.UpdateChannel)
+			channelRoute.POST("/status/batch", controller.BatchUpdateChannelStatus)
+			channelRoute.POST("/:id/status", controller.UpdateChannelStatus)
 			channelRoute.DELETE("/disabled", controller.DeleteDisabledChannel)
 			channelRoute.POST("/tag/disabled", controller.DisableTagChannels)
 			channelRoute.POST("/tag/enabled", controller.EnableTagChannels)

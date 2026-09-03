@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -58,7 +59,7 @@ func valuesEqual(a, b interface{}) bool {
 	if aok && bok {
 		return nearlyEqual(af, bf)
 	}
-	return a == b
+	return reflect.DeepEqual(a, b)
 }
 
 var pricingSyncFields = []string{
@@ -70,6 +71,8 @@ var pricingSyncFields = []string{
 	"audio_ratio",
 	"audio_completion_ratio",
 	"model_price",
+	"image_input_price",
+	"video_seconds_price",
 	billing_setting.BillingModeField,
 	billing_setting.BillingExprField,
 }
@@ -99,6 +102,10 @@ func valueMap(value any) map[string]any {
 		return lo.MapValues(typed, func(value float64, _ string) any { return value })
 	case map[string]string:
 		return lo.MapValues(typed, func(value string, _ string) any { return value })
+	case ratio_setting.VideoSecondsPriceMap:
+		return lo.MapValues(typed, func(value map[string]map[string]float64, _ string) any { return value })
+	case ratio_setting.ImageInputPriceMap:
+		return lo.MapValues(typed, func(value map[string]float64, _ string) any { return value })
 	default:
 		return nil
 	}
@@ -136,7 +143,76 @@ func getLocalPricingSyncData() map[string]any {
 	data["image_ratio"] = ratio_setting.GetImageRatioCopy()
 	data["audio_ratio"] = ratio_setting.GetAudioRatioCopy()
 	data["audio_completion_ratio"] = ratio_setting.GetAudioCompletionRatioCopy()
+	data["video_seconds_price"] = ratio_setting.GetVideoSecondsPriceCopy()
+	data["image_input_price"] = ratio_setting.GetImageInputPriceCopy()
 	return data
+}
+
+func fetchUpstreamPricingBody(ctx context.Context, client *http.Client, requestURL, authorization string) ([]byte, error) {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		if authorization != "" {
+			req.Header.Set("Authorization", authorization)
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			if attempt < 2 {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(time.Duration(200*(1<<attempt)) * time.Millisecond):
+				}
+			}
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, fmt.Errorf("upstream returned %s", resp.Status)
+		}
+		limited := io.LimitReader(resp.Body, maxRatioConfigBytes+1)
+		body, readErr := io.ReadAll(limited)
+		resp.Body.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+		if len(body) > maxRatioConfigBytes {
+			return nil, fmt.Errorf("upstream response exceeds %d bytes", maxRatioConfigBytes)
+		}
+		return body, nil
+	}
+	return nil, lastErr
+}
+
+func fetchOpenRouterPricingData(ctx context.Context, client *http.Client, baseURL, authorization string) (map[string]any, error) {
+	baseURL = strings.TrimRight(baseURL, "/")
+	modelsBody, err := fetchUpstreamPricingBody(ctx, client, baseURL+"/v1/models", authorization)
+	if err != nil {
+		return nil, fmt.Errorf("fetch /v1/models: %w", err)
+	}
+	converted, err := convertOpenRouterToRatioData(bytes.NewReader(modelsBody))
+	if err != nil {
+		return nil, err
+	}
+
+	videosBody, err := fetchUpstreamPricingBody(ctx, client, baseURL+"/v1/videos/models", authorization)
+	if err != nil {
+		return nil, fmt.Errorf("fetch /v1/videos/models: %w", err)
+	}
+	videoConverted, err := convertOpenRouterVideoToRatioData(bytes.NewReader(videosBody))
+	if err != nil {
+		return nil, err
+	}
+	for field, value := range videoConverted {
+		converted[field] = value
+	}
+	return converted, nil
 }
 
 func FetchUpstreamRatios(c *gin.Context) {
@@ -230,7 +306,7 @@ func FetchUpstreamRatios(c *gin.Context) {
 			endpoint := chItem.Endpoint
 			var fullURL string
 			if isOpenRouter {
-				fullURL = chItem.BaseURL + "/v1/models"
+				fullURL = chItem.BaseURL
 			} else if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
 				fullURL = endpoint
 			} else {
@@ -241,7 +317,7 @@ func FetchUpstreamRatios(c *gin.Context) {
 				}
 				fullURL = chItem.BaseURL + endpoint
 			}
-			isModelsDev := isModelsDevAPIEndpoint(fullURL)
+			isModelsDev := !isOpenRouter && isModelsDevAPIEndpoint(fullURL)
 
 			uniqueName := chItem.Name
 			if chItem.ID != 0 {
@@ -251,14 +327,7 @@ func FetchUpstreamRatios(c *gin.Context) {
 			ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(req.Timeout)*time.Second)
 			defer cancel()
 
-			httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
-			if err != nil {
-				logger.LogWarn(c.Request.Context(), "build request failed: "+err.Error())
-				ch <- upstreamResult{Name: uniqueName, Err: err.Error()}
-				return
-			}
-
-			// OpenRouter requires Bearer token auth
+			var authorization string
 			if isOpenRouter && chItem.ID != 0 {
 				dbCh, err := model.GetChannelById(chItem.ID, true)
 				if err != nil {
@@ -274,55 +343,27 @@ func FetchUpstreamRatios(c *gin.Context) {
 					ch <- upstreamResult{Name: uniqueName, Err: "no API key configured for this channel"}
 					return
 				}
-				httpReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(key))
+				authorization = "Bearer " + strings.TrimSpace(key)
 			} else if isOpenRouter {
 				ch <- upstreamResult{Name: uniqueName, Err: "OpenRouter requires a valid channel with API key"}
 				return
 			}
 
-			// 简单重试：最多 3 次，指数退避
-			var resp *http.Response
-			var lastErr error
-			for attempt := 0; attempt < 3; attempt++ {
-				resp, lastErr = client.Do(httpReq)
-				if lastErr == nil {
-					break
-				}
-				time.Sleep(time.Duration(200*(1<<attempt)) * time.Millisecond)
-			}
-			if lastErr != nil {
-				logger.LogWarn(c.Request.Context(), "http error on "+chItem.Name+": "+lastErr.Error())
-				ch <- upstreamResult{Name: uniqueName, Err: lastErr.Error()}
-				return
-			}
-			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusOK {
-				logger.LogWarn(c.Request.Context(), "non-200 from "+chItem.Name+": "+resp.Status)
-				ch <- upstreamResult{Name: uniqueName, Err: resp.Status}
-				return
-			}
-
-			// Content-Type 和响应体大小校验
-			if ct := resp.Header.Get("Content-Type"); ct != "" && !strings.Contains(strings.ToLower(ct), "application/json") {
-				logger.LogWarn(c.Request.Context(), "unexpected content-type from "+chItem.Name+": "+ct)
-			}
-			limited := io.LimitReader(resp.Body, maxRatioConfigBytes)
-			bodyBytes, err := io.ReadAll(limited)
-			if err != nil {
-				logger.LogWarn(c.Request.Context(), "read response failed from "+chItem.Name+": "+err.Error())
-				ch <- upstreamResult{Name: uniqueName, Err: err.Error()}
-				return
-			}
-
-			// type3: OpenRouter /v1/models -> convert per-token pricing to ratios
 			if isOpenRouter {
-				converted, err := convertOpenRouterToRatioData(bytes.NewReader(bodyBytes))
+				converted, err := fetchOpenRouterPricingData(ctx, client, fullURL, authorization)
 				if err != nil {
-					logger.LogWarn(c.Request.Context(), "OpenRouter parse failed from "+chItem.Name+": "+err.Error())
+					logger.LogWarn(c.Request.Context(), "OpenRouter pricing fetch failed from "+chItem.Name+": "+err.Error())
 					ch <- upstreamResult{Name: uniqueName, Err: err.Error()}
 					return
 				}
 				ch <- upstreamResult{Name: uniqueName, Data: converted}
+				return
+			}
+
+			bodyBytes, err := fetchUpstreamPricingBody(ctx, client, fullURL, "")
+			if err != nil {
+				logger.LogWarn(c.Request.Context(), "pricing fetch failed from "+chItem.Name+": "+err.Error())
+				ch <- upstreamResult{Name: uniqueName, Err: err.Error()}
 				return
 			}
 
@@ -729,6 +770,7 @@ func convertOpenRouterToRatioData(reader io.Reader) (map[string]any, error) {
 				Prompt         string `json:"prompt"`
 				Completion     string `json:"completion"`
 				InputCacheRead string `json:"input_cache_read"`
+				Image          string `json:"image"`
 			} `json:"pricing"`
 		} `json:"data"`
 	}
@@ -740,8 +782,12 @@ func convertOpenRouterToRatioData(reader io.Reader) (map[string]any, error) {
 	modelRatioMap := make(map[string]any)
 	completionRatioMap := make(map[string]any)
 	cacheRatioMap := make(map[string]any)
+	imageInputPrices := make(ratio_setting.ImageInputPriceMap)
 
 	for _, m := range orResp.Data {
+		if imagePrice, err := strconv.ParseFloat(m.Pricing.Image, 64); err == nil && isValidNonNegativeCost(imagePrice) && imagePrice > 0 {
+			imageInputPrices[m.ID] = map[string]float64{"default": imagePrice}
+		}
 		promptPrice, promptErr := strconv.ParseFloat(m.Pricing.Prompt, 64)
 		completionPrice, compErr := strconv.ParseFloat(m.Pricing.Completion, 64)
 
@@ -802,7 +848,154 @@ func convertOpenRouterToRatioData(reader io.Reader) (map[string]any, error) {
 	if len(cacheRatioMap) > 0 {
 		converted["cache_ratio"] = cacheRatioMap
 	}
+	if len(imageInputPrices) > 0 {
+		converted["image_input_price"] = imageInputPrices
+	}
 
+	return converted, nil
+}
+
+func normalizeOpenRouterVideoResolution(resolution string) string {
+	normalized := strings.ToLower(strings.TrimSpace(resolution))
+	switch normalized {
+	case "720p", "1280x720", "720x1280", "720x720", "960x720", "720x960", "1680x720", "720x1680":
+		return "720p"
+	case "1080p", "1920x1080", "1080x1920", "1080x1080", "1440x1080", "1080x1440", "2520x1080", "1080x2520":
+		return "1080p"
+	case "2k":
+		return "2k"
+	default:
+		return ""
+	}
+}
+
+func openRouterVideoSKUTiers(sku string, supportedResolutions []string) (string, []string, bool) {
+	variant := "both"
+	resolution := ""
+	switch {
+	case sku == "duration_seconds":
+	case sku == "duration_seconds_with_audio":
+		variant = "default"
+	case sku == "duration_seconds_without_audio":
+		variant = "silent"
+	case strings.HasPrefix(sku, "duration_seconds_with_audio_"):
+		variant = "default"
+		resolution = strings.TrimPrefix(sku, "duration_seconds_with_audio_")
+	case strings.HasPrefix(sku, "duration_seconds_without_audio_"):
+		variant = "silent"
+		resolution = strings.TrimPrefix(sku, "duration_seconds_without_audio_")
+	case strings.HasPrefix(sku, "duration_seconds_"):
+		resolution = strings.TrimPrefix(sku, "duration_seconds_")
+	default:
+		return "", nil, false
+	}
+
+	if resolution != "" {
+		tier := normalizeOpenRouterVideoResolution(resolution)
+		if tier == "" {
+			return "", nil, false
+		}
+		return variant, []string{tier}, true
+	}
+
+	tiers := make([]string, 0, len(supportedResolutions))
+	seen := make(map[string]struct{}, len(supportedResolutions))
+	for _, supportedResolution := range supportedResolutions {
+		tier := normalizeOpenRouterVideoResolution(supportedResolution)
+		if tier == "" {
+			continue
+		}
+		if _, exists := seen[tier]; exists {
+			continue
+		}
+		seen[tier] = struct{}{}
+		tiers = append(tiers, tier)
+	}
+	return variant, tiers, len(tiers) > 0
+}
+
+// convertOpenRouterVideoToRatioData converts /v1/videos/models pricing_skus
+// into the per-second video pricing map used by task pre-consume and settlement.
+func convertOpenRouterVideoToRatioData(reader io.Reader) (map[string]any, error) {
+	var response struct {
+		Data []struct {
+			ID                   string            `json:"id"`
+			SupportedResolutions []string          `json:"supported_resolutions"`
+			PricingSKUs          map[string]string `json:"pricing_skus"`
+		} `json:"data"`
+	}
+	if err := common.DecodeJson(reader, &response); err != nil {
+		return nil, fmt.Errorf("failed to decode OpenRouter video response: %w", err)
+	}
+
+	videoPrices := make(ratio_setting.VideoSecondsPriceMap)
+	billingModes := make(map[string]string)
+	for _, item := range response.Data {
+		modelName := strings.TrimSpace(item.ID)
+		if modelName == "" {
+			continue
+		}
+		modelPrices := make(map[string]map[string]float64)
+		skus := make([]string, 0, len(item.PricingSKUs))
+		for sku := range item.PricingSKUs {
+			skus = append(skus, sku)
+		}
+		sort.Strings(skus)
+		for _, sku := range skus {
+			rawPrice := item.PricingSKUs[sku]
+			if sku == "reference_images" {
+				price, err := strconv.ParseFloat(rawPrice, 64)
+				if err != nil || !isValidNonNegativeCost(price) {
+					continue
+				}
+				for _, resolution := range item.SupportedResolutions {
+					tier := normalizeOpenRouterVideoResolution(resolution)
+					if tier == "" {
+						continue
+					}
+					if modelPrices[tier] == nil {
+						modelPrices[tier] = make(map[string]float64)
+					}
+					modelPrices[tier]["reference_image"] = price
+				}
+				continue
+			}
+
+			variant, tiers, ok := openRouterVideoSKUTiers(sku, item.SupportedResolutions)
+			if !ok {
+				continue
+			}
+			price, err := strconv.ParseFloat(rawPrice, 64)
+			if err != nil || !isValidNonNegativeCost(price) {
+				continue
+			}
+			for _, tier := range tiers {
+				if modelPrices[tier] == nil {
+					modelPrices[tier] = make(map[string]float64)
+				}
+				switch variant {
+				case "default":
+					modelPrices[tier]["default"] = price
+				case "silent":
+					modelPrices[tier]["silent"] = price
+				default:
+					modelPrices[tier]["default"] = price
+					modelPrices[tier]["silent"] = price
+				}
+			}
+		}
+		if len(modelPrices) == 0 {
+			continue
+		}
+		videoPrices[modelName] = modelPrices
+		billingModes[modelName] = billing_setting.BillingModeVideoSeconds
+	}
+
+	converted := make(map[string]any)
+	if len(videoPrices) > 0 {
+		converted["video_seconds_price"] = videoPrices
+		converted[billing_setting.BillingModeField] = valueMap(billingModes)
+	}
 	return converted, nil
 }
 

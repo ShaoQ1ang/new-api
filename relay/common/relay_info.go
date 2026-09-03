@@ -88,6 +88,7 @@ type TokenCountMeta struct {
 type RelayInfo struct {
 	TokenId           int
 	TokenKey          string
+	TokenName         string
 	TokenGroup        string
 	UserId            int
 	UsingGroup        string // 使用的分组，当auto跨分组重试时，会变动
@@ -143,6 +144,10 @@ type RelayInfo struct {
 	SubscriptionPlanTitle string
 	// RequestId is used for idempotent pre-consume/refund
 	RequestId string
+	// BusinessOrderNo is an optional parent charge order carried by trusted
+	// internal callers via X-Business-Order. When set, billing is delegated to
+	// WalletService's BUSINESS_INCLUDED flow instead of local quota deduction.
+	BusinessOrderNo string
 	// SubscriptionAmountTotal / SubscriptionAmountUsedAfterPreConsume are used to compute remaining in logs.
 	SubscriptionAmountTotal               int64
 	SubscriptionAmountUsedAfterPreConsume int64
@@ -191,6 +196,13 @@ type RelayInfo struct {
 	*ResponsesUsageInfo
 	*ChannelMeta
 	*TaskRelayInfo
+}
+
+func (info *RelayInfo) GetUpstreamModelName() string {
+	if info == nil || info.ChannelMeta == nil {
+		return ""
+	}
+	return info.ChannelMeta.UpstreamModelName
 }
 
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
@@ -469,17 +481,19 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 	info := &RelayInfo{
 		Request: request,
 
-		RequestId:  reqId,
-		UserId:     common.GetContextKeyInt(c, constant.ContextKeyUserId),
-		UsingGroup: common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
-		UserGroup:  common.GetContextKeyString(c, constant.ContextKeyUserGroup),
-		UserQuota:  common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
-		UserEmail:  common.GetContextKeyString(c, constant.ContextKeyUserEmail),
+		RequestId:       reqId,
+		BusinessOrderNo: strings.TrimSpace(c.GetHeader("X-Business-Order")),
+		UserId:          common.GetContextKeyInt(c, constant.ContextKeyUserId),
+		UsingGroup:      common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
+		UserGroup:       common.GetContextKeyString(c, constant.ContextKeyUserGroup),
+		UserQuota:       common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
+		UserEmail:       common.GetContextKeyString(c, constant.ContextKeyUserEmail),
 
 		OriginModelName: common.GetContextKeyString(c, constant.ContextKeyOriginalModel),
 
 		TokenId:        common.GetContextKeyInt(c, constant.ContextKeyTokenId),
 		TokenKey:       common.GetContextKeyString(c, constant.ContextKeyTokenKey),
+		TokenName:      c.GetString("token_name"),
 		TokenUnlimited: common.GetContextKeyBool(c, constant.ContextKeyTokenUnlimited),
 		TokenGroup:     tokenGroup,
 
@@ -688,17 +702,29 @@ type TaskRelayInfo struct {
 }
 
 type TaskSubmitReq struct {
-	Prompt         string                 `json:"prompt"`
-	Model          string                 `json:"model,omitempty"`
-	Mode           string                 `json:"mode,omitempty"`
-	Image          string                 `json:"image,omitempty"`
-	Images         []string               `json:"images,omitempty"`
-	Videos         []string               `json:"videos,omitempty"`
-	Size           string                 `json:"size,omitempty"`
-	Duration       int                    `json:"duration,omitempty"`
-	Seconds        string                 `json:"seconds,omitempty"`
-	InputReference string                 `json:"input_reference,omitempty"`
-	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+	Prompt          string                 `json:"prompt"`
+	Model           string                 `json:"model,omitempty"`
+	Mode            string                 `json:"mode,omitempty"`
+	Image           string                 `json:"image,omitempty"`
+	Images          []string               `json:"images,omitempty"`
+	Videos          []string               `json:"videos,omitempty"`
+	Audios          []string               `json:"audios,omitempty"`
+	ImageRoles      []string               `json:"image_roles,omitempty"`
+	VideoRoles      []string               `json:"video_roles,omitempty"`
+	AudioRoles      []string               `json:"audio_roles,omitempty"`
+	Size            string                 `json:"size,omitempty"`
+	Resolution      string                 `json:"resolution,omitempty"`
+	AspectRatio     string                 `json:"aspect_ratio,omitempty"`
+	Duration        int                    `json:"duration,omitempty"`
+	Seconds         string                 `json:"seconds,omitempty"`
+	GenerateAudio   *bool                  `json:"generate_audio,omitempty"`
+	Seed            *int64                 `json:"seed,omitempty"`
+	FrameImages     []map[string]any       `json:"frame_images,omitempty"`
+	InputReferences []map[string]any       `json:"input_references,omitempty"`
+	Provider        map[string]any         `json:"provider,omitempty"`
+	CallbackURL     string                 `json:"callback_url,omitempty"`
+	InputReference  string                 `json:"input_reference,omitempty"`
+	Metadata        map[string]interface{} `json:"metadata,omitempty"`
 }
 
 func (t *TaskSubmitReq) GetPrompt() string {
@@ -782,6 +808,7 @@ type TaskInfo struct {
 	Url              string `json:"url,omitempty"`
 	RemoteUrl        string `json:"remote_url,omitempty"`
 	Progress         string `json:"progress,omitempty"`
+	DurationSeconds  int    `json:"duration_seconds,omitempty"`
 	CompletionTokens int    `json:"completion_tokens,omitempty"` // 用于按倍率计费
 	TotalTokens      int    `json:"total_tokens,omitempty"`      // 用于按倍率计费
 }

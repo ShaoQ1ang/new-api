@@ -135,6 +135,7 @@ const createGroupSchema = (t: Translate) =>
   })
 
 type ModelFormValues = z.infer<ReturnType<typeof createModelSchema>>
+type ModelDefaults = ModelFormValues & { VideoSecondsPrice: string }
 type GroupFormValues = z.infer<ReturnType<typeof createGroupSchema>>
 type RatioTabId =
   | 'models'
@@ -144,7 +145,7 @@ type RatioTabId =
   | 'upstream-sync'
 
 type RatioSettingsCardProps = {
-  modelDefaults: ModelFormValues
+  modelDefaults: ModelDefaults
   groupDefaults: GroupFormValues
   toolPricesDefault: string
   titleKey?: string
@@ -449,6 +450,7 @@ export function RatioSettingsCard({
           ImageRatio: modelDefaults.ImageRatio,
           AudioRatio: modelDefaults.AudioRatio,
           AudioCompletionRatio: modelDefaults.AudioCompletionRatio,
+          VideoSecondsPrice: modelDefaults.VideoSecondsPrice,
           'billing_setting.billing_mode': modelDefaults.BillingMode,
           'billing_setting.billing_expr': modelDefaults.BillingExpr,
         }}

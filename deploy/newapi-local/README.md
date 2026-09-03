@@ -210,7 +210,7 @@ PostgreSQL 数据保存在 Docker volume `newapi_pg_data` 中。现有的 SQLite
 - `docker-compose.yml`：本地 SQLite 开发环境
 - `docker-compose.postgres.yml`：本地 PostgreSQL 开发环境
 - `docker-compose.devtools.yml`：固定开发/测试工具容器
-- `docker-compose.dev.mock.yml`：独立阿里视频 mock 容器
+- `docker-compose.dev.mock.yml`：独立多渠道视频 mock 容器（Ali、Seedance、Gemini Veo、Vertex Veo）
 
 ## 4.1 本地 devtools 测试容器
 
@@ -250,14 +250,20 @@ cd /workspace
 go test ./relay/channel/task/ali ./relay/channel/task/taskcommon ./relay/helper ./relay ./setting/ratio_setting ./model
 ```
 
-## 4.2 阿里视频本地 mock
+## 4.2 多渠道视频本地 mock
 
-本地开发提供一个独立的 `ali-video-mock` compose 文件，专门给 HappyHorse / Kling 做零成本联调。
+本地开发提供一个独立的 AIGC mock 服务。为保持已有脚本和部署配置兼容，服务名与环境变量前缀仍为 `ali-video-mock` / `ALI_VIDEO_MOCK_*`，但它同时实现 Ali、Seedance、OpenRouter Video、Gemini Veo、Vertex Veo、OpenAI Images、Suno 和 SunoAPI v1 的上游协议，可直接用于零成本端到端联调。
 
 启动：
 
 ```bash
 docker compose -f docker-compose.dev.mock.yml up -d --build
+```
+
+默认宿主端口是 `18080`。端口已占用时可以覆盖：
+
+```bash
+ALI_VIDEO_MOCK_PORT=18081 docker compose -f docker-compose.dev.mock.yml up -d --build
 ```
 
 健康检查：
@@ -266,7 +272,15 @@ docker compose -f docker-compose.dev.mock.yml up -d --build
 curl http://localhost:18080/healthz
 ```
 
-给 `new-api` 里的阿里渠道配置本地 mock 时，把渠道 `base_url` 改成：
+请求历史调试页：
+
+```text
+http://localhost:18080/history
+```
+
+mock 会在内存中保留最近 500 条上游请求，完整记录 method、path、query、header、原始 body、响应状态和处理耗时，便于检查 New API 转换后的实际请求。服务重启后记录自动清空，也可以在页面内手动清空。`/history`、`/api/mock/history`、`/healthz` 和视频资源请求不会写入历史，避免调试页面刷新、健康检查与视频下载污染记录。
+
+给 `new-api` 里的对应渠道配置本地 mock 时，把渠道 `base_url` 改成：
 
 ```text
 http://host.docker.internal:18080
@@ -278,18 +292,200 @@ http://host.docker.internal:18080
 http://127.0.0.1:18080
 ```
 
-当前 mock 只实现两个百炼异步接口：
+当前 mock 实现以下原生异步接口：
 
 - `POST /api/v1/services/aigc/video-generation/video-synthesis`
 - `GET /api/v1/tasks/:id`
+- `POST /api/v3/contents/generations/tasks`
+- `GET /api/v3/contents/generations/tasks/:id`
+- `POST /v1/videos`
+- `GET /v1/videos/:id`
+- `POST /{version}/models/{model}:predictLongRunning`
+- `GET /{version}/{operationName}`
+- `POST /v1/projects/{project}/locations/{region}/publishers/google/models/{model}:predictLongRunning`
+- `POST /v1/projects/{project}/locations/{region}/publishers/google/models/{model}:fetchPredictOperation`
+- `POST /api/v1/generate`
+- `GET /api/v1/generate/record-info?taskId=:id`
+
+支持的模型族：
+
+- 当前 Ali 通道 `ModelList` 中的 Wan 视频模型，包括 `wan2.7-t2v`、`wan2.7-i2v`、`wan2.5-i2v-preview`、`wan2.2-i2v-*` 和 `wanx2.1-i2v-*`
+- `happyhorse-1.0-*` 和 `happyhorse-1.1-*`
+- `kling/kling-v3-video-generation`
+- `kling/kling-v3-omni-video-generation`
+- Seedance 1.0、1.5 与 2.0 的当前 Doubao 视频通道模型列表
+- OpenRouter `bytedance/seedance-*`
+- OpenRouter `google/veo-*`
+- `veo-3.0-generate-001`、`veo-3.0-fast-generate-001`
+- `veo-3.1-generate-preview`、`veo-3.1-fast-generate-preview`
+- SunoAPI v1 `V4`、`V4_5`、`V4_5PLUS`、`V4_5ALL`、`V5`、`V5_5`
 
 行为约定：
 
-- 只支持 HappyHorse 和 Kling 模型
-- 默认快速成功
-- 第 1 次轮询返回 `RUNNING`
-- 第 2 次轮询默认返回 `SUCCEEDED`
+- 会校验 Wan 文生/图生、HappyHorse 文生/首帧/参考生/视频编辑，以及 Kling 标准版/Omni 的媒体组合
+- 默认在提交约 10 秒后成功，频繁轮询不会提前完成；可通过 `ALI_VIDEO_MOCK_COMPLETION_DELAY_SECONDS` 调整
 - 会返回 `usage.duration`、`usage.SR`、`usage.audio`，方便验证本地计费链路
+- 成功结果 URL 返回真正可播放的 H.264 MP4，不再返回字符串占位符
+- 视频端点支持 `GET`、`HEAD` 和 HTTP Range 请求，可供浏览器 `<video>`、NewAPI 视频代理和下载客户端使用
+- mock 在内存中按完整 H.264 GOP 扩展内嵌视频，并按任务 `duration` 缓存实际 1–15 秒 MP4，无需 ffmpeg
+- 只有请求显式开启 `watermark=true` 时才返回 `watermark_video_url`
+- Seedance 成功响应返回 `content.video_url` 和 token usage，可验证视频输入与分辨率计费链路
+- OpenRouter Seedance/Veo 成功响应返回 `output.video_url`、`usage.video_tokens`、`usage.total_tokens`、duration 和 provider cost
+- Gemini Veo 成功响应返回 `generateVideoResponse.generatedVideos[].video.uri`
+- Vertex Veo 按真实协议在 operation 结果中返回 Base64 编码的可播放 MP4
+- SunoAPI v1 遵循 `PENDING` / `FIRST_SUCCESS` / `SUCCESS` 轮询状态，成功时固定返回两首可播放 WAV；`callBackUrl` 仅做必填校验，不主动发起回调
+
+Seedance 2.0 多模态请求示例：
+
+```bash
+curl -sS http://localhost:18080/api/v3/contents/generations/tasks \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "doubao-seedance-2-0-260128",
+    "content": [
+      {"type": "text", "text": "电影感城市夜景"},
+      {"type": "image_url", "image_url": {"url": "https://example.com/reference.png"}},
+      {"type": "video_url", "video_url": {"url": "https://example.com/motion.mp4"}},
+      {"type": "audio_url", "audio_url": {"url": "https://example.com/music.mp3"}}
+    ],
+    "generate_audio": true,
+    "resolution": "1080p",
+    "ratio": "16:9",
+    "duration": 10,
+    "seed": 123
+  }'
+```
+
+使用返回的 `id` 轮询：
+
+```bash
+curl -sS http://localhost:18080/api/v3/contents/generations/tasks/mock-seedance-000001
+```
+
+OpenRouter `google/veo-*` 请求示例：
+
+```bash
+curl -sS http://localhost:18080/v1/videos \
+  -H 'Authorization: Bearer mock-key' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "google/veo-3.1-lite",
+    "prompt": "让两个关键帧之间自然过渡",
+    "duration": 8,
+    "resolution": "1080p",
+    "aspect_ratio": "16:9",
+    "generate_audio": true,
+    "frame_images": [
+      {"frame_type": "first_frame", "image_url": {"url": "https://example.com/first.png"}},
+      {"frame_type": "last_frame", "image_url": {"url": "https://example.com/last.png"}}
+    ],
+    "input_references": [
+      {"type": "image", "url": "https://example.com/reference.png"}
+    ]
+  }'
+```
+
+使用返回的 `id` 轮询：
+
+```bash
+curl -sS http://localhost:18080/v1/videos/mock-openrouter-veo-000001
+```
+
+OpenRouter Veo mock 与 `origin/feat/openrouter-video-handlers` 的当前约束一致：模型按 `google/veo-*` 前缀匹配，时长支持 `4/6/8` 秒，分辨率支持 `720p/1080p`，比例支持 `16:9/9:16`；最多接受首帧和尾帧各一张，参考素材只接受图片。
+
+OpenRouter `bytedance/seedance-*` 完整请求示例：
+
+```bash
+curl -sS http://localhost:18080/v1/videos \
+  -H 'Authorization: Bearer mock-key' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "bytedance/seedance-2.0",
+    "prompt": "保持人物一致性，生成多镜头城市追逐片段",
+    "duration": 15,
+    "resolution": "1080p",
+    "aspect_ratio": "21:9",
+    "generate_audio": true,
+    "frame_images": [
+      {"frame_type": "first_frame", "image_url": {"url": "https://example.com/first.png"}},
+      {"frame_type": "last_frame", "image_url": {"url": "https://example.com/last.png"}}
+    ],
+    "input_references": [
+      {"type": "image", "url": "https://example.com/character.png"},
+      {"type": "video", "url": "https://example.com/motion.mp4"},
+      {"type": "audio", "url": "https://example.com/dialogue.mp3"}
+    ],
+    "watermark": false,
+    "req_key": "local-e2e-test",
+    "seed": 123,
+    "provider": {"order": ["ByteDance"]},
+    "callback_url": "https://example.com/video-callback"
+  }'
+```
+
+使用返回的 `id` 轮询：
+
+```bash
+curl -sS http://localhost:18080/v1/videos/mock-openrouter-seedance-000001
+```
+
+OpenRouter Seedance mock 按 `bytedance/seedance-*` 前缀匹配，时长支持 4–15 秒，分辨率支持 `480p/720p/1080p/4k`，比例支持 `1:1`、`3:4`、`9:16`、`4:3`、`16:9`、`21:9` 和 `9:21`。最多接受 9 张图片、3 个视频、3 个音频，且媒体总数不超过 12；首尾帧计入图片数量。`watermark`、`req_key`、`seed`、`provider` 和 `callback_url` 作为透传字段被接受。
+
+Gemini Veo 请求示例：
+
+```bash
+curl -sS http://localhost:18080/v1beta/models/veo-3.1-generate-preview:predictLongRunning \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "instances": [{
+      "prompt": "让首帧中的云层缓慢移动",
+      "image": {"bytesBase64Encoded": "aW1hZ2U=", "mimeType": "image/png"}
+    }],
+    "parameters": {
+      "sampleCount": 1,
+      "durationSeconds": 8,
+      "aspectRatio": "16:9",
+      "resolution": "1080p",
+      "generateAudio": true
+    }
+  }'
+```
+
+使用返回的 `name` 轮询；例如：
+
+```bash
+curl -sS http://localhost:18080/v1beta/models/veo-3.1-generate-preview/operations/mock-veo-000001
+```
+
+Vertex Veo 使用与 Gemini 相同的 `instances` / `parameters` 请求体，但提交与轮询均为 POST：
+
+```bash
+curl -sS http://localhost:18080/v1/projects/demo/locations/global/publishers/google/models/veo-3.1-generate-preview:predictLongRunning \
+  -H 'Content-Type: application/json' \
+  -d '{"instances":[{"prompt":"海浪拍打礁石"}],"parameters":{"durationSeconds":8,"resolution":"720p"}}'
+
+curl -sS http://localhost:18080/v1/projects/demo/locations/global/publishers/google/models/veo-3.1-generate-preview:fetchPredictOperation \
+  -H 'Content-Type: application/json' \
+  -d '{"operationName":"projects/demo/locations/global/publishers/google/models/veo-3.1-generate-preview/operations/mock-veo-000002"}'
+```
+
+Vertex 适配器在发送请求前仍会按生产逻辑使用服务账号向 Google OAuth 换取 access token；mock 覆盖的是 Vertex 视频提交和轮询协议，不绕过这段鉴权。完全离线联调 Veo 时使用 Gemini 渠道即可，Gemini mock 只要求请求携带适配器正常生成的 API Key 请求头，mock 不校验其值。
+
+直接验证视频资产：
+
+```bash
+curl -I http://localhost:18080/mock-assets/videos/sample.mp4
+curl -H 'Range: bytes=0-31' -o /tmp/mock-video-prefix.bin http://localhost:18080/mock-assets/videos/sample.mp4
+curl -o /tmp/newapi-mock-video.mp4 http://localhost:18080/mock-assets/videos/sample.mp4
+```
+
+完成等待时间可通过 `ALI_VIDEO_MOCK_COMPLETION_DELAY_SECONDS` 调整，默认 10 秒。例如改成 5 秒：
+
+```bash
+ALI_VIDEO_MOCK_COMPLETION_DELAY_SECONDS=5 docker compose -f docker-compose.dev.mock.yml up -d --build
+```
+
+`ALI_VIDEO_MOCK_COMPLETE_AFTER_POLL` 仍可用于测试兼容；设置为正整数时会覆盖墙钟等待时间，按轮询次数进入终态。
 
 可选失败率：
 
@@ -304,6 +500,14 @@ http://127.0.0.1:18080
 ```bash
 ALI_VIDEO_MOCK_FAIL_RATE=0.5 docker compose -f docker-compose.dev.mock.yml up -d --build
 ```
+
+默认情况下，mock 使用提交请求的 Host 构造视频 URL。需要让返回 URL 指向反向代理或宿主机地址时，可以设置：
+
+```bash
+ALI_VIDEO_MOCK_PUBLIC_BASE_URL=http://127.0.0.1:18080 docker compose -f docker-compose.dev.mock.yml up -d --build
+```
+
+如果 NewAPI 运行在 Docker 容器内，并通过 `/v1/videos/{task_id}/content` 代理视频，不要把公开地址设置为容器内不可达的 `127.0.0.1`；此时保留空值，让 mock 使用容器请求的 Host 更合适。
 
 ## 5. 本地 metadata
 

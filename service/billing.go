@@ -11,9 +11,19 @@ import (
 )
 
 const (
-	BillingSourceWallet       = "wallet"
-	BillingSourceSubscription = "subscription"
+	BillingSourceWallet           = "wallet"
+	BillingSourceSubscription     = "subscription"
+	BillingSourceBusinessIncluded = "business_included"
 )
+
+// CoveredFunding 是覆盖模式的资金来源占位：真实资金由父 CHARGE 承担，
+// 预扣/结算/退款全部通过钱包回调完成，本地额度不做任何变更。
+type CoveredFunding struct{}
+
+func (CoveredFunding) Source() string       { return BillingSourceBusinessIncluded }
+func (CoveredFunding) PreConsume(int) error { return nil }
+func (CoveredFunding) Settle(int) error     { return nil }
+func (CoveredFunding) Refund() error        { return nil }
 
 // PreConsumeBilling 根据用户计费偏好创建 BillingSession 并执行预扣费。
 // 会话存储在 relayInfo.Billing 上，供后续 Settle / Refund 使用。
@@ -37,6 +47,26 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 	session, apiErr := NewBillingSession(c, relayInfo, preConsumedQuota)
 	if apiErr != nil {
 		return apiErr
+	}
+	walletCallback, callbackErr := newWalletUsageCallbackSession(relayInfo, preConsumedQuota)
+	session.walletCallback = walletCallback
+	if callbackErr != nil {
+		config := loadWalletCallbackConfig()
+		if config.FailClosed {
+			if walletCallback != nil {
+				if cancelErr := walletCallback.Cancel(); cancelErr != nil {
+					logger.LogWarn(c, fmt.Sprintf("wallet callback compensation pending retry: %v", cancelErr))
+				}
+			}
+			failureCode, _ := classifyWalletCallbackFailure(callbackErr)
+			if failureCode == walletFailureInsufficientFunds {
+				if rollbackErr := session.rollbackPreConsume(); rollbackErr != nil {
+					logger.LogWarn(c, fmt.Sprintf("local billing rollback failed after wallet insufficient funds: %v", rollbackErr))
+				}
+			} // Other failures are ambiguous; retain the local pre-consume.
+			return types.NewError(callbackErr, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+		}
+		logger.LogWarn(c, fmt.Sprintf("wallet reserve callback pending retry (request_id=%s): %v", relayInfo.RequestId, callbackErr))
 	}
 	relayInfo.Billing = session
 	return nil

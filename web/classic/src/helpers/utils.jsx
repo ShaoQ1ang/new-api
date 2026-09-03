@@ -893,6 +893,39 @@ export const calculateModelPrice = ({
     };
   }
 
+  if (
+    record.quota_type === 1 &&
+    record.image_resolution_price &&
+    typeof record.image_resolution_price === 'object'
+  ) {
+    const imageResolutionPrices = {};
+    ['1k', '2k', '4k'].forEach((tier) => {
+      const value = record.image_resolution_price[tier];
+      if (
+        value === null ||
+        value === undefined ||
+        value === '' ||
+        !Number.isFinite(Number(value))
+      ) {
+        return;
+      }
+      imageResolutionPrices[tier] = displayPrice(
+        Number(value) * usedGroupRatio,
+      );
+    });
+
+    if (Object.keys(imageResolutionPrices).length > 0) {
+      return {
+        imageResolutionPrices,
+        isPerToken: false,
+        isTokensDisplay: false,
+        isImageResolutionPricing: true,
+        usedGroup,
+        usedGroupRatio,
+      };
+    }
+  }
+
   if (record.quota_type === 0) {
     // 按量计费
     const isTokensDisplay = quotaDisplayType === 'TOKENS';
@@ -1169,6 +1202,17 @@ export const getModelPriceItems = (priceData, t, quotaDisplayType = 'USD') => {
             suffix: ` / ${t('秒')}`,
           })),
     );
+  }
+
+  if (priceData.isImageResolutionPricing) {
+    return ['1k', '2k', '4k']
+      .filter((tier) => priceData.imageResolutionPrices?.[tier])
+      .map((tier) => ({
+        key: `image-${tier}`,
+        label: `${tier.toUpperCase()} ${t('价格')}`,
+        value: priceData.imageResolutionPrices[tier],
+        suffix: ` / ${t('次')}`,
+      }));
   }
 
   return [

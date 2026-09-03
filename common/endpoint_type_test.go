@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGetEndpointTypesByChannelType_DoubaoVideoUsesOpenAIVideo(t *testing.T) {
@@ -27,6 +28,33 @@ func TestGetEndpointTypesByChannelType_SoraDoesNotUseSeedanceNative(t *testing.T
 	if endpoints[0] != constant.EndpointTypeOpenAIVideo {
 		t.Fatalf("expected %q, got %q", constant.EndpointTypeOpenAIVideo, endpoints[0])
 	}
+}
+
+func TestGetEndpointTypesByChannelTypeOpenRouterVideoFamilies(t *testing.T) {
+	tests := []struct {
+		model       string
+		expectVideo bool
+	}{
+		{model: "google/veo-3.1-lite", expectVideo: true},
+		{model: "bytedance/seedance-2.0", expectVideo: true},
+		{model: "openai/gpt-4o", expectVideo: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			endpoints := GetEndpointTypesByChannelType(constant.ChannelTypeOpenRouter, tt.model)
+			if tt.expectVideo {
+				assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIVideo, constant.EndpointTypeOpenAI}, endpoints)
+				return
+			}
+			assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAI}, endpoints)
+		})
+	}
+}
+
+func TestGetEndpointTypesByChannelTypeOpenRouterSeedream45(t *testing.T) {
+	endpoints := GetEndpointTypesByChannelType(constant.ChannelTypeOpenRouter, "bytedance-seed/seedream-4.5")
+
+	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeImageGeneration, constant.EndpointTypeOpenAI}, endpoints)
 }
 
 func TestGetDefaultEndpointInfo_OpenAIVideo(t *testing.T) {

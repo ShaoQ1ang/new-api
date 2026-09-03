@@ -4883,6 +4883,8 @@
     "Very good": "Rất tốt",
     "Good": "Tốt",
     "Fair": "Công bằng",
-    "Needs improvement": "Cần cải thiện"
+    "Needs improvement": "Cần cải thiện",
+    "免费图片数量": "Số ảnh miễn phí",
+    "模型 {{name}} 的免费图片数量必须是 0 到 128 的整数": "Số ảnh miễn phí của mô hình {{name}} phải là số nguyên từ 0 đến 128"
   }
 }

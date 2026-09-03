@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/pkg/tracelog"
 	"github.com/QuantumNous/new-api/relay/channel"
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -49,6 +50,7 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		taskErr = service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 		return
 	}
+	tracelog.Default.LogValue(c.Request.Context(), "newapi.input", "server-request", func() any { return sunoRequest })
 
 	//if sunoRequest.ContinueClipId != "" {
 	//	if sunoRequest.TaskID == "" {
@@ -85,6 +87,7 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if err != nil {
 		return nil, err
 	}
+	tracelog.Default.LogValue(c.Request.Context(), "newapi.upstream.request", "client-request", func() any { return sunoRequest })
 	return bytes.NewReader(data), nil
 }
 
@@ -92,12 +95,13 @@ func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, req
 	return channel.DoTaskApiRequest(a, c, info, requestBody)
 }
 
-func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *dto.TaskError) {
+func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, publicResponse any, taskErr *dto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		taskErr = service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 		return
 	}
+	tracelog.Default.LogHTTPResponse(c.Request.Context(), "newapi.upstream.response", resp, responseBody)
 	var sunoResponse dto.TaskResponse[string]
 	err = common.Unmarshal(responseBody, &sunoResponse)
 	if err != nil {
@@ -110,14 +114,13 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	}
 
 	// 使用公开 task_xxxx ID 替换上游 ID 返回给客户端
-	publicResponse := dto.TaskResponse[string]{
+	publicResponse = dto.TaskResponse[string]{
 		Code:    sunoResponse.Code,
 		Message: sunoResponse.Message,
 		Data:    info.PublicTaskID,
 	}
-	c.JSON(http.StatusOK, publicResponse)
-
-	return sunoResponse.Data, nil, nil
+	tracelog.Default.LogResponseValue(c.Request.Context(), "newapi.output", "server-response", func() any { return publicResponse })
+	return sunoResponse.Data, nil, publicResponse, nil
 }
 
 func (a *TaskAdaptor) GetModelList() []string {

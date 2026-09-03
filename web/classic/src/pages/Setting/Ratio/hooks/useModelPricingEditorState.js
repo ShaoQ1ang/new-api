@@ -29,6 +29,16 @@ import {
   extractVideoSecondsPriceMap,
 } from '../modelPricingVideoSecondsPrice';
 import {
+  IMAGE_RESOLUTION_PRICE_TIERS,
+  buildImageResolutionPriceValueFromModelMap,
+  extractImageResolutionPriceMap,
+} from '../modelPricingImageResolutionPrice';
+import {
+  IMAGE_INPUT_PRICE_KEYS,
+  buildImageInputPriceValueFromModelMap,
+  extractImageInputPriceMap,
+} from '../modelPricingImageInputPrice';
+import {
   combineBillingExpr,
   splitBillingExprAndRequestRules,
 } from '../components/requestRuleExpr';
@@ -44,8 +54,10 @@ const VIDEO_SECONDS_TIER_FIELD_PREFIX = {
   '4k': 'videoSeconds4k',
 };
 const VIDEO_SECONDS_PRICE_KEY_SUFFIX = {
-	default: 'Default',
-	silent: 'Silent',
+  default: 'Default',
+  silent: 'Silent',
+  reference_video: 'ReferenceVideo',
+  reference_video_silent: 'ReferenceVideoSilent',
 };
 
 const getVideoSecondsFieldName = (tier, priceKey) =>
@@ -53,6 +65,20 @@ const getVideoSecondsFieldName = (tier, priceKey) =>
 
 const getVideoSecondsFieldValue = (model, tier, priceKey) =>
   model[getVideoSecondsFieldName(tier, priceKey)];
+
+const getImageResolutionFieldName = (tier) =>
+  `imageResolution${tier.toUpperCase()}Price`;
+
+export const getImageInputPriceFieldName = (key) => {
+  if (key === 'default') return 'inputImageDefaultPrice';
+  if (key === 'free_count') return 'inputImageFreeCount';
+  return `inputImage${key.toUpperCase()}Price`;
+};
+
+const hasImageResolutionPrice = (model) =>
+  IMAGE_RESOLUTION_PRICE_TIERS.some((tier) =>
+    hasValue(model[getImageResolutionFieldName(tier)]),
+  );
 
 const buildEmptyVideoSecondsFields = () =>
   VIDEO_SECONDS_CONTROLLED_TIERS.reduce((acc, tier) => {
@@ -62,10 +88,20 @@ const buildEmptyVideoSecondsFields = () =>
     return acc;
   }, {});
 
+const buildEmptyImageInputPriceFields = () =>
+  IMAGE_INPUT_PRICE_KEYS.reduce((acc, key) => {
+    acc[getImageInputPriceFieldName(key)] = '';
+    return acc;
+  }, {});
+
 const EMPTY_MODEL = {
   name: '',
   billingMode: 'per-token',
   fixedPrice: '',
+  imageResolution1KPrice: '',
+  imageResolution2KPrice: '',
+  imageResolution4KPrice: '',
+  ...buildEmptyImageInputPriceFields(),
   inputPrice: '',
   completionPrice: '',
   lockedCompletionRatio: '',
@@ -172,6 +208,13 @@ const hasVideoSecondsPrice = (model) =>
 
 const buildModelState = (name, sourceMaps) => {
   const billingMode = sourceMaps.ModelBillingMode?.[name];
+  const imageInputPrices = sourceMaps.ImageInputPrice?.[name] || {};
+  const imageInputPriceFields = IMAGE_INPUT_PRICE_KEYS.reduce((acc, key) => {
+    acc[getImageInputPriceFieldName(key)] = toNumericString(
+      imageInputPrices[key],
+    );
+    return acc;
+  }, {});
   if (billingMode === 'tiered_expr') {
     const fullBillingExpr = sourceMaps.ModelBillingExpr?.[name] || '';
     const { billingExpr, requestRuleExpr } =
@@ -182,6 +225,7 @@ const buildModelState = (name, sourceMaps) => {
       billingMode: 'tiered_expr',
       billingExpr,
       requestRuleExpr,
+      ...imageInputPriceFields,
       rawRatios: { ...EMPTY_MODEL.rawRatios },
       hasConflict: false,
     };
@@ -207,6 +251,7 @@ const buildModelState = (name, sourceMaps) => {
       name,
       billingMode: 'video-seconds',
       fixedPrice,
+      ...imageInputPriceFields,
       ...videoSecondsFields,
       videoSecondsPriceRaw: sourceMaps.VideoSecondsPriceRaw?.[name] || {},
       rawRatios: {
@@ -242,6 +287,7 @@ const buildModelState = (name, sourceMaps) => {
   const taskConditionPrice = sourceMaps.TaskConditionPrice?.[name] || {};
   const taskConditionPriceRaw = sourceMaps.TaskConditionPriceRaw?.[name] || {};
   const fixedPrice = toNumericString(sourceMaps.ModelPrice[name]);
+  const imageResolutionPrices = sourceMaps.ImageResolutionPrice?.[name] || {};
   const inputPrice = ratioToBasePrice(modelRatio);
   const inputPriceNumber = toNumberOrNull(inputPrice);
   const audioInputPrice =
@@ -252,8 +298,18 @@ const buildModelState = (name, sourceMaps) => {
   return {
     ...EMPTY_MODEL,
     name,
-    billingMode: hasValue(fixedPrice) ? 'per-request' : 'per-token',
+    billingMode:
+      hasValue(fixedPrice) || Object.keys(imageResolutionPrices).length > 0
+        ? 'per-request'
+        : 'per-token',
     fixedPrice,
+    ...imageInputPriceFields,
+    ...IMAGE_RESOLUTION_PRICE_TIERS.reduce((acc, tier) => {
+      acc[getImageResolutionFieldName(tier)] = toNumericString(
+        imageResolutionPrices[tier],
+      );
+      return acc;
+    }, {}),
     inputPrice,
     completionRatioLocked: completionRatioMeta.locked,
     lockedCompletionRatio: completionRatioMeta.ratio,
@@ -334,6 +390,9 @@ export const isBasePricingUnset = (model) => {
   }
   if (model.billingMode === 'video-seconds') {
     return !hasVideoSecondsPrice(model);
+  }
+  if (model.billingMode === 'per-request') {
+    return !hasValue(model.fixedPrice) && !hasImageResolutionPrice(model);
   }
   return !hasValue(model.fixedPrice) && !hasValue(model.inputPrice);
 };
@@ -450,8 +509,20 @@ export const buildSummaryText = (model, t) => {
       : `${t('视频按秒计费')}${requestRuleSuffix}`;
   }
 
-  if (model.billingMode === 'per-request' && hasValue(model.fixedPrice)) {
-    return `${t('按次')} $${model.fixedPrice} / ${t('次')}${requestRuleSuffix}`;
+  if (model.billingMode === 'per-request') {
+    const parts = [];
+    if (hasValue(model.fixedPrice)) {
+      parts.push(`${t('按次')} $${model.fixedPrice} / ${t('次')}`);
+    }
+    IMAGE_RESOLUTION_PRICE_TIERS.forEach((tier) => {
+      const value = model[getImageResolutionFieldName(tier)];
+      if (hasValue(value)) {
+        parts.push(`${tier.toUpperCase()} $${value}`);
+      }
+    });
+    if (parts.length > 0) {
+      return `${parts.join(' | ')}${requestRuleSuffix}`;
+    }
   }
 
   if (
@@ -641,6 +712,20 @@ const serializeModel = (model, t) => {
   return result;
 };
 
+const appendImageInputPriceRows = (rows, model) => {
+  IMAGE_INPUT_PRICE_KEYS.forEach((key) => {
+    const value = model[getImageInputPriceFieldName(key)];
+    if (hasValue(value)) {
+      rows.push({
+        key: `ImageInputPrice.${key}`,
+        label: `ImageInputPrice.${key}`,
+        value,
+      });
+    }
+  });
+  return rows;
+};
+
 export const buildPreviewRows = (model, t) => {
   const appendTaskConditionPriceRows = (rows) => {
     if (hasValue(model.taskConditionPrice720pTextOnly)) {
@@ -731,7 +816,7 @@ export const buildPreviewRows = (model, t) => {
       });
     });
 
-    return rows;
+    return appendImageInputPriceRows(rows, model);
   }
 
   if (model.billingMode === 'per-request') {
@@ -742,7 +827,17 @@ export const buildPreviewRows = (model, t) => {
         value: hasValue(model.fixedPrice) ? model.fixedPrice : t('空'),
       },
     ];
-    return rows;
+    IMAGE_RESOLUTION_PRICE_TIERS.forEach((tier) => {
+      const value = model[getImageResolutionFieldName(tier)];
+      if (hasValue(value)) {
+        rows.push({
+          key: `ImageResolutionPrice.${tier}`,
+          label: `ImageResolutionPrice.${tier}`,
+          value,
+        });
+      }
+    });
+    return appendImageInputPriceRows(rows, model);
   }
 
   const inputPrice = toNumberOrNull(model.inputPrice);
@@ -885,6 +980,10 @@ export function useModelPricingEditorState({
   useEffect(() => {
     const sourceMaps = {
       ModelPrice: parseOptionJSON(options.ModelPrice),
+      ImageResolutionPrice: extractImageResolutionPriceMap(
+        options.ImageResolutionPrice,
+      ),
+      ImageInputPrice: extractImageInputPriceMap(options.ImageInputPrice),
       ModelRatio: parseOptionJSON(options.ModelRatio),
       CompletionRatio: parseOptionJSON(options.CompletionRatio),
       CompletionRatioMeta: parseOptionJSON(options.CompletionRatioMeta),
@@ -910,6 +1009,8 @@ export function useModelPricingEditorState({
     const names = new Set([
       ...candidateModelNames,
       ...Object.keys(sourceMaps.ModelPrice),
+      ...Object.keys(sourceMaps.ImageResolutionPrice),
+      ...Object.keys(sourceMaps.ImageInputPrice),
       ...Object.keys(sourceMaps.ModelRatio),
       ...Object.keys(sourceMaps.CompletionRatio),
       ...Object.keys(sourceMaps.CompletionRatioMeta),
@@ -1223,6 +1324,16 @@ export function useModelPricingEditorState({
           ...model,
           billingMode: selectedModel.billingMode,
           fixedPrice: selectedModel.fixedPrice,
+          ...IMAGE_RESOLUTION_PRICE_TIERS.reduce((acc, tier) => {
+            const fieldName = getImageResolutionFieldName(tier);
+            acc[fieldName] = selectedModel[fieldName];
+            return acc;
+          }, {}),
+          ...IMAGE_INPUT_PRICE_KEYS.reduce((acc, key) => {
+            const fieldName = getImageInputPriceFieldName(key);
+            acc[fieldName] = selectedModel[fieldName];
+            return acc;
+          }, {}),
           inputPrice: selectedModel.inputPrice,
           completionPrice: selectedModel.completionPrice,
           cachePrice: selectedModel.cachePrice,
@@ -1321,6 +1432,8 @@ export function useModelPricingEditorState({
       };
       const taskConditionPriceMap = {};
       const videoSecondsPriceMap = {};
+      const imageResolutionPriceMap = {};
+      const imageInputPriceMap = {};
 
       const tieredOutput = {
         'billing_setting.billing_mode': {},
@@ -1395,8 +1508,8 @@ export function useModelPricingEditorState({
           typeof model.videoSecondsPriceRaw === 'object' &&
           Object.keys(model.videoSecondsPriceRaw).length > 0;
         if (hasVideoSecondsPriceRaw || hasVideoSecondsPrice(model)) {
-          videoSecondsPriceMap[model.name] = VIDEO_SECONDS_CONTROLLED_TIERS.reduce(
-            (acc, tier) => {
+          videoSecondsPriceMap[model.name] =
+            VIDEO_SECONDS_CONTROLLED_TIERS.reduce((acc, tier) => {
               VIDEO_SECONDS_CONTROLLED_PRICE_KEYS.forEach((priceKey) => {
                 const fieldValue = getVideoSecondsFieldValue(
                   model,
@@ -1408,11 +1521,48 @@ export function useModelPricingEditorState({
                   : undefined;
               });
               return acc;
-            },
-            {},
+            }, {});
+        }
+        imageResolutionPriceMap[model.name] =
+          IMAGE_RESOLUTION_PRICE_TIERS.reduce((acc, tier) => {
+            const value = model[getImageResolutionFieldName(tier)];
+            acc[tier] =
+              model.billingMode === 'per-request' && hasValue(value)
+                ? toNormalizedNumber(value)
+                : null;
+            return acc;
+          }, {});
+        const inputImageFreeCount = toNumberOrNull(model.inputImageFreeCount);
+        if (
+          inputImageFreeCount !== null &&
+          (!Number.isInteger(inputImageFreeCount) ||
+            inputImageFreeCount < 0 ||
+            inputImageFreeCount > 128)
+        ) {
+          throw new Error(
+            t('模型 {{name}} 的免费图片数量必须是 0 到 128 的整数', {
+              name: model.name,
+            }),
           );
         }
+        imageInputPriceMap[model.name] = IMAGE_INPUT_PRICE_KEYS.reduce(
+          (acc, key) => {
+            const value = model[getImageInputPriceFieldName(key)];
+            acc[key] = hasValue(value) ? toNormalizedNumber(value) : null;
+            return acc;
+          },
+          {},
+        );
       }
+
+      const activeModelNames = new Set(models.map((model) => model.name));
+      Object.keys(extractImageInputPriceMap(options.ImageInputPrice)).forEach(
+        (modelName) => {
+          if (!activeModelNames.has(modelName)) {
+            imageInputPriceMap[modelName] = null;
+          }
+        },
+      );
 
       const requestQueue = [
         ...Object.entries(output).map(([key, value]) =>
@@ -1439,6 +1589,20 @@ export function useModelPricingEditorState({
           value: buildVideoSecondsPriceValueFromModelMap(
             options.VideoSecondsPrice,
             videoSecondsPriceMap,
+          ),
+        }),
+        API.put('/api/option/', {
+          key: 'ImageResolutionPrice',
+          value: buildImageResolutionPriceValueFromModelMap(
+            options.ImageResolutionPrice,
+            imageResolutionPriceMap,
+          ),
+        }),
+        API.put('/api/option/', {
+          key: 'ImageInputPrice',
+          value: buildImageInputPriceValueFromModelMap(
+            options.ImageInputPrice,
+            imageInputPriceMap,
           ),
         }),
       ];

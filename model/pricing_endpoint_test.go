@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -188,6 +189,49 @@ func TestPricingNativeChannelEndpointTypesUnchanged(t *testing.T) {
 	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAI}, byModel["gpt-4o"])
 	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeGemini, constant.EndpointTypeOpenAI}, byModel["gemini-2.5-flash"])
 	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeAnthropic, constant.EndpointTypeOpenAI}, byModel["claude-3-5-sonnet"])
+}
+
+func TestPricingIncludesImageResolutionPrices(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+	require.NoError(t, ratio_setting.UpdateImageResolutionPriceByJSONString(`{
+		"gpt-image-2": {"1k": 0.04, "2k": 0.08, "4k": 0.16}
+	}`))
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateImageResolutionPriceByJSONString(`{}`))
+	})
+
+	insertPricingEndpointChannel(t, 204, constant.ChannelTypeOpenAI, dto.ChannelOtherSettings{})
+	insertPricingEndpointAbility(t, 204, "gpt-image-2")
+	insertPricingEndpointAbility(t, 204, "gpt-image-unconfigured")
+
+	pricingByModel := make(map[string]Pricing)
+	for _, pricing := range GetPricing() {
+		pricingByModel[pricing.ModelName] = pricing
+	}
+
+	configured := pricingByModel["gpt-image-2"]
+	assert.Equal(t, 1, configured.QuotaType)
+	assert.Equal(t, map[string]float64{
+		"1k": 0.04,
+		"2k": 0.08,
+		"4k": 0.16,
+	}, configured.ImageResolutionPrice)
+
+	encoded, err := common.Marshal(configured)
+	require.NoError(t, err)
+	var configuredPayload map[string]any
+	require.NoError(t, common.Unmarshal(encoded, &configuredPayload))
+	assert.Equal(t, map[string]any{
+		"1k": 0.04,
+		"2k": 0.08,
+		"4k": 0.16,
+	}, configuredPayload["image_resolution_price"])
+
+	unconfigured := pricingByModel["gpt-image-unconfigured"]
+	assert.Nil(t, unconfigured.ImageResolutionPrice)
+	encoded, err = common.Marshal(unconfigured)
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), "image_resolution_price")
 }
 
 func TestInitChannelCacheInvalidatesPricingCache(t *testing.T) {

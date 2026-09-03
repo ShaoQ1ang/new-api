@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { RatioType } from '../types'
+import type { RatioSyncValue, RatioType } from '../types'
 import {
   MODELS_DEV_PRESET_ID,
   MODELS_DEV_PRESET_NAME,
@@ -26,8 +26,8 @@ import {
 } from './constants'
 
 export type RatioDifferenceEntry = {
-  current: number | string | null
-  upstreams: Record<string, number | string | 'same'>
+  current: RatioSyncValue | null
+  upstreams: Record<string, RatioSyncValue | 'same'>
   confidence: Record<string, boolean>
 }
 
@@ -38,12 +38,12 @@ export type ModelRow = {
   billingConflict: boolean
 }
 
-export type ResolutionsMap = Record<string, Record<string, number | string>>
+export type ResolutionsMap = Record<string, Record<string, RatioSyncValue>>
 
 export type ResolutionSelection = {
   model: string
   ratioType: RatioType
-  value: number | string
+  value: RatioSyncValue
   sourceName: string
 }
 
@@ -71,6 +71,7 @@ export const RATIO_SYNC_FIELDS: RatioType[] = [
 export const SYNC_FIELD_ORDER: RatioType[] = [
   ...RATIO_SYNC_FIELDS,
   'model_price',
+  'video_seconds_price',
   'billing_mode',
   'billing_expr',
 ]
@@ -93,7 +94,9 @@ export function getOrderedRatioTypes(
   ratioTypes: Partial<Record<RatioType, RatioDifferenceEntry>>,
   filter?: string
 ): RatioType[] {
-  const keys = Object.keys(ratioTypes) as RatioType[]
+  const keys = (Object.keys(ratioTypes) as RatioType[]).filter(
+    (key) => key !== 'image_input_price'
+  ) as RatioType[]
   const ordered = [
     ...SYNC_FIELD_ORDER.filter((f) => keys.includes(f)),
     ...keys.filter((f) => !SYNC_FIELD_ORDER.includes(f)),
@@ -115,6 +118,15 @@ export function getPreferredSyncField(
     exprValue !== 'same'
   ) {
     return 'billing_expr'
+  }
+  const videoPrice = ratioTypes.video_seconds_price?.upstreams?.[sourceName]
+  if (
+    ratioType !== 'video_seconds_price' &&
+    videoPrice !== null &&
+    videoPrice !== undefined &&
+    videoPrice !== 'same'
+  ) {
+    return 'video_seconds_price'
   }
   return ratioType
 }
@@ -150,8 +162,9 @@ export function getAlignedRatioTypes(
 
 export function getBillingCategory(
   ratioType: string
-): 'price' | 'ratio' | 'tiered' {
+): 'price' | 'ratio' | 'video' | 'tiered' {
   if (ratioType === 'model_price') return 'price'
+  if (ratioType === 'video_seconds_price') return 'video'
   if (ratioType === 'billing_mode' || ratioType === 'billing_expr') {
     return 'tiered'
   }
@@ -159,7 +172,7 @@ export function getBillingCategory(
 }
 
 export function isSelectableUpstreamValue(
-  value: number | string | 'same' | null | undefined
+  value: RatioSyncValue | 'same' | null | undefined
 ): boolean {
   return value !== null && value !== undefined && value !== 'same'
 }
@@ -183,7 +196,7 @@ export function isSelectedResolutionValue(
   resolutions: ResolutionsMap,
   model: string,
   ratioType: RatioType,
-  upstreamValue: number | string | 'same' | null | undefined
+  upstreamValue: RatioSyncValue | 'same' | null | undefined
 ): boolean {
   if (!isSelectableUpstreamValue(upstreamValue)) return false
 
@@ -200,6 +213,9 @@ export function isSelectedResolutionValue(
     )
   }
 
+  if (typeof selectedValue === 'object' && typeof upstreamValue === 'object') {
+    return JSON.stringify(selectedValue) === JSON.stringify(upstreamValue)
+  }
   return selectedValue === upstreamValue
 }
 
@@ -212,10 +228,10 @@ export function deleteResolutionField(
 }
 
 function getDraftModelResolution(
-  drafts: Map<string, Record<string, number | string>>,
+  drafts: Map<string, Record<string, RatioSyncValue>>,
   resolutions: ResolutionsMap,
   model: string
-): Record<string, number | string> {
+): Record<string, RatioSyncValue> {
   const existingDraft = drafts.get(model)
   if (existingDraft) return existingDraft
 
@@ -225,7 +241,7 @@ function getDraftModelResolution(
 }
 
 function applyResolutionSelectionToDraft(
-  drafts: Map<string, Record<string, number | string>>,
+  drafts: Map<string, Record<string, RatioSyncValue>>,
   resolutions: ResolutionsMap,
   differences: Record<string, Partial<Record<RatioType, RatioDifferenceEntry>>>,
   selection: ResolutionSelection
@@ -243,7 +259,7 @@ function applyResolutionSelectionToDraft(
         selection.value)
 
   const finalType = preferredType
-  const finalValue = preferredValue as number | string
+  const finalValue = preferredValue as RatioSyncValue
   const category = getBillingCategory(finalType)
   const newModelRes = getDraftModelResolution(
     drafts,
@@ -275,6 +291,14 @@ function applyResolutionSelectionToDraft(
       newModelRes['billing_expr'] = exprVal
     }
   }
+  if (category === 'video' && modelDiffs) {
+    const modeVal = modelDiffs.billing_mode?.upstreams?.[selection.sourceName]
+    delete newModelRes['billing_expr']
+    newModelRes['billing_mode'] =
+      modeVal !== undefined && modeVal !== null && modeVal !== 'same'
+        ? modeVal
+        : 'video_seconds'
+  }
 }
 
 export function resolveResolutionSelection(
@@ -296,7 +320,7 @@ export function resolveResolutionSelection(
   return {
     ...selection,
     ratioType: preferredType,
-    value: preferredValue as number | string,
+    value: preferredValue as RatioSyncValue,
   }
 }
 
@@ -336,7 +360,7 @@ export function applyResolutionSelections(
   if (selections.length === 0) return resolutions
 
   const next = { ...resolutions }
-  const drafts = new Map<string, Record<string, number | string>>()
+  const drafts = new Map<string, Record<string, RatioSyncValue>>()
 
   selections.forEach((selection) => {
     applyResolutionSelectionToDraft(drafts, resolutions, differences, selection)
@@ -397,6 +421,8 @@ export function applyResolutionRemovalPlan(
       delete draft[ratioType]
       if (ratioType === 'billing_expr') delete draft['billing_mode']
       if (ratioType === 'billing_mode') delete draft['billing_expr']
+      if (ratioType === 'video_seconds_price') delete draft['billing_mode']
+      if (ratioType === 'billing_mode') delete draft['video_seconds_price']
     })
     if (Object.keys(draft).length === 0) {
       delete next[model]

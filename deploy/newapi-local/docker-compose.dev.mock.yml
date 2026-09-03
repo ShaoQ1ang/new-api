@@ -7,14 +7,16 @@ services:
     container_name: ali-video-mock-local
     restart: unless-stopped
     ports:
-      - "0.0.0.0:18080:8080"
+      - "0.0.0.0:${ALI_VIDEO_MOCK_PORT:-18080}:8080"
     expose:
       - "8080"
     environment:
       ALI_VIDEO_MOCK_LISTEN: ":8080"
       ALI_VIDEO_MOCK_FAIL_RATE: "${ALI_VIDEO_MOCK_FAIL_RATE:-0}"
+      ALI_VIDEO_MOCK_COMPLETION_DELAY_SECONDS: "${ALI_VIDEO_MOCK_COMPLETION_DELAY_SECONDS:-10}"
+      ALI_VIDEO_MOCK_PUBLIC_BASE_URL: "${ALI_VIDEO_MOCK_PUBLIC_BASE_URL:-}"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/healthz | grep -o '\"ok\":true' || exit 1"]
+      test: ["CMD", "/usr/local/bin/ali-video-mock", "healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 5

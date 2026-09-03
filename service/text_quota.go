@@ -320,6 +320,7 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 		quotaCalculateDecimal = quotaCalculateDecimal.Add(summary.ToolCallSurchargeQuota)
 		quotaCalculateDecimal = quotaCalculateDecimal.Add(audioInputQuota)
 		quotaCalculateDecimal = relayInfo.PriceData.ApplyOtherRatiosToDecimal(quotaCalculateDecimal)
+		quotaCalculateDecimal = quotaCalculateDecimal.Add(decimal.NewFromFloat(relayInfo.PriceData.InputImageCost).Mul(dQuotaPerUnit).Mul(dGroupRatio))
 		quota, clamp := common.QuotaFromDecimalChecked(quotaCalculateDecimal)
 		summary.Quota = quota
 		noteQuotaClamp(relayInfo, clamp)
@@ -386,6 +387,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 	if summary.ImageGenerationCallPrice > 0 {
 		extraContent = append(extraContent, fmt.Sprintf("Image Generation Call 花费 %s", decimal.NewFromFloat(summary.ImageGenerationCallPrice).Mul(decimal.NewFromFloat(summary.GroupRatio)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).String()))
+	}
+	if relayInfo.PriceData.InputImageCost > 0 || relayInfo.PriceData.InputImageFreeCount > 0 {
+		extraContent = append(extraContent, fmt.Sprintf("Input Image 花费 %s", decimal.NewFromFloat(relayInfo.PriceData.InputImageCost).Mul(decimal.NewFromFloat(summary.GroupRatio)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).String()))
 	}
 
 	if summary.TotalTokens == 0 {
@@ -455,6 +459,11 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	if summary.ImageGenerationCallPrice > 0 {
 		other["image_generation_call"] = true
 		other["image_generation_call_price"] = summary.ImageGenerationCallPrice
+	}
+	if relayInfo.PriceData.InputImageCost > 0 || relayInfo.PriceData.InputImageFreeCount > 0 {
+		other["input_image_cost"] = relayInfo.PriceData.InputImageCost
+		other["input_image_counts"] = relayInfo.PriceData.InputImageCounts
+		other["input_image_free_count"] = relayInfo.PriceData.InputImageFreeCount
 	}
 	if summary.CacheCreationTokens > 0 {
 		other["cache_creation_tokens"] = summary.CacheCreationTokens

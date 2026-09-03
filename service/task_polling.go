@@ -33,6 +33,14 @@ type TaskPollingAdaptor interface {
 	AdjustBillingOnComplete(task *model.Task, taskResult *relaycommon.TaskInfo) int
 }
 
+type taskModelAwareParser interface {
+	ParseTaskResultForModel(modelName string, body []byte) (*relaycommon.TaskInfo, error)
+}
+
+type taskClampAwareBillingAdaptor interface {
+	AdjustBillingOnCompleteChecked(task *model.Task, taskResult *relaycommon.TaskInfo) (int, *common.QuotaClamp)
+}
+
 // GetTaskAdaptorFunc 由 main 包注入，用于获取指定平台的任务适配器。
 // 打破 service -> relay -> relay/channel -> service 的循环依赖。
 var GetTaskAdaptorFunc func(platform constant.TaskPlatform) TaskPollingAdaptor
@@ -261,7 +269,7 @@ func updateSunoTasks(ctx context.Context, channelId int, taskIds []string, taskM
 	}
 	if !responseItems.IsSuccess() {
 		common.SysLog(fmt.Sprintf("渠道 #%d 未完成的任务有: %d, 成功获取到任务数: %s", channelId, len(taskIds), string(responseBody)))
-		return err
+		return fmt.Errorf("Suno fetch failed: %s", responseItems.Message)
 	}
 
 	for _, responseItem := range responseItems.Data {
@@ -478,6 +486,15 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		taskResult.Progress = t.Progress
 		taskResult.Reason = t.FailReason
 		task.Data = t.Data
+	} else if modelAware, ok := adaptor.(taskModelAwareParser); ok {
+		modelName := task.Properties.UpstreamModelName
+		if strings.TrimSpace(modelName) == "" {
+			modelName = task.Properties.OriginModelName
+		}
+		taskResult, err = modelAware.ParseTaskResultForModel(modelName, responseBody)
+		if err != nil {
+			return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
+		}
 	} else if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
 		return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
 	}
@@ -635,6 +652,12 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 	if bc := task.PrivateData.BillingContext; bc != nil && bc.PerCallBilling {
 		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 按次计费，跳过差额结算", task.TaskID))
 		return
+	}
+	if clampAware, ok := adaptor.(taskClampAwareBillingAdaptor); ok {
+		if actualQuota, clamp := clampAware.AdjustBillingOnCompleteChecked(task, taskResult); actualQuota > 0 {
+			RecalculateTaskQuota(ctx, task, actualQuota, "adaptor计费调整", clamp)
+			return
+		}
 	}
 	// 1. 优先让 adaptor 决定最终额度
 	if actualQuota := adaptor.AdjustBillingOnComplete(task, taskResult); actualQuota > 0 {

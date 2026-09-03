@@ -7,6 +7,8 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -173,4 +175,73 @@ func TestUpdateOptionSensitiveWriteFailsWhenOptionCryptKeyMissing(t *testing.T) 
 	var persisted Option
 	dbErr := DB.Where("key = ?", "AlipayPrivateKey").First(&persisted).Error
 	require.Error(t, dbErr)
+}
+
+func TestVideoSecondsPriceOptionLifecycle(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(&Option{}))
+	require.NoError(t, DB.Delete(&Option{}, "key = ?", "VideoSecondsPrice").Error)
+	require.NoError(t, ratio_setting.UpdateVideoSecondsPriceByJSONString(`{}`))
+	t.Cleanup(func() {
+		require.NoError(t, DB.Delete(&Option{}, "key = ?", "VideoSecondsPrice").Error)
+		require.NoError(t, ratio_setting.UpdateVideoSecondsPriceByJSONString(`{}`))
+		InitOptionMap()
+	})
+
+	InitOptionMap()
+	common.OptionMapRWMutex.RLock()
+	initialValue, exists := common.OptionMap["VideoSecondsPrice"]
+	common.OptionMapRWMutex.RUnlock()
+	assert.True(t, exists)
+	assert.JSONEq(t, `{}`, initialValue)
+
+	configuredValue := `{
+		"kling/kling-v3-video-generation": {
+			"720p": {"default": 0.1, "silent": 0.15}
+		}
+	}`
+	require.NoError(t, UpdateOption("VideoSecondsPrice", configuredValue))
+
+	price, ok := ratio_setting.GetVideoSecondsPrice("kling/kling-v3-video-generation", "720p", false)
+	assert.True(t, ok)
+	assert.Equal(t, 0.15, price)
+
+	require.NoError(t, ratio_setting.UpdateVideoSecondsPriceByJSONString(`{}`))
+	loadOptionsFromDatabase()
+
+	price, ok = ratio_setting.GetVideoSecondsPrice("kling/kling-v3-video-generation", "720p", false)
+	assert.True(t, ok)
+	assert.Equal(t, 0.15, price)
+}
+
+func TestImageResolutionPriceOptionLifecycle(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(&Option{}))
+	require.NoError(t, DB.Delete(&Option{}, "key = ?", "ImageResolutionPrice").Error)
+	require.NoError(t, ratio_setting.UpdateImageResolutionPriceByJSONString(`{}`))
+	t.Cleanup(func() {
+		require.NoError(t, DB.Delete(&Option{}, "key = ?", "ImageResolutionPrice").Error)
+		require.NoError(t, ratio_setting.UpdateImageResolutionPriceByJSONString(`{}`))
+		InitOptionMap()
+	})
+
+	InitOptionMap()
+	common.OptionMapRWMutex.RLock()
+	initialValue, exists := common.OptionMap["ImageResolutionPrice"]
+	common.OptionMapRWMutex.RUnlock()
+	assert.True(t, exists)
+	assert.JSONEq(t, `{}`, initialValue)
+
+	configuredValue := `{"image-model":{"1k":0.04,"2k":0.08}}`
+	require.NoError(t, UpdateOption("ImageResolutionPrice", configuredValue))
+
+	price, tier, ok := ratio_setting.GetImageResolutionPrice("image-model", "2048x2048")
+	require.True(t, ok)
+	assert.Equal(t, "2k", tier)
+	assert.Equal(t, 0.08, price)
+
+	require.NoError(t, ratio_setting.UpdateImageResolutionPriceByJSONString(`{}`))
+	loadOptionsFromDatabase()
+	price, tier, ok = ratio_setting.GetImageResolutionPrice("image-model", "2048x2048")
+	require.True(t, ok)
+	assert.Equal(t, "2k", tier)
+	assert.Equal(t, 0.08, price)
 }

@@ -186,6 +186,32 @@ func TestFetchOrdinaryOpenAIModelsKeepsExistingEmptyDataBehavior(t *testing.T) {
 	require.Empty(t, models)
 }
 
+func TestFetchOpenRouterModelsIncludesVideoModelsEndpoint(t *testing.T) {
+	requestedPaths := make(chan string, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPaths <- r.URL.Path
+		require.Equal(t, "Bearer openrouter-key", r.Header.Get("Authorization"))
+		switch r.URL.Path {
+		case "/v1/models":
+			_, _ = w.Write([]byte(`{"data":[{"id":"openai/gpt-5"}]}`))
+		case "/v1/videos/models":
+			_, _ = w.Write([]byte(`{"data":[{"id":"alibaba/happyhorse-1.1"},{"id":"kwaivgi/kling-v3.0-std"},{"id":"minimax/hailuo-3"}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	baseURL := server.URL
+	channel := &model.Channel{Type: constant.ChannelTypeOpenRouter, Key: "openrouter-key", BaseURL: &baseURL}
+	models, err := fetchChannelUpstreamModelIDs(channel)
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"openai/gpt-5", "alibaba/happyhorse-1.1", "kwaivgi/kling-v3.0-std", "minimax/hailuo-3",
+	}, models)
+	require.ElementsMatch(t, []string{"/v1/models", "/v1/videos/models"}, []string{<-requestedPaths, <-requestedPaths})
+}
+
 func TestFetchModelsAdvancedCustomCreatePreview(t *testing.T) {
 	receivedAuthorization := make(chan string, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

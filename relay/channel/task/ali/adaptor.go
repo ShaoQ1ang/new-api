@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -27,6 +28,7 @@ type AliMediaItem struct {
 	Type              string  `json:"type"`
 	URL               string  `json:"url"`
 	KeepOriginalSound *string `json:"keep_original_sound,omitempty"`
+	ReferenceVoice    string  `json:"reference_voice,omitempty"`
 }
 
 // AliVideoMedia is the public name used by the Wan2.7 media request contract.
@@ -109,6 +111,32 @@ type AliUsage struct {
 	Size                string `json:"size,omitempty"`
 	FPS                 any    `json:"fps,omitempty"`
 	Audio               any    `json:"audio,omitempty"`
+}
+
+func init() {
+	taskcommon.RegisterVideoBillingConverter(isWan27Model, convertAliWan27VideoBillingParams)
+}
+
+func convertAliWan27VideoBillingParams(req relaycommon.TaskSubmitReq) (*types.VideoBillingParams, error) {
+	tier := strings.ToLower(strings.TrimSpace(req.Resolution))
+	if tier == "" {
+		tier = strings.ToLower(strings.TrimSpace(req.Size))
+	}
+	if tier != "720p" && tier != "1080p" {
+		tier = "1080p"
+	}
+	duration := req.Duration
+	if duration <= 0 && strings.TrimSpace(req.Seconds) != "" {
+		duration, _ = strconv.Atoi(strings.TrimSpace(req.Seconds))
+	}
+	if duration <= 0 {
+		duration = 5
+	}
+	audioEnabled := true
+	if req.GenerateAudio != nil {
+		audioEnabled = *req.GenerateAudio
+	}
+	return &types.VideoBillingParams{Tier: tier, DurationSeconds: duration, AudioEnabled: audioEnabled}, nil
 }
 
 type AliMetadata struct {
@@ -256,6 +284,8 @@ func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relay
 		return a.buildHappyHorseRequest(upstreamModel, req), nil
 	case isBailianKlingModel(upstreamModel):
 		return a.buildKlingRequest(upstreamModel, req)
+	case isWan27Model(upstreamModel):
+		return a.buildWan27Request(upstreamModel, req)
 	}
 
 	aliReq := &AliVideoRequest{
@@ -318,6 +348,317 @@ func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relay
 	}
 
 	return aliReq, nil
+}
+
+func (a *TaskAdaptor) buildWan27Request(upstreamModel string, req relaycommon.TaskSubmitReq) (*AliVideoRequest, error) {
+	defaultDuration := 5
+	if isWan27VideoEditModel(upstreamModel) {
+		defaultDuration = 0
+	}
+	aliReq := &AliVideoRequest{
+		Model: upstreamModel,
+		Input: AliVideoInput{Prompt: req.Prompt},
+		Parameters: &AliVideoParameters{
+			Resolution: defaultAliResolution(firstNonEmptyString(req.Resolution, req.Size), "1080P"),
+			Duration:   resolveTaskDurationAllowZero(req, defaultDuration), PromptExtend: true, Watermark: lo.ToPtr(false),
+		},
+	}
+	if req.Metadata != nil {
+		if metadataBytes, err := common.Marshal(req.Metadata); err == nil {
+			if err := common.Unmarshal(metadataBytes, aliReq); err != nil {
+				return nil, errors.Wrap(err, "unmarshal metadata failed")
+			}
+		} else {
+			return nil, errors.Wrap(err, "marshal metadata failed")
+		}
+	}
+	if aliReq.Model != upstreamModel {
+		return nil, errors.New("can't change model with metadata")
+	}
+	applyWan27FlatMetadata(aliReq, req.Metadata)
+	if req.Seed != nil {
+		aliReq.Parameters.Seed = int(*req.Seed)
+	}
+	if ratio := strings.TrimSpace(req.AspectRatio); ratio != "" && !isWan27I2VModel(upstreamModel) {
+		aliReq.Parameters.Ratio = lo.ToPtr(ratio)
+	}
+	if isWan27VideoEditModel(upstreamModel) && req.GenerateAudio != nil {
+		setting := "origin"
+		if *req.GenerateAudio {
+			setting = "auto"
+		}
+		aliReq.Parameters.AudioSetting = &setting
+	}
+	if err := normalizeWan27Input(aliReq, req); err != nil {
+		return nil, err
+	}
+	if err := validateWan27Parameters(aliReq); err != nil {
+		return nil, err
+	}
+	return aliReq, nil
+}
+
+func validateWan27Parameters(req *AliVideoRequest) error {
+	if req == nil || req.Parameters == nil {
+		return fmt.Errorf("wan2.7 parameters are required")
+	}
+	resolution := strings.ToUpper(strings.TrimSpace(req.Parameters.Resolution))
+	if resolution != "720P" && resolution != "1080P" {
+		return fmt.Errorf("wan2.7 resolution must be 720P or 1080P")
+	}
+	if req.Parameters.Ratio != nil {
+		ratio := strings.TrimSpace(*req.Parameters.Ratio)
+		if !lo.Contains([]string{"16:9", "9:16", "1:1", "4:3", "3:4"}, ratio) {
+			return fmt.Errorf("unsupported wan2.7 ratio: %s", ratio)
+		}
+	}
+	duration := req.Parameters.Duration
+	switch {
+	case isWan27VideoEditModel(req.Model):
+		if duration != 0 && (duration < 2 || duration > 10) {
+			return fmt.Errorf("wan2.7-videoedit duration must be 0 or 2-10")
+		}
+	default:
+		if duration < 2 || duration > 15 {
+			return fmt.Errorf("wan2.7 duration must be between 2 and 15 seconds")
+		}
+	}
+	if req.Parameters.Seed < 0 || int64(req.Parameters.Seed) > 2147483647 {
+		return fmt.Errorf("wan2.7 seed must be between 0 and 2147483647")
+	}
+	if req.Parameters.AudioSetting != nil && *req.Parameters.AudioSetting != "auto" && *req.Parameters.AudioSetting != "origin" {
+		return fmt.Errorf("wan2.7 audio_setting must be auto or origin")
+	}
+	return nil
+}
+
+func applyWan27FlatMetadata(aliReq *AliVideoRequest, metadata map[string]any) {
+	if aliReq == nil || aliReq.Parameters == nil || metadata == nil {
+		return
+	}
+	if value, ok := metadata["negative_prompt"].(string); ok {
+		aliReq.Input.NegativePrompt = value
+	}
+	if value, ok := getBoolMetadata(metadata, "prompt_extend"); ok {
+		aliReq.Parameters.PromptExtend = value
+	}
+	if value, ok := getBoolMetadata(metadata, "watermark"); ok {
+		aliReq.Parameters.Watermark = lo.ToPtr(value)
+	}
+	if value, ok := getIntMetadata(metadata, "seed"); ok {
+		aliReq.Parameters.Seed = value
+	}
+	if value, ok := metadata["audio_setting"].(string); ok && strings.TrimSpace(value) != "" {
+		aliReq.Parameters.AudioSetting = lo.ToPtr(strings.TrimSpace(value))
+	}
+}
+
+func normalizeWan27Input(aliReq *AliVideoRequest, req relaycommon.TaskSubmitReq) error {
+	switch {
+	case isWan27T2VModel(aliReq.Model):
+		if len(req.Audios) > 1 {
+			return fmt.Errorf("wan2.7-t2v supports at most one driving audio")
+		}
+		if len(req.Audios) == 1 {
+			aliReq.Input.AudioURL = strings.TrimSpace(req.Audios[0])
+		}
+		return nil
+	case isWan27I2VModel(aliReq.Model):
+		if len(aliReq.Input.Media) == 0 {
+			aliReq.Input.Media = buildWan27I2VMedia(req)
+		}
+		if err := validateWan27I2VMedia(aliReq.Input.Media); err != nil {
+			return err
+		}
+	case isWan27R2VModel(aliReq.Model):
+		if len(aliReq.Input.Media) == 0 {
+			var err error
+			aliReq.Input.Media, err = buildWan27R2VMedia(req)
+			if err != nil {
+				return err
+			}
+		}
+		if err := validateWan27R2VMedia(aliReq.Input.Media, aliReq.Parameters.Duration); err != nil {
+			return err
+		}
+	case isWan27VideoEditModel(aliReq.Model):
+		if len(aliReq.Input.Media) == 0 {
+			aliReq.Input.Media = buildWan27VideoEditMedia(req)
+		}
+		if err := validateWan27VideoEditMedia(aliReq.Input.Media); err != nil {
+			return err
+		}
+	}
+	aliReq.Input.ImgURL, aliReq.Input.FirstFrameURL, aliReq.Input.LastFrameURL, aliReq.Input.AudioURL = "", "", "", ""
+	return nil
+}
+
+func buildWan27I2VMedia(req relaycommon.TaskSubmitReq) []AliVideoMedia {
+	if len(req.ImageRoles) == 0 && len(req.VideoRoles) == 0 && len(req.AudioRoles) == 0 && len(req.Videos) == 0 && len(req.Audios) == 0 {
+		media := []AliVideoMedia{}
+		if first := firstTaskImage(req); first != "" {
+			media = append(media, AliVideoMedia{Type: "first_frame", URL: first})
+		}
+		if last := secondTaskImage(req); last != "" {
+			media = append(media, AliVideoMedia{Type: "last_frame", URL: last})
+		}
+		return media
+	}
+	media := make([]AliVideoMedia, 0, len(req.Images)+len(req.Videos)+len(req.Audios))
+	for index, raw := range req.Videos {
+		role := roleAt(req.VideoRoles, index, "first_clip")
+		media = append(media, AliVideoMedia{Type: role, URL: strings.TrimSpace(raw)})
+	}
+	for index, raw := range req.Images {
+		fallback := "first_frame"
+		if index > 0 {
+			fallback = "last_frame"
+		}
+		media = append(media, AliVideoMedia{Type: roleAt(req.ImageRoles, index, fallback), URL: strings.TrimSpace(raw)})
+	}
+	for index, raw := range req.Audios {
+		media = append(media, AliVideoMedia{Type: roleAt(req.AudioRoles, index, "driving_audio"), URL: strings.TrimSpace(raw)})
+	}
+	if len(media) == 0 {
+		if first := firstTaskImage(req); first != "" {
+			media = append(media, AliVideoMedia{Type: "first_frame", URL: first})
+		}
+		if last := secondTaskImage(req); last != "" {
+			media = append(media, AliVideoMedia{Type: "last_frame", URL: last})
+		}
+	}
+	return media
+}
+
+func validateWan27I2VMedia(media []AliVideoMedia) error {
+	counts := map[string]int{}
+	for _, item := range media {
+		if strings.TrimSpace(item.URL) == "" {
+			return fmt.Errorf("wan2.7-i2v media url is required")
+		}
+		counts[item.Type]++
+	}
+	valid := counts["first_frame"] == 1 && counts["first_clip"] == 0 && counts["last_frame"] <= 1 && counts["driving_audio"] <= 1 || counts["first_clip"] == 1 && counts["first_frame"] == 0 && counts["last_frame"] <= 1 && counts["driving_audio"] == 0
+	if !valid || counts["first_frame"]+counts["first_clip"]+counts["last_frame"]+counts["driving_audio"] != len(media) {
+		return fmt.Errorf("wan2.7-i2v requires image or first_clip with a valid media combination")
+	}
+	return nil
+}
+
+func buildWan27R2VMedia(req relaycommon.TaskSubmitReq) ([]AliVideoMedia, error) {
+	media := make([]AliVideoMedia, 0, len(req.Images)+len(req.Videos))
+	for index, raw := range req.Images {
+		role := roleAt(req.ImageRoles, index, "reference_image")
+		if role == "general_reference" {
+			role = "reference_image"
+		}
+		media = append(media, AliVideoMedia{Type: role, URL: strings.TrimSpace(raw)})
+	}
+	for index, raw := range req.Videos {
+		role := roleAt(req.VideoRoles, index, "reference_video")
+		if role == "general_reference" {
+			role = "reference_video"
+		}
+		media = append(media, AliVideoMedia{Type: role, URL: strings.TrimSpace(raw)})
+	}
+	referenceIndexes := make([]int, 0, len(media))
+	for index := range media {
+		if media[index].Type == "reference_image" || media[index].Type == "reference_video" {
+			referenceIndexes = append(referenceIndexes, index)
+		}
+	}
+	if len(req.Audios) > len(referenceIndexes) {
+		return nil, fmt.Errorf("reference_voice must attach to a reference image or video")
+	}
+	for index, raw := range req.Audios {
+		media[referenceIndexes[index]].ReferenceVoice = strings.TrimSpace(raw)
+	}
+	return media, nil
+}
+
+func validateWan27R2VMedia(media []AliVideoMedia, duration int) error {
+	if len(media) < 1 || len(media) > 5 {
+		return fmt.Errorf("wan2.7-r2v requires 1-5 visual references")
+	}
+	firstFrames, videos := 0, 0
+	for _, item := range media {
+		if strings.TrimSpace(item.URL) == "" {
+			return fmt.Errorf("wan2.7-r2v media url is required")
+		}
+		switch item.Type {
+		case "first_frame":
+			firstFrames++
+		case "reference_video":
+			videos++
+		case "reference_image":
+		default:
+			return fmt.Errorf("unsupported wan2.7-r2v media type: %s", item.Type)
+		}
+	}
+	if firstFrames > 1 {
+		return fmt.Errorf("wan2.7-r2v supports at most one first_frame")
+	}
+	if videos > 0 && duration > 10 {
+		return fmt.Errorf("wan2.7-r2v duration must be at most 10 seconds with video references")
+	}
+	return nil
+}
+
+func buildWan27VideoEditMedia(req relaycommon.TaskSubmitReq) []AliVideoMedia {
+	media := make([]AliVideoMedia, 0, len(req.Videos)+len(req.Images))
+	for _, raw := range req.Videos {
+		media = append(media, AliVideoMedia{Type: "video", URL: strings.TrimSpace(raw)})
+	}
+	for _, raw := range req.Images {
+		media = append(media, AliVideoMedia{Type: "reference_image", URL: strings.TrimSpace(raw)})
+	}
+	return media
+}
+
+func validateWan27VideoEditMedia(media []AliVideoMedia) error {
+	videos, images := 0, 0
+	for _, item := range media {
+		switch item.Type {
+		case "video":
+			videos++
+		case "reference_image":
+			images++
+		default:
+			return fmt.Errorf("unsupported wan2.7-videoedit media type: %s", item.Type)
+		}
+	}
+	if videos != 1 || images > 4 {
+		return fmt.Errorf("wan2.7-videoedit requires one video and at most four reference images")
+	}
+	return nil
+}
+
+func roleAt(roles []string, index int, fallback string) string {
+	if index < len(roles) && strings.TrimSpace(roles[index]) != "" {
+		return strings.TrimSpace(roles[index])
+	}
+	return fallback
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func resolveTaskDurationAllowZero(req relaycommon.TaskSubmitReq, fallback int) int {
+	if req.Duration > 0 {
+		return req.Duration
+	}
+	if req.Seconds != "" {
+		if seconds, err := strconv.Atoi(req.Seconds); err == nil && seconds >= 0 {
+			return seconds
+		}
+	}
+	return fallback
 }
 
 func firstTaskImage(req relaycommon.TaskSubmitReq) string {
@@ -395,7 +736,7 @@ func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, req
 	return channel.DoTaskApiRequest(a, c, info, requestBody)
 }
 
-func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *dto.TaskError) {
+func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, publicResponse any, taskErr *dto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		taskErr = service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
@@ -427,9 +768,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	}
 	openAIResp.Status = convertAliStatus(aliResp.Output.TaskStatus)
 	openAIResp.CreatedAt = common.GetTimestamp()
-	c.JSON(http.StatusOK, openAIResp)
-
-	return aliResp.Output.TaskID, responseBody, nil
+	return aliResp.Output.TaskID, responseBody, openAIResp, nil
 }
 
 func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy string) (*http.Response, error) {
@@ -723,6 +1062,22 @@ func resolveTaskDuration(req relaycommon.TaskSubmitReq, fallback int) int {
 
 func isWan27I2VModel(modelName string) bool {
 	return strings.Contains(strings.ToLower(strings.TrimSpace(modelName)), "wan2.7-i2v")
+}
+
+func isWan27Model(modelName string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "wan2.7-")
+}
+
+func isWan27T2VModel(modelName string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(modelName)), "wan2.7-t2v")
+}
+
+func isWan27R2VModel(modelName string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(modelName)), "wan2.7-r2v")
+}
+
+func isWan27VideoEditModel(modelName string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(modelName)), "wan2.7-videoedit")
 }
 
 func defaultAliResolution(size string, fallback string) string {

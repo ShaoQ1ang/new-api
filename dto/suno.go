@@ -51,6 +51,62 @@ type SunoMetadata struct {
 	ErrorMessage         interface{} `json:"error_message"`
 }
 
+type SunoAPIGenerateRequest struct {
+	CustomMode          bool     `json:"customMode"`
+	Instrumental        bool     `json:"instrumental"`
+	Model               string   `json:"model"`
+	CallBackURL         string   `json:"callBackUrl"`
+	Prompt              string   `json:"prompt,omitempty"`
+	Style               string   `json:"style,omitempty"`
+	Title               string   `json:"title,omitempty"`
+	PersonaID           string   `json:"personaId,omitempty"`
+	PersonaModel        string   `json:"personaModel,omitempty"`
+	Duration            *int     `json:"duration,omitempty"`
+	NegativeTags        string   `json:"negativeTags,omitempty"`
+	VocalGender         string   `json:"vocalGender,omitempty"`
+	StyleWeight         *float64 `json:"styleWeight,omitempty"`
+	WeirdnessConstraint *float64 `json:"weirdnessConstraint,omitempty"`
+	AudioWeight         *float64 `json:"audioWeight,omitempty"`
+}
+
+type SunoAPIResponse[T any] struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data T      `json:"data"`
+}
+
+type SunoAPISubmitData struct {
+	TaskID string `json:"taskId"`
+}
+
+type SunoAPISong struct {
+	ID             string `json:"id"`
+	AudioURL       string `json:"audioUrl"`
+	StreamAudioURL string `json:"streamAudioUrl"`
+	ImageURL       string `json:"imageUrl"`
+	Prompt         string `json:"prompt"`
+	ModelName      string `json:"modelName"`
+	Title          string `json:"title"`
+	Tags           string `json:"tags"`
+	// SunoAPI v1 has returned this field as both a JSON string and a number.
+	// json.Number accepts either representation while preserving the value.
+	CreateTime json.Number `json:"createTime"`
+	Duration   float64     `json:"duration"`
+}
+
+type SunoAPIGenerationResponse struct {
+	TaskID   string        `json:"taskId"`
+	SunoData []SunoAPISong `json:"sunoData"`
+}
+
+type SunoAPIRecordData struct {
+	TaskID       string                    `json:"taskId"`
+	Status       string                    `json:"status"`
+	ErrorCode    string                    `json:"errorCode"`
+	ErrorMessage string                    `json:"errorMessage"`
+	Response     SunoAPIGenerationResponse `json:"response"`
+}
+
 type SunoLyrics struct {
 	ID     string `json:"id"`
 	Status string `json:"status"`

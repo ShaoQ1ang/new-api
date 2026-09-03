@@ -56,6 +56,7 @@ const routerMap = {
   pricing: '/pricing',
   task: '/console/task',
   models: '/console/models',
+  aigcModels: '/console/aigc-models',
   deployment: '/console/deployment',
   skillHubSkills: '/console/skill-hub',
   skillHubTags: '/console/skill-hub/tags',
@@ -219,6 +220,12 @@ const SiderBar = ({
         itemKey: 'models',
         to: '/console/models',
         className: adminAccess || canManageChatModels ? '' : 'tableHiddle',
+      },
+      {
+        text: t('AIGC 模型管理'),
+        itemKey: 'aigcModels',
+        to: '/aigc-models',
+        className: isAdmin() ? '' : 'tableHiddle',
       },
       {
         text: t('模型部署'),

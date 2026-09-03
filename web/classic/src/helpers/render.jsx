@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import i18next from 'i18next';
+import { lazy, Suspense } from 'react';
 import { Modal, Tag, Typography, Avatar } from '@douyinfe/semi-ui';
 import { copy, parseTiersFromExpr, showSuccess } from './utils';
 import {
@@ -27,41 +28,38 @@ import {
 } from './taskBillingSummary';
 import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile';
 import { visit } from 'unist-util-visit';
-import * as LobeIcons from '@lobehub/icons';
-import {
-  OpenAI,
-  Claude,
-  Gemini,
-  Moonshot,
-  Zhipu,
-  Qwen,
-  DeepSeek,
-  Minimax,
-  Wenxin,
-  Spark,
-  Midjourney,
-  Hunyuan,
-  Cohere,
-  Cloudflare,
-  Ai360,
-  Yi,
-  Jina,
-  Mistral,
-  XAI,
-  Ollama,
-  Doubao,
-  Suno,
-  Xinference,
-  OpenRouter,
-  Dify,
-  Coze,
-  SiliconCloud,
-  FastGPT,
-  Kling,
-  Jimeng,
-  Perplexity,
-  Replicate,
-} from '@lobehub/icons';
+import OpenAI from '@lobehub/icons/es/OpenAI';
+import Claude from '@lobehub/icons/es/Claude';
+import Gemini from '@lobehub/icons/es/Gemini';
+import Moonshot from '@lobehub/icons/es/Moonshot';
+import Zhipu from '@lobehub/icons/es/Zhipu';
+import Qwen from '@lobehub/icons/es/Qwen';
+import DeepSeek from '@lobehub/icons/es/DeepSeek';
+import Minimax from '@lobehub/icons/es/Minimax';
+import Wenxin from '@lobehub/icons/es/Wenxin';
+import Spark from '@lobehub/icons/es/Spark';
+import Midjourney from '@lobehub/icons/es/Midjourney';
+import Hunyuan from '@lobehub/icons/es/Hunyuan';
+import Cohere from '@lobehub/icons/es/Cohere';
+import Cloudflare from '@lobehub/icons/es/Cloudflare';
+import Ai360 from '@lobehub/icons/es/Ai360';
+import Yi from '@lobehub/icons/es/Yi';
+import Jina from '@lobehub/icons/es/Jina';
+import Mistral from '@lobehub/icons/es/Mistral';
+import XAI from '@lobehub/icons/es/XAI';
+import Ollama from '@lobehub/icons/es/Ollama';
+import Doubao from '@lobehub/icons/es/Doubao';
+import Suno from '@lobehub/icons/es/Suno';
+import Xinference from '@lobehub/icons/es/Xinference';
+import OpenRouter from '@lobehub/icons/es/OpenRouter';
+import Dify from '@lobehub/icons/es/Dify';
+import Coze from '@lobehub/icons/es/Coze';
+import SiliconCloud from '@lobehub/icons/es/SiliconCloud';
+import FastGPT from '@lobehub/icons/es/FastGPT';
+import Kling from '@lobehub/icons/es/Kling';
+import Jimeng from '@lobehub/icons/es/Jimeng';
+import Perplexity from '@lobehub/icons/es/Perplexity';
+import Replicate from '@lobehub/icons/es/Replicate';
 
 import {
   LayoutDashboard,
@@ -83,6 +81,11 @@ import {
   Sparkles,
   Video,
 } from 'lucide-react';
+
+const lobeIconLoaders = import.meta.glob(
+  '../../node_modules/@lobehub/icons/es/*/index.js',
+);
+const lazyLobeIcons = new Map();
 import {
   SiAtlassian,
   SiAuth0,
@@ -450,26 +453,43 @@ export function getLobeHubIcon(iconName, size = 14) {
   // 解析组件路径与点号链式属性
   const segments = String(iconName).split('.');
   const baseKey = segments[0];
-  const BaseIcon = LobeIcons[baseKey];
-
-  let IconComponent = undefined;
+  const loader = lobeIconLoaders[
+    `../../node_modules/@lobehub/icons/es/${baseKey}/index.js`
+  ];
+  const componentKey = segments[1]?.includes('=') ? null : segments[1];
   let propStartIndex = 1;
-
-  if (BaseIcon && segments.length > 1 && BaseIcon[segments[1]]) {
-    IconComponent = BaseIcon[segments[1]];
+  if (componentKey) {
     propStartIndex = 2;
-  } else {
-    IconComponent = LobeIcons[baseKey];
-    propStartIndex = 1;
   }
 
   // 失败兜底
-  if (
-    !IconComponent ||
-    (typeof IconComponent !== 'function' && typeof IconComponent !== 'object')
-  ) {
+  if (!loader) {
     const firstLetter = String(iconName).charAt(0).toUpperCase();
     return <Avatar size='extra-extra-small'>{firstLetter}</Avatar>;
+  }
+
+  const lazyIconKey = `${baseKey}.${componentKey || 'default'}`;
+  let IconComponent = lazyLobeIcons.get(lazyIconKey);
+  if (!IconComponent) {
+    IconComponent = lazy(async () => {
+      const iconModule = await loader();
+      const baseIcon = iconModule.default;
+      const resolvedIcon = componentKey ? baseIcon?.[componentKey] : baseIcon;
+      if (
+        typeof resolvedIcon !== 'function' &&
+        typeof resolvedIcon !== 'object'
+      ) {
+        return {
+          default: () => (
+            <Avatar size='extra-extra-small'>
+              {String(iconName).charAt(0).toUpperCase()}
+            </Avatar>
+          ),
+        };
+      }
+      return { default: resolvedIcon };
+    });
+    lazyLobeIcons.set(lazyIconKey, IconComponent);
   }
 
   // 解析点号链式属性，形如：key={...}、key='...'、key="..."、key=123、key、key=true/false
@@ -514,7 +534,11 @@ export function getLobeHubIcon(iconName, size = 14) {
   // 兼容第二参数 size，若字符串中未显式指定 size，则使用函数入参
   if (props.size == null && size != null) props.size = size;
 
-  return <IconComponent {...props} />;
+  return (
+    <Suspense fallback={<Avatar size='extra-extra-small' />}>
+      <IconComponent {...props} />
+    </Suspense>
+  );
 }
 
 const oauthProviderIconMap = {

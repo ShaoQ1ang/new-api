@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2317201d'/%3E%3Cpath d='M8 23V9h4l4 7 4-7h4v14h-4v-8l-4 7-4-7v8z' fill='%23fff'/%3E%3C/svg%3E">
+  <title>Mock Request Inspector</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f3f5f4;
+      --surface: #ffffff;
+      --surface-muted: #f7f8f7;
+      --line: #d8ddda;
+      --line-strong: #b6bebb;
+      --text: #17201d;
+      --muted: #68736f;
+      --accent: #007a5a;
+      --accent-soft: #dff3ec;
+      --danger: #ba2f35;
+      --code: #111816;
+      --code-text: #d9e5e0;
+      --shadow: 0 8px 28px rgba(26, 38, 34, 0.08);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111513;
+        --surface: #181d1b;
+        --surface-muted: #1e2421;
+        --line: #303934;
+        --line-strong: #46514c;
+        --text: #e4ebe8;
+        --muted: #98a49f;
+        --accent: #4fd1a5;
+        --accent-soft: #173a2f;
+        --danger: #ff777d;
+        --code: #0c100e;
+        --code-text: #d9e5e0;
+        --shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 13px;
+      letter-spacing: 0;
+    }
+    button, input, select { font: inherit; letter-spacing: 0; }
+    button { cursor: pointer; }
+    .app { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
+    header {
+      min-height: 58px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding: 10px 18px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+    .brand-mark {
+      width: 28px; height: 28px; display: grid; place-items: center;
+      border: 1px solid var(--text); background: var(--text); color: var(--surface);
+      font-weight: 800;
+    }
+    .brand strong { display: block; font-size: 13px; }
+    .brand span { color: var(--muted); font-size: 11px; }
+    .controls { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+    .field {
+      height: 34px; border: 1px solid var(--line); background: var(--surface-muted);
+      color: var(--text); padding: 0 10px; outline: none;
+    }
+    .field:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+    #search { width: min(34vw, 360px); }
+    .icon-button {
+      width: 34px; height: 34px; display: grid; place-items: center;
+      border: 1px solid var(--line); background: var(--surface); color: var(--text);
+    }
+    .icon-button:hover { border-color: var(--line-strong); background: var(--surface-muted); }
+    .icon-button.danger:hover { color: var(--danger); border-color: var(--danger); }
+    .icon-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+    main { min-height: 0; display: grid; grid-template-columns: minmax(360px, 42%) 1fr; }
+    .requests { min-width: 0; border-right: 1px solid var(--line); background: var(--surface); }
+    .section-head {
+      height: 42px; display: flex; align-items: center; justify-content: space-between;
+      padding: 0 14px; border-bottom: 1px solid var(--line); color: var(--muted);
+      text-transform: uppercase; font-size: 11px;
+    }
+    .live { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); }
+    .live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .request-list { height: calc(100vh - 100px); overflow: auto; }
+    .request-row {
+      width: 100%; min-height: 74px; display: grid; grid-template-columns: 62px minmax(0, 1fr) auto;
+      gap: 12px; align-items: center; padding: 10px 14px; border: 0; border-bottom: 1px solid var(--line);
+      background: transparent; color: var(--text); text-align: left;
+    }
+    .request-row:hover { background: var(--surface-muted); }
+    .request-row.active { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }
+    .method { font-weight: 800; color: var(--accent); }
+    .method.GET { color: #2870b8; }
+    .request-main { min-width: 0; }
+    .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
+    .meta { margin-top: 6px; display: flex; gap: 8px; color: var(--muted); font-size: 11px; }
+    .status { text-align: right; }
+    .status-code { display: block; font-weight: 800; }
+    .status-code.error { color: var(--danger); }
+    .status time { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; }
+    .empty { min-height: 240px; display: grid; place-items: center; padding: 30px; color: var(--muted); text-align: center; }
+    .empty.compact { min-height: 64px; padding: 14px; }
+    .detail { min-width: 0; background: var(--bg); overflow: auto; height: calc(100vh - 58px); }
+    .detail-inner { padding: 22px; max-width: 1100px; margin: 0 auto; }
+    .detail-title { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 18px; }
+    .detail-title h1 { margin: 0; font-size: 16px; line-height: 1.45; overflow-wrap: anywhere; }
+    .detail-title p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
+    .badge { padding: 4px 7px; background: var(--accent-soft); color: var(--accent); font-size: 11px; white-space: nowrap; }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }
+    .stat { min-width: 0; padding: 12px; border-right: 1px solid var(--line); }
+    .stat:last-child { border-right: 0; }
+    .stat-label { display: block; margin-bottom: 5px; color: var(--muted); font-size: 10px; text-transform: uppercase; }
+    .stat-value { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .panel { margin-top: 18px; border: 1px solid var(--line); background: var(--surface); }
+    .panel-head { height: 38px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid var(--line); }
+    .panel-head h2 { margin: 0; font-size: 11px; text-transform: uppercase; }
+    .copy-button { border: 0; background: transparent; color: var(--muted); padding: 5px; }
+    .copy-button:hover { color: var(--accent); }
+    pre { margin: 0; padding: 14px; overflow: auto; background: var(--code); color: var(--code-text); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .key-values { margin: 0; display: grid; grid-template-columns: minmax(120px, 220px) 1fr; }
+    .key-values dt, .key-values dd { margin: 0; padding: 9px 12px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+    .key-values dt { color: var(--muted); border-right: 1px solid var(--line); }
+    .key-values dd:last-child, .key-values dt:nth-last-child(2) { border-bottom: 0; }
+    .placeholder { min-height: 70vh; display: grid; place-items: center; color: var(--muted); text-align: center; }
+    .placeholder strong { display: block; margin-bottom: 8px; color: var(--text); font-size: 14px; }
+    @media (max-width: 860px) {
+      header { flex-wrap: wrap; }
+      .controls { width: 100%; margin: 0; }
+      #search { width: 100%; flex: 1; }
+      main { display: block; }
+      .requests { border-right: 0; }
+      .request-list { height: auto; max-height: 40vh; }
+      .detail { height: auto; min-height: 50vh; border-top: 1px solid var(--line); }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .stat:nth-child(2) { border-right: 0; }
+      .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand">
+        <div class="brand-mark">M</div>
+        <div><strong>Request Inspector</strong><span>in-memory mock traffic</span></div>
+      </div>
+      <div class="controls">
+        <input id="search" class="field" type="search" placeholder="筛选路径、协议或请求内容" aria-label="筛选历史请求">
+        <select id="method-filter" class="field" aria-label="按请求方法筛选">
+          <option value="">全部方法</option><option>POST</option><option>GET</option><option>PUT</option><option>DELETE</option>
+        </select>
+        <button id="refresh" class="icon-button" type="button" title="立即刷新" aria-label="立即刷新">
+          <svg viewBox="0 0 24 24"><path d="M20 6v5h-5M4 18v-5h5"/><path d="M6.1 9a7 7 0 0 1 11.5-2.4L20 11M4 13l2.4 4.4A7 7 0 0 0 17.9 15"/></svg>
+        </button>
+        <button id="clear" class="icon-button danger" type="button" title="清空历史" aria-label="清空历史">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg>
+        </button>
+      </div>
+    </header>
+    <main>
+      <section class="requests" aria-label="请求历史">
+        <div class="section-head"><span id="count">0 requests</span><span class="live">每 2 秒刷新</span></div>
+        <div id="request-list" class="request-list"></div>
+      </section>
+      <section id="detail" class="detail" aria-live="polite"></section>
+    </main>
+  </div>
+  <script>
+    const state = { records: [], selectedId: null };
+    const list = document.querySelector('#request-list');
+    const detail = document.querySelector('#detail');
+    const count = document.querySelector('#count');
+    const search = document.querySelector('#search');
+    const methodFilter = document.querySelector('#method-filter');
+
+    const escapeHTML = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+    })[character]);
+    const prettyJSON = (value) => {
+      if (!value) return '(empty)';
+      try { return JSON.stringify(JSON.parse(value), null, 2); } catch { return value; }
+    };
+    const formatTime = (value, includeDate = false) => new Intl.DateTimeFormat('zh-CN', {
+      month: includeDate ? '2-digit' : undefined, day: includeDate ? '2-digit' : undefined,
+      hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3, hour12: false
+    }).format(new Date(value));
+    const formatBytes = (value) => value < 1024 ? `${value} B` : `${(value / 1024).toFixed(1)} KB`;
+    const filteredRecords = () => {
+      const query = search.value.trim().toLowerCase();
+      return state.records.filter((record) => {
+        const matchesMethod = !methodFilter.value || record.method === methodFilter.value;
+        const haystack = `${record.protocol} ${record.path} ${record.raw_query} ${record.body}`.toLowerCase();
+        return matchesMethod && (!query || haystack.includes(query));
+      });
+    };
+    const renderList = () => {
+      const records = filteredRecords();
+      count.textContent = `${records.length} / ${state.records.length} requests`;
+      if (!records.length) {
+        list.innerHTML = '<div class="empty">暂无匹配请求<br>发送请求后会自动出现在这里</div>';
+        return;
+      }
+      list.innerHTML = records.map((record) => `
+        <button class="request-row ${record.id === state.selectedId ? 'active' : ''}" data-id="${record.id}" type="button">
+          <span class="method ${escapeHTML(record.method)}">${escapeHTML(record.method)}</span>
+          <span class="request-main"><span class="path">${escapeHTML(record.path)}${record.raw_query ? `?${escapeHTML(record.raw_query)}` : ''}</span><span class="meta"><span>${escapeHTML(record.protocol)}</span><span>${record.duration_ms} ms</span><span>${formatBytes(record.content_length)}</span></span></span>
+          <span class="status"><span class="status-code ${record.status >= 400 ? 'error' : ''}">${record.status}</span><time>${formatTime(record.received_at)}</time></span>
+        </button>`).join('');
+    };
+    const keyValues = (value) => {
+      const entries = Object.entries(value || {});
+      if (!entries.length) return '<div class="empty compact">无参数</div>';
+      return `<dl class="key-values">${entries.map(([key, item]) => `<dt>${escapeHTML(key)}</dt><dd>${escapeHTML(Array.isArray(item) ? item.join('\n') : item)}</dd>`).join('')}</dl>`;
+    };
+    const panel = (title, content, copyKey = '') => `<section class="panel"><div class="panel-head"><h2>${title}</h2>${copyKey ? `<button class="copy-button" type="button" data-copy="${copyKey}">复制</button>` : ''}</div>${content}</section>`;
+    const renderDetail = () => {
+      const record = state.records.find((item) => item.id === state.selectedId);
+      if (!record) {
+        detail.innerHTML = '<div class="placeholder"><div><strong>选择一条请求</strong>查看 New API 转换后实际发送给 mock 的完整入参</div></div>';
+        return;
+      }
+      const requestTarget = `${record.path}${record.raw_query ? `?${record.raw_query}` : ''}`;
+      const body = prettyJSON(record.body);
+      detail.innerHTML = `<div class="detail-inner">
+        <div class="detail-title"><span class="badge">${escapeHTML(record.protocol)}</span><div><h1>${escapeHTML(record.method)} ${escapeHTML(requestTarget)}</h1><p>#${record.id} · ${formatTime(record.received_at, true)}</p></div></div>
+        <div class="stats"><div class="stat"><span class="stat-label">Status</span><span class="stat-value">${record.status}</span></div><div class="stat"><span class="stat-label">Duration</span><span class="stat-value">${record.duration_ms} ms</span></div><div class="stat"><span class="stat-label">Body size</span><span class="stat-value">${formatBytes(record.content_length)}</span></div><div class="stat"><span class="stat-label">Remote</span><span class="stat-value" title="${escapeHTML(record.remote_addr)}">${escapeHTML(record.remote_addr || '-')}</span></div></div>
+        ${panel('Request body', `<pre>${escapeHTML(body)}</pre>`, 'body')}
+        ${panel('Query parameters', keyValues(record.query))}
+        ${panel('Headers', keyValues(record.headers))}
+        ${panel('Connection', keyValues({ Host: record.host, 'Remote address': record.remote_addr }))}
+      </div>`;
+    };
+    const selectRecord = (id) => { state.selectedId = id; renderList(); renderDetail(); };
+    const load = async () => {
+      try {
+        const response = await fetch('/api/mock/history', { cache: 'no-store' });
+        const payload = await response.json();
+        state.records = payload.records;
+        if (state.selectedId === null && state.records.length) state.selectedId = state.records[0].id;
+        if (state.selectedId !== null && !state.records.some((record) => record.id === state.selectedId)) state.selectedId = state.records[0]?.id ?? null;
+        renderList(); renderDetail();
+      } catch {
+        count.textContent = '连接失败';
+      }
+    };
+    list.addEventListener('click', (event) => {
+      const row = event.target.closest('[data-id]');
+      if (row) selectRecord(Number(row.dataset.id));
+    });
+    detail.addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-copy]');
+      if (!button) return;
+      const record = state.records.find((item) => item.id === state.selectedId);
+      if (!record) return;
+      await navigator.clipboard.writeText(prettyJSON(record.body));
+      button.textContent = '已复制';
+      setTimeout(() => { button.textContent = '复制'; }, 1200);
+    });
+    search.addEventListener('input', renderList);
+    methodFilter.addEventListener('change', renderList);
+    document.querySelector('#refresh').addEventListener('click', load);
+    document.querySelector('#clear').addEventListener('click', async () => {
+      if (!confirm('清空当前内存中的全部请求历史？')) return;
+      await fetch('/api/mock/history', { method: 'DELETE' });
+      state.selectedId = null;
+      await load();
+    });
+    load();
+    setInterval(load, 2000);
+  </script>
+</body>
+</html>

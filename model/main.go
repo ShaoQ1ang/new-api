@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/QuantumNous/new-api/aigc/entity"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 
@@ -312,7 +313,10 @@ func migrateDB() error {
 		&ClientRelease{},
 		&ChatModelOption{},
 		&AlipayPendingTask{},
+		&WalletUsageCallback{},
 		&PlaygroundConversation{},
+		&entity.ModelProfile{},
+		&entity.AigcRequest{},
 		&IAMIdentityLink{},
 		&IAMAPIKeyLink{},
 	)
@@ -384,7 +388,9 @@ func migrateDBFast() error {
 		{&ClientRelease{}, "ClientRelease"},
 		{&ChatModelOption{}, "ChatModelOption"},
 		{&AlipayPendingTask{}, "AlipayPendingTask"},
+		{&WalletUsageCallback{}, "WalletUsageCallback"},
 		{&PlaygroundConversation{}, "PlaygroundConversation"},
+		{&entity.ModelProfile{}, "AigcModelProfile"},
 		{&IAMIdentityLink{}, "IAMIdentityLink"},
 		{&IAMAPIKeyLink{}, "IAMAPIKeyLink"},
 	}

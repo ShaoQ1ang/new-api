@@ -10,8 +10,15 @@ import (
 func convertAliHappyHorseVideoBillingParams(req relaycommon.TaskSubmitReq) (*types.VideoBillingParams, error) {
 	tier := resolveHappyHorseBillingTier(req)
 	audioEnabled := true
-	if audio, ok := resolveMetadataBool(req.Metadata, "audio"); ok {
-		audioEnabled = audio
+	if req.GenerateAudio != nil {
+		audioEnabled = *req.GenerateAudio
+	} else {
+		for _, key := range []string{"generateAudio", "generate_audio", "audio"} {
+			if audio, ok := resolveMetadataBool(req.Metadata, key); ok {
+				audioEnabled = audio
+				break
+			}
+		}
 	}
 	return &types.VideoBillingParams{
 		Tier:            tier,
@@ -21,6 +28,9 @@ func convertAliHappyHorseVideoBillingParams(req relaycommon.TaskSubmitReq) (*typ
 }
 
 func resolveHappyHorseBillingTier(req relaycommon.TaskSubmitReq) string {
+	if tier, ok := normalizeHappyHorseTier(req.Resolution); ok {
+		return tier
+	}
 	if resolution, ok := resolveMetadataString(req.Metadata, "resolution"); ok {
 		if tier, ok := normalizeHappyHorseTier(resolution); ok {
 			return tier

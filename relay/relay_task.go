@@ -27,6 +27,7 @@ import (
 type TaskSubmitResult struct {
 	UpstreamTaskID string
 	TaskData       []byte
+	PublicResponse any
 	Platform       constant.TaskPlatform
 	Quota          int
 	//PerCallPrice   types.PriceData
@@ -195,23 +196,31 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 			info.PriceData.AddOtherRatio(k, v)
 		}
 	}
+	if taskErr := applyTaskInputImagePricing(c, info, platform); taskErr != nil {
+		return nil, taskErr
+	}
+	if info.PriceData.InputImageCost > 0 {
+		info.PriceData.FreeModel = false
+	}
 	if !info.PriceData.UsePrice && info.PriceData.ConditionalInputPrice > 0 {
 		info.PriceData.Quota = int(info.PriceData.ConditionalInputPrice / 4 * common.QuotaPerUnit * info.PriceData.GroupRatioInfo.GroupRatio)
 	}
-	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeVideoSeconds {
+	if billing_setting.ResolveBillingMode(info.OriginModelName, info.GetUpstreamModelName()) == billing_setting.BillingModeVideoSeconds {
 		if err := applyVideoSecondsBilling(c, info); err != nil {
 			return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
 		}
 	}
 
 	// 6. 将 OtherRatios 应用到基础额度（饱和转换，防止溢出成负数）
-	if !common.StringsContains(constant.TaskPricePatches, modelName) {
-		if billing_setting.GetBillingMode(info.OriginModelName) != billing_setting.BillingModeVideoSeconds && info.PriceData.ConditionalInputPrice <= 0 {
-			quotaWithRatios := info.PriceData.ApplyOtherRatiosToFloat(float64(info.PriceData.Quota))
-			quota, clamp := common.QuotaFromFloatChecked(quotaWithRatios)
-			info.PriceData.Quota = quota
-			noteTaskQuotaClamp(info, clamp)
+	if billing_setting.ResolveBillingMode(info.OriginModelName, info.GetUpstreamModelName()) != billing_setting.BillingModeVideoSeconds && info.PriceData.ConditionalInputPrice <= 0 {
+		quotaWithRatios := float64(info.PriceData.Quota)
+		if !common.StringsContains(constant.TaskPricePatches, modelName) {
+			quotaWithRatios = info.PriceData.ApplyOtherRatiosToFloat(quotaWithRatios)
 		}
+		quotaWithRatios += info.PriceData.InputImageCost * common.QuotaPerUnit * info.PriceData.GroupRatioInfo.GroupRatio
+		quota, clamp := common.QuotaFromFloatChecked(quotaWithRatios)
+		info.PriceData.Quota = quota
+		noteTaskQuotaClamp(info, clamp)
 	}
 
 	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
@@ -247,7 +256,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	c.Header("X-New-Api-Other-Ratios", string(ratiosJSON))
 
 	// 11. 解析响应
-	upstreamTaskID, taskData, taskErr := adaptor.DoResponse(c, resp, info)
+	upstreamTaskID, taskData, publicResponse, taskErr := adaptor.DoResponse(c, resp, info)
 	if taskErr != nil {
 		return nil, taskErr
 	}
@@ -266,22 +275,43 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	return &TaskSubmitResult{
 		UpstreamTaskID: upstreamTaskID,
 		TaskData:       taskData,
+		PublicResponse: publicResponse,
 		Platform:       platform,
 		Quota:          finalQuota,
 	}, nil
 }
 
+func applyTaskInputImagePricing(c *gin.Context, info *relaycommon.RelayInfo, platform constant.TaskPlatform) *dto.TaskError {
+	if platform == constant.TaskPlatformSuno {
+		return nil
+	}
+	taskRequest, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	inputImageTiers, err := relaycommon.TaskInputImageTiers(taskRequest)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	helper.ApplyImageInputPricing(info, &info.PriceData, inputImageTiers)
+	return nil
+}
+
 // recalcQuotaFromRatios 根据 adjustedRatios 重新计算 quota。
 // 公式: baseQuota × ∏(ratio) — 其中 baseQuota 是不含 OtherRatios 的基础额度。
 func recalcQuotaFromRatios(info *relaycommon.RelayInfo, ratios map[string]float64) (int, bool) {
-	// 从 PriceData 获取不含 OtherRatios 的基础价格
-	baseQuota := info.PriceData.RemoveOtherRatiosFromFloat(float64(info.PriceData.Quota))
+	// Input image pricing is a fixed surcharge and must not be affected by
+	// duration, resolution, or other task multipliers.
+	inputImageQuota, clamp := common.QuotaFromFloatChecked(info.PriceData.InputImageCost * common.QuotaPerUnit * info.PriceData.GroupRatioInfo.GroupRatio)
+	noteTaskQuotaClamp(info, clamp)
+	baseQuotaWithRatios := max(0, info.PriceData.Quota-inputImageQuota)
+	baseQuota := info.PriceData.RemoveOtherRatiosFromFloat(float64(baseQuotaWithRatios))
 	priceData := info.PriceData
 	if !priceData.ReplaceOtherRatios(ratios) {
 		return 0, false
 	}
 	// 应用新的 ratios
-	result := priceData.ApplyOtherRatiosToFloat(baseQuota)
+	result := priceData.ApplyOtherRatiosToFloat(baseQuota) + float64(inputImageQuota)
 	quota, clamp := common.QuotaFromFloatChecked(result)
 	noteTaskQuotaClamp(info, clamp)
 	return quota, true
@@ -308,15 +338,40 @@ func applyVideoSecondsBilling(c *gin.Context, info *relaycommon.RelayInfo) error
 	if err != nil {
 		return err
 	}
-	unitPrice, ok := ratio_setting.GetVideoSecondsPrice(info.OriginModelName, videoParams.Tier, videoParams.AudioEnabled)
+	priceModel := info.OriginModelName
+	unitPrice, ok := ratio_setting.GetVideoSecondsPriceByKey(priceModel, videoParams.Tier, videoParams.PriceKey, videoParams.AudioEnabled)
+	if !ok && info.ChannelMeta != nil && strings.TrimSpace(info.UpstreamModelName) != "" && info.UpstreamModelName != info.OriginModelName {
+		priceModel = info.UpstreamModelName
+		unitPrice, ok = ratio_setting.GetVideoSecondsPriceByKey(priceModel, videoParams.Tier, videoParams.PriceKey, videoParams.AudioEnabled)
+	}
 	if !ok {
-		return fmt.Errorf("video seconds price not configured for %s tier %s", info.OriginModelName, videoParams.Tier)
+		return fmt.Errorf("video seconds price not configured for %s tier %s", priceModel, videoParams.Tier)
+	}
+	fixedPrice := 0.0
+	for key, units := range videoParams.ExtraUnits {
+		if units <= 0 {
+			continue
+		}
+		extraUnitPrice, ok := ratio_setting.GetVideoSecondsExtraPrice(priceModel, videoParams.Tier, key)
+		if !ok {
+			// Reference-video pricing is an optional extension of the existing
+			// Kling price table. Keep legacy configurations valid when they do
+			// not define this dimension.
+			if key == "reference_video" || key == "reference_video_silent" {
+				continue
+			}
+			return fmt.Errorf("video extra price not configured for %s tier %s key %s", priceModel, videoParams.Tier, key)
+		}
+		fixedPrice += extraUnitPrice * float64(units)
 	}
 	info.PriceData.VideoSecondsUnitPrice = unitPrice
 	info.PriceData.VideoSecondsTier = videoParams.Tier
 	info.PriceData.VideoDurationSeconds = videoParams.DurationSeconds
 	info.PriceData.VideoAudioEnabled = &videoParams.AudioEnabled
-	info.PriceData.Quota = int(unitPrice * float64(videoParams.DurationSeconds) * common.QuotaPerUnit * info.PriceData.GroupRatioInfo.GroupRatio)
+	info.PriceData.VideoFixedPrice = fixedPrice
+	quota, clamp := common.QuotaFromFloatChecked((unitPrice*float64(videoParams.DurationSeconds) + fixedPrice + info.PriceData.InputImageCost) * common.QuotaPerUnit * info.PriceData.GroupRatioInfo.GroupRatio)
+	info.PriceData.Quota = quota
+	noteTaskQuotaClamp(info, clamp)
 	return nil
 }
 

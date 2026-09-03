@@ -188,13 +188,10 @@ export const ModelPricingEditorPanel = forwardRef<
         audioRatio: editData.audioRatio || '',
         audioCompletionRatio: editData.audioCompletionRatio || '',
       })
-      setPricingMode(
-        editData.billingMode === 'tiered_expr'
-          ? 'tiered_expr'
-          : editData.price
-            ? 'per-request'
-            : 'per-token'
-      )
+      let nextMode: PricingMode = editData.price ? 'per-request' : 'per-token'
+      if (editData.billingMode === 'tiered_expr') nextMode = 'tiered_expr'
+      if (editData.billingMode === 'video_seconds') nextMode = 'video_seconds'
+      setPricingMode(nextMode)
       setBillingExpr(editData.billingExpr || '')
       setRequestRuleExpr(editData.requestRuleExpr || '')
     } else {
@@ -544,12 +541,15 @@ export const ModelPricingEditorPanel = forwardRef<
                   onValueChange={handleModeChange}
                   className='gap-4'
                 >
-                  <TabsList className='grid w-full grid-cols-3'>
+                  <TabsList className='grid w-full grid-cols-4'>
                     <TabsTrigger value='per-token'>
                       {t('Per-token')}
                     </TabsTrigger>
                     <TabsTrigger value='per-request'>
                       {t('Per-request')}
+                    </TabsTrigger>
+                    <TabsTrigger value='video_seconds'>
+                      {t('Per-second')}
                     </TabsTrigger>
                     <TabsTrigger value='tiered_expr'>
                       {t('Expression')}
@@ -636,6 +636,19 @@ export const ModelPricingEditorPanel = forwardRef<
                           </FormItem>
                         )}
                       />
+                    </FieldGroup>
+                  </TabsContent>
+
+                  <TabsContent value='video_seconds' className='pt-0'>
+                    <FieldGroup className='gap-5'>
+                      <Field>
+                        <FieldLabel>{t('Video seconds price')}</FieldLabel>
+                        <FieldDescription>
+                          {t(
+                            'The base per-second prices remain in VideoSecondsPrice JSON; this panel edits the input image surcharge.'
+                          )}
+                        </FieldDescription>
+                      </Field>
                     </FieldGroup>
                   </TabsContent>
 

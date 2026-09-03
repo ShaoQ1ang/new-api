@@ -102,29 +102,34 @@ type AliOutput struct {
 
 func (o *AliOutput) ChoicesToOpenAIImageDate(c *gin.Context, responseFormat string) []dto.ImageData {
 	var imageData []dto.ImageData
-	if len(o.Choices) > 0 {
-		for _, choice := range o.Choices {
-			var data dto.ImageData
-			for _, content := range choice.Message.Content {
-				if content.Image != "" {
-					if strings.HasPrefix(content.Image, "http") {
-						var b64Json string
-						if responseFormat == "b64_json" {
-							_, b64, err := service.GetImageFromUrl(content.Image)
-							if err != nil {
-								logger.LogError(c, "get_image_data_failed: "+err.Error())
-								continue
-							}
-							b64Json = b64
-						}
-						data.Url = content.Image
-						data.B64Json = b64Json
-					} else {
-						data.B64Json = content.Image
+	for _, choice := range o.Choices {
+		revisedPrompt := ""
+		for _, content := range choice.Message.Content {
+			if content.Text != "" {
+				revisedPrompt = content.Text
+			}
+		}
+
+		for _, content := range choice.Message.Content {
+			if content.Image == "" {
+				continue
+			}
+
+			data := dto.ImageData{RevisedPrompt: revisedPrompt}
+			if strings.HasPrefix(content.Image, "http") {
+				var b64Json string
+				if responseFormat == "b64_json" {
+					_, b64, err := service.GetImageFromUrl(content.Image)
+					if err != nil {
+						logger.LogError(c, "get_image_data_failed: "+err.Error())
+						continue
 					}
-				} else if content.Text != "" {
-					data.RevisedPrompt = content.Text
+					b64Json = b64
 				}
+				data.Url = content.Image
+				data.B64Json = b64Json
+			} else {
+				data.B64Json = content.Image
 			}
 			imageData = append(imageData, data)
 		}

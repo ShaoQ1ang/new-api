@@ -2,6 +2,8 @@ package openai
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -9,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -95,4 +98,108 @@ func TestConvertImageEditRequestMultipart(t *testing.T) {
 
 		convertAndReplay(t, c, prompt)
 	})
+}
+
+func TestConvertOpenRouterImageEditRequestMultipart(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, preParse := range []bool{true, false} {
+		name := "reusable body"
+		if preParse {
+			name = "pre-parsed form"
+		}
+		t.Run(name, func(t *testing.T) {
+			var body bytes.Buffer
+			writer := multipart.NewWriter(&body)
+			require.NoError(t, writer.WriteField("model", "google/gemini-3.1-flash-image"))
+			require.NoError(t, writer.WriteField("prompt", "remove the bird"))
+			part, err := writer.CreateFormFile("image[]", "first.png")
+			require.NoError(t, err)
+			firstImage := []byte("first image")
+			_, err = part.Write(firstImage)
+			require.NoError(t, err)
+			part, err = writer.CreateFormFile("image[]", "second.jpg")
+			require.NoError(t, err)
+			secondImage := []byte("second image")
+			_, err = part.Write(secondImage)
+			require.NoError(t, err)
+			require.NoError(t, writer.Close())
+
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", &body)
+			c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+			if preParse {
+				require.NoError(t, c.Request.ParseMultipartForm(32<<20))
+			}
+
+			converted, err := (&Adaptor{}).ConvertImageRequest(c, &relaycommon.RelayInfo{
+				ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeOpenRouter},
+				RelayMode:   relayconstant.RelayModeImagesEdits,
+			}, dto.ImageRequest{Model: "google/gemini-3.1-flash-image", Prompt: "remove the bird", ResponseFormat: "url"})
+			require.NoError(t, err)
+
+			payload, err := json.Marshal(converted)
+			require.NoError(t, err)
+			require.JSONEq(t, `{
+				"model":"google/gemini-3.1-flash-image",
+				"prompt":"remove the bird",
+				"input_references":[
+					{
+						"type":"image_url",
+						"image_url":{"url":"data:image/png;base64,`+base64.StdEncoding.EncodeToString(firstImage)+`"}
+					},
+					{
+						"type":"image_url",
+						"image_url":{"url":"data:image/jpeg;base64,`+base64.StdEncoding.EncodeToString(secondImage)+`"}
+					}
+				]
+			}`, string(payload))
+			require.Equal(t, "application/json", c.Request.Header.Get("Content-Type"))
+		})
+	}
+}
+
+func TestConvertOpenRouterImageEditRequestMultipartURL(t *testing.T) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	require.NoError(t, writer.WriteField("image", "https://example.com/source.png"))
+	require.NoError(t, writer.Close())
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", &body)
+	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+
+	converted, err := (&Adaptor{}).ConvertImageRequest(c, &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeOpenRouter},
+		RelayMode:   relayconstant.RelayModeImagesEdits,
+	}, dto.ImageRequest{Model: "image-model", Prompt: "edit"})
+	require.NoError(t, err)
+	payload, err := json.Marshal(converted)
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"model":"image-model",
+		"prompt":"edit",
+		"input_references":[{"type":"image_url","image_url":{"url":"https://example.com/source.png"}}]
+	}`, string(payload))
+}
+
+func TestConvertOpenRouterImageEditRequestRejectsMask(t *testing.T) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	imagePart, err := writer.CreateFormFile("image", "input.png")
+	require.NoError(t, err)
+	_, err = imagePart.Write([]byte("image"))
+	require.NoError(t, err)
+	maskPart, err := writer.CreateFormFile("mask", "mask.png")
+	require.NoError(t, err)
+	_, err = maskPart.Write([]byte("mask"))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", &body)
+	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+
+	_, err = (&Adaptor{}).ConvertImageRequest(c, &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeOpenRouter},
+		RelayMode:   relayconstant.RelayModeImagesEdits,
+	}, dto.ImageRequest{})
+	require.Error(t, err)
 }
