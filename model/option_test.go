@@ -1,9 +1,11 @@
 package model
 
 import (
+	"context"
 	"encoding/base64"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting"
@@ -24,6 +26,22 @@ func TestAlipayOptionCryptoRoundTrip(t *testing.T) {
 	decrypted, err := common.DecryptAlipayOptionValue("AlipayPrivateKey", encrypted)
 	require.NoError(t, err)
 	require.Equal(t, plainText, decrypted)
+}
+
+func TestSyncOptionsContextStopsWhenCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		SyncOptionsContext(ctx, 60)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		require.FailNow(t, "option sync did not stop after cancellation")
+	}
 }
 
 func TestAlipayOptionCryptoMissingOptionCryptKey(t *testing.T) {

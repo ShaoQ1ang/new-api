@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	aigcservice "github.com/QuantumNous/new-api/aigc/service"
 	"github.com/QuantumNous/new-api/common"
@@ -161,25 +163,57 @@ func TestControlPricingRouteRejectsIdentityHeaders(t *testing.T) {
 }
 
 func TestControlPricingRouteFailsClosedForInvalidExchangeRate(t *testing.T) {
-	catalog := &pricingCatalogStub{}
-	handler := routesWithPricingDependencies(pricingRouteDependencies{
-		resolveActiveIAMIdentity: func(_ int64, _ int64) (model.IAMIdentityLink, error) {
-			return model.IAMIdentityLink{NewAPIUserID: 37}, nil
-		},
-		getUserGroup:    func(_ int, _ bool) (string, error) { return "default", nil },
-		catalog:         catalog,
-		usdExchangeRate: func() float64 { return 0 },
+	for name, rate := range map[string]float64{
+		"zero": 0, "negative": -1, "nan": math.NaN(), "infinity": math.Inf(1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			catalog := &pricingCatalogStub{}
+			handler := routesWithPricingDependencies(pricingRouteDependencies{
+				resolveActiveIAMIdentity: func(_ int64, _ int64) (model.IAMIdentityLink, error) {
+					return model.IAMIdentityLink{NewAPIUserID: 37}, nil
+				},
+				getUserGroup:    func(_ int, _ bool) (string, error) { return "default", nil },
+				catalog:         catalog,
+				usdExchangeRate: func() float64 { return rate },
+			})
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet,
+				"/internal/v1/aigc/pricing?iam_user_id=23&identity_version=9", nil))
+
+			require.Equal(t, http.StatusInternalServerError, response.Code)
+			var payload controlPricingResponse
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &payload))
+			require.NotNil(t, payload.Error)
+			assert.Equal(t, "PRICING_UNAVAILABLE", payload.Error.Code)
+		})
+	}
+}
+
+func TestControlOptionSyncUsesConfiguredFrequencyAndStops(t *testing.T) {
+	originalFrequency := common.SyncFrequency
+	common.SyncFrequency = 17
+	t.Cleanup(func() { common.SyncFrequency = originalFrequency })
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	started := make(chan int, 1)
+	done := startControlOptionSync(ctx, func(ctx context.Context, frequency int) {
+		started <- frequency
+		<-ctx.Done()
 	})
-	response := httptest.NewRecorder()
 
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet,
-		"/internal/v1/aigc/pricing?iam_user_id=23&identity_version=9", nil))
-
-	require.Equal(t, http.StatusInternalServerError, response.Code)
-	var payload controlPricingResponse
-	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &payload))
-	require.NotNil(t, payload.Error)
-	assert.Equal(t, "PRICING_UNAVAILABLE", payload.Error.Code)
+	select {
+	case frequency := <-started:
+		assert.Equal(t, 17, frequency)
+	case <-time.After(time.Second):
+		require.FailNow(t, "option sync did not start")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		require.FailNow(t, "option sync did not stop")
+	}
 }
 
 func TestControlPricingRouteReturnsCatalogFailureWithoutDetails(t *testing.T) {

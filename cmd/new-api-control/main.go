@@ -123,6 +123,12 @@ func run(ctx context.Context) error {
 	}
 	defer model.CloseDB()
 	model.InitOptionMap()
+	optionSyncContext, stopOptionSync := context.WithCancel(ctx)
+	optionSyncDone := startControlOptionSync(optionSyncContext, model.SyncOptionsContext)
+	defer func() {
+		stopOptionSync()
+		<-optionSyncDone
+	}()
 	if err := common.InitRedisClient(); err != nil {
 		return fmt.Errorf("initialize Redis: %w", err)
 	}
@@ -156,6 +162,15 @@ func run(ctx context.Context) error {
 	case err := <-errChannel:
 		return err
 	}
+}
+
+func startControlOptionSync(ctx context.Context, syncOptions func(context.Context, int)) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		syncOptions(ctx, common.SyncFrequency)
+	}()
+	return done
 }
 
 func loadConfig() (config, error) {

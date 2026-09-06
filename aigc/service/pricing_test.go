@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	"github.com/QuantumNous/new-api/aigc/entity"
@@ -102,14 +103,20 @@ func TestPricingServiceUsesConfiguredQuotaPerUnitForTokenPrices(t *testing.T) {
 	assert.Equal(t, "8.000000", document.Models[0].Routes[0].OutputPricePerMillionTokens)
 }
 
-func TestPricingServiceRejectsNonPositiveQuotaPerUnit(t *testing.T) {
-	originalQuotaPerUnit := common.QuotaPerUnit
-	common.QuotaPerUnit = 0
-	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+func TestPricingServiceRejectsInvalidQuotaPerUnit(t *testing.T) {
+	for name, value := range map[string]float64{
+		"zero": 0, "negative": -1, "nan": math.NaN(), "infinity": math.Inf(1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			originalQuotaPerUnit := common.QuotaPerUnit
+			common.QuotaPerUnit = value
+			t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
 
-	_, err := NewPricingService(nil, nil, nil).List(context.Background(), "default")
+			_, err := NewPricingService(nil, nil, nil).List(context.Background(), "default")
 
-	require.EqualError(t, err, "quota per unit must be positive and finite")
+			require.EqualError(t, err, "quota per unit must be positive and finite")
+		})
+	}
 }
 
 func TestPricingServiceAppliesEffectiveGroupRatioOnce(t *testing.T) {
@@ -122,24 +129,111 @@ func TestPricingServiceAppliesEffectiveGroupRatioOnce(t *testing.T) {
 		require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(originalGroupGroupRatios))
 	})
 
-	profile := validTextProfile(entity.ModelStatusPublished)
-	profile.GroupsJSON = `["vip"]`
+	textProfile := validTextProfile(entity.ModelStatusPublished)
+	textProfile.GroupsJSON = `["vip"]`
+	profiles := map[string]*entity.ModelProfile{
+		textProfile.PublicModelID: textProfile,
+		"image-generation": {
+			PublicModelID: "image-generation", DisplayName: "Image Generation", ModelType: "image",
+			Status: entity.ModelStatusPublished, GroupsJSON: `["vip"]`, ConfigVersion: 1,
+			ConfigJSON: `{"image":{"adapter":"openai-image","modes":{"text_to_image":{"upstream_model_id":"image-generation-upstream","output":{"sizes":["1024x1024"],"counts":[1],"default_size":"1024x1024","default_count":1}}}}}`,
+		},
+		"image-resolution": {
+			PublicModelID: "image-resolution", DisplayName: "Image Resolution", ModelType: "image",
+			Status: entity.ModelStatusPublished, GroupsJSON: `["vip"]`, ConfigVersion: 1,
+			ConfigJSON: `{"image":{"adapter":"openai-image","modes":{"text_to_image":{"upstream_model_id":"image-resolution-upstream","output":{"sizes":["1024x1024"],"counts":[1],"default_size":"1024x1024","default_count":1}}}}}`,
+		},
+		"video": {
+			PublicModelID: "video", DisplayName: "Video", ModelType: "video",
+			Status: entity.ModelStatusPublished, GroupsJSON: `["vip"]`, ConfigVersion: 1,
+			ConfigJSON: `{"video":{"adapter":"openrouter-video","task_protocol":"newapi-video","modes":{"text_to_video":{"upstream_model_id":"video-upstream"}},"output_specs":[{"id":"base","modes":["text_to_video"],"resolutions":["720p"],"aspect_ratios":["16:9"],"durations":[5],"generate_audio":{"supported":false,"default":false}}]}}`,
+		},
+	}
 	service := NewPricingService(
-		&profileStoreStub{profiles: map[string]*entity.ModelProfile{profile.PublicModelID: profile}},
-		availabilityStub{byGroup: map[string]map[string]bool{"vip": {"gpt-5": true}}},
-		pricingSourceStub{items: []model.Pricing{{
-			ModelName: "gpt-5", QuotaType: 0, ModelRatio: 0.5, CompletionRatio: 4,
+		&profileStoreStub{profiles: profiles},
+		availabilityStub{byGroup: map[string]map[string]bool{"vip": {
+			"gpt-5": true, "image-generation-upstream": true,
+			"image-resolution-upstream": true, "video-upstream": true,
 		}}},
+		pricingSourceStub{items: []model.Pricing{
+			{ModelName: "gpt-5", QuotaType: 0, ModelRatio: 0.5, CompletionRatio: 4},
+			{ModelName: "image-generation-upstream", QuotaType: 1, ModelPrice: 0.2},
+			{ModelName: "image-resolution-upstream", QuotaType: 1, ImageResolutionPrice: map[string]float64{"1k": 0.4}},
+			{ModelName: "video-upstream", QuotaType: 1, VideoSecondsPrice: map[string]map[string]float64{"720p": {"default": 0.5}}},
+		}},
 	)
 
 	document, err := service.List(context.Background(), "vip")
 
 	require.NoError(t, err)
 	assert.Equal(t, "1.500000", document.EffectiveGroupRatio)
-	require.Len(t, document.Models, 1)
-	require.Len(t, document.Models[0].Routes, 1)
-	assert.Equal(t, "1.500000", document.Models[0].Routes[0].InputPricePerMillionTokens)
-	assert.Equal(t, "6.000000", document.Models[0].Routes[0].OutputPricePerMillionTokens)
+	require.Len(t, document.Models, 4)
+	byID := make(map[string]PublicModelPricing, len(document.Models))
+	for _, item := range document.Models {
+		byID[item.ModelID] = item
+	}
+	imageGeneration, exists := byID["image-generation"]
+	require.True(t, exists)
+	require.Len(t, imageGeneration.Routes, 1)
+	assert.Equal(t, "0.300000", imageGeneration.Routes[0].GenerationPrice)
+	imageResolution, exists := byID["image-resolution"]
+	require.True(t, exists)
+	require.Len(t, imageResolution.Routes, 1)
+	assert.Equal(t, "0.600000", imageResolution.Routes[0].ImageResolutionPrice["1k"])
+	video, exists := byID["video"]
+	require.True(t, exists)
+	require.Len(t, video.Routes, 1)
+	assert.Equal(t, "0.750000", video.Routes[0].VideoSecondsPrice["720p"]["default"])
+	text, exists := byID["writer-pro"]
+	require.True(t, exists)
+	require.Len(t, text.Routes, 1)
+	assert.Equal(t, "1.500000", text.Routes[0].InputPricePerMillionTokens)
+	assert.Equal(t, "6.000000", text.Routes[0].OutputPricePerMillionTokens)
+}
+
+func TestPricingServiceRejectsInvalidPublishedPrices(t *testing.T) {
+	tests := []struct {
+		name    string
+		profile *entity.ModelProfile
+		price   model.Pricing
+	}{
+		{name: "generation NaN", profile: pricingImageProfile("invalid-generation"), price: model.Pricing{ModelName: "invalid-generation", QuotaType: 1, ModelPrice: math.NaN()}},
+		{name: "image infinity", profile: pricingImageProfile("invalid-image"), price: model.Pricing{ModelName: "invalid-image", QuotaType: 1, ImageResolutionPrice: map[string]float64{"1k": math.Inf(1)}}},
+		{name: "video NaN", profile: pricingVideoProfile("invalid-video"), price: model.Pricing{ModelName: "invalid-video", QuotaType: 1, VideoSecondsPrice: map[string]map[string]float64{"720p": {"default": math.NaN()}}}},
+		{name: "input ratio infinity", profile: validTextProfile(entity.ModelStatusPublished), price: model.Pricing{ModelName: "gpt-5", ModelRatio: math.Inf(1), CompletionRatio: 1}},
+		{name: "completion ratio NaN", profile: validTextProfile(entity.ModelStatusPublished), price: model.Pricing{ModelName: "gpt-5", ModelRatio: 1, CompletionRatio: math.NaN()}},
+		{name: "negative generation", profile: pricingImageProfile("negative-generation"), price: model.Pricing{ModelName: "negative-generation", QuotaType: 1, ModelPrice: -1}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			upstreamID := test.price.ModelName
+			service := NewPricingService(
+				&profileStoreStub{profiles: map[string]*entity.ModelProfile{test.profile.PublicModelID: test.profile}},
+				availabilityStub{byGroup: map[string]map[string]bool{"default": {upstreamID: true}}},
+				pricingSourceStub{items: []model.Pricing{test.price}},
+			)
+
+			_, err := service.List(context.Background(), "default")
+
+			require.ErrorContains(t, err, "project pricing")
+		})
+	}
+}
+
+func pricingImageProfile(upstreamID string) *entity.ModelProfile {
+	return &entity.ModelProfile{
+		PublicModelID: "image-" + upstreamID, DisplayName: "Image", ModelType: "image",
+		Status: entity.ModelStatusPublished, GroupsJSON: `[]`, ConfigVersion: 1,
+		ConfigJSON: `{"image":{"adapter":"openai-image","modes":{"text_to_image":{"upstream_model_id":"` + upstreamID + `","output":{"sizes":["1024x1024"],"counts":[1],"default_size":"1024x1024","default_count":1}}}}}`,
+	}
+}
+
+func pricingVideoProfile(upstreamID string) *entity.ModelProfile {
+	return &entity.ModelProfile{
+		PublicModelID: "video-" + upstreamID, DisplayName: "Video", ModelType: "video",
+		Status: entity.ModelStatusPublished, GroupsJSON: `[]`, ConfigVersion: 1,
+		ConfigJSON: `{"video":{"adapter":"openrouter-video","task_protocol":"newapi-video","modes":{"text_to_video":{"upstream_model_id":"` + upstreamID + `"}},"output_specs":[{"id":"base","modes":["text_to_video"],"resolutions":["720p"],"aspect_ratios":["16:9"],"durations":[5],"generate_audio":{"supported":false,"default":false}}]}}`,
+	}
 }
 
 func TestPricingServiceOmitsProfilesAndRoutesUnavailableToGroup(t *testing.T) {

@@ -60,7 +60,8 @@ func NewPricingService(profiles ProfileStore, availability Availability, source 
 }
 
 func (service *PricingService) List(ctx context.Context, group string) (PublicPricingDocument, error) {
-	if common.QuotaPerUnit <= 0 || math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) {
+	quotaPerUnit := common.QuotaPerUnit
+	if quotaPerUnit <= 0 || math.IsNaN(quotaPerUnit) || math.IsInf(quotaPerUnit, 0) {
 		return PublicPricingDocument{}, errors.New("quota per unit must be positive and finite")
 	}
 	profiles, err := service.profiles.ListPublishedProfiles(ctx, "")
@@ -72,8 +73,11 @@ func (service *PricingService) List(ctx context.Context, group string) (PublicPr
 		prices[strings.TrimSpace(price.ModelName)] = price
 	}
 	ratio := effectivePricingGroupRatio(group)
+	if !validPricingNumber(ratio) {
+		return PublicPricingDocument{}, errors.New("effective group ratio must be non-negative and finite")
+	}
 	document := PublicPricingDocument{
-		Currency: "USD", QuotaPerUnit: decimalString(common.QuotaPerUnit), UserGroup: group,
+		Currency: "USD", QuotaPerUnit: decimalString(quotaPerUnit), UserGroup: group,
 		EffectiveGroupRatio: decimalString(ratio), Models: make([]PublicModelPricing, 0, len(profiles)),
 	}
 	for _, profile := range profiles {
@@ -92,7 +96,10 @@ func (service *PricingService) List(ctx context.Context, group string) (PublicPr
 		if availabilityErr != nil {
 			return PublicPricingDocument{}, availabilityErr
 		}
-		routes := pricingRoutes(capability.ModelType(profile.ModelType), config, available, prices, ratio)
+		routes, routeErr := pricingRoutes(capability.ModelType(profile.ModelType), config, available, prices, ratio, quotaPerUnit)
+		if routeErr != nil {
+			return PublicPricingDocument{}, fmt.Errorf("project pricing for model %s: %w", profile.PublicModelID, routeErr)
+		}
 		if len(routes) == 0 {
 			continue
 		}
@@ -120,25 +127,33 @@ func pricingRouteSortKey(route PublicPricingRoute) string {
 	return route.Mode + "|" + strings.Join(route.Resolutions, ",") + "|" + strings.Join(route.AspectRatios, ",") + "|" + fmt.Sprint(route.Durations)
 }
 
-func pricingRoutes(modelType capability.ModelType, config capability.Config, available map[string]bool, prices map[string]model.Pricing, ratio float64) []PublicPricingRoute {
+func pricingRoutes(modelType capability.ModelType, config capability.Config, available map[string]bool, prices map[string]model.Pricing, ratio, quotaPerUnit float64) ([]PublicPricingRoute, error) {
 	result := make([]PublicPricingRoute, 0)
-	appendRoute := func(mode, upstreamID string, resolutions, aspectRatios []string, durations []int) {
+	appendRoute := func(mode, upstreamID string, resolutions, aspectRatios []string, durations []int) error {
 		upstreamID = strings.TrimSpace(upstreamID)
 		if upstreamID == "" || !available[upstreamID] {
-			return
+			return nil
 		}
 		price, configured := prices[upstreamID]
-		route := projectPricingRoute(string(modelType), mode, resolutions, price, configured, ratio)
+		route, err := projectPricingRoute(string(modelType), mode, resolutions, price, configured, ratio, quotaPerUnit)
+		if err != nil {
+			return fmt.Errorf("route %s: %w", mode, err)
+		}
 		route.AspectRatios = sortedUnique(aspectRatios)
 		route.Durations = sortedUniqueInts(durations)
 		result = append(result, route)
+		return nil
 	}
 	switch modelType {
 	case capability.ModelTypeText:
-		appendRoute("text", config.Text.UpstreamModelID, nil, nil, nil)
+		if err := appendRoute("text", config.Text.UpstreamModelID, nil, nil, nil); err != nil {
+			return nil, err
+		}
 	case capability.ModelTypeImage:
 		for mode, item := range config.Image.Modes {
-			appendRoute(mode, item.UpstreamModelID, item.Output.Sizes, nil, nil)
+			if err := appendRoute(mode, item.UpstreamModelID, item.Output.Sizes, nil, nil); err != nil {
+				return nil, err
+			}
 		}
 	case capability.ModelTypeVideo:
 		for _, output := range config.Video.OutputSpecs {
@@ -151,21 +166,28 @@ func pricingRoutes(modelType capability.ModelType, config capability.Config, ava
 				if output.Target != nil && strings.TrimSpace(output.Target.UpstreamModelID) != "" {
 					upstreamID = output.Target.UpstreamModelID
 				}
-				appendRoute(mode, upstreamID, output.Resolutions, output.AspectRatios, output.Durations)
+				if err := appendRoute(mode, upstreamID, output.Resolutions, output.AspectRatios, output.Durations); err != nil {
+					return nil, err
+				}
 			}
 		}
 	case capability.ModelTypeMusic:
 		for mode, item := range config.Music.Modes {
-			appendRoute(mode, item.UpstreamModelID, nil, nil, nil)
+			if err := appendRoute(mode, item.UpstreamModelID, nil, nil, nil); err != nil {
+				return nil, err
+			}
 		}
 	}
-	return result
+	return result, nil
 }
 
-func projectPricingRoute(modelType, mode string, resolutions []string, price model.Pricing, configured bool, ratio float64) PublicPricingRoute {
+func projectPricingRoute(modelType, mode string, resolutions []string, price model.Pricing, configured bool, ratio, quotaPerUnit float64) (PublicPricingRoute, error) {
 	route := PublicPricingRoute{Mode: mode, Resolutions: sortedUnique(resolutions), BillingUnit: "unconfigured"}
 	if !configured {
-		return route
+		return route, nil
+	}
+	if !validPricingNumber(ratio) {
+		return PublicPricingRoute{}, errors.New("effective group ratio must be non-negative and finite")
 	}
 	if modelType == string(capability.ModelTypeImage) && len(price.ImageResolutionPrice) > 0 {
 		allowed := make(map[string]bool)
@@ -174,10 +196,14 @@ func projectPricingRoute(modelType, mode string, resolutions []string, price mod
 				allowed[tier] = true
 			}
 		}
-		route.ImageResolutionPrice = scaledPriceMap(price.ImageResolutionPrice, allowed, ratio)
+		var err error
+		route.ImageResolutionPrice, err = scaledPriceMap(price.ImageResolutionPrice, allowed, ratio)
+		if err != nil {
+			return PublicPricingRoute{}, err
+		}
 		if len(route.ImageResolutionPrice) > 0 {
 			route.BillingUnit = "image"
-			return route
+			return route, nil
 		}
 	}
 	if modelType == string(capability.ModelTypeVideo) && len(price.VideoSecondsPrice) > 0 {
@@ -185,29 +211,42 @@ func projectPricingRoute(modelType, mode string, resolutions []string, price mod
 		for _, resolution := range resolutions {
 			allowed[strings.ToLower(strings.TrimSpace(resolution))] = true
 		}
-		route.VideoSecondsPrice = scaledNestedPriceMap(price.VideoSecondsPrice, allowed, ratio)
+		var err error
+		route.VideoSecondsPrice, err = scaledNestedPriceMap(price.VideoSecondsPrice, allowed, ratio)
+		if err != nil {
+			return PublicPricingRoute{}, err
+		}
 		if len(route.VideoSecondsPrice) > 0 {
 			route.BillingUnit = "second"
-			return route
+			return route, nil
 		}
 	}
 	if price.QuotaType == 1 {
+		if !validPricingNumber(price.ModelPrice) {
+			return PublicPricingRoute{}, errors.New("generation price must be non-negative and finite")
+		}
 		route.BillingUnit = "generation"
 		route.GenerationPrice = scaledDecimalString(price.ModelPrice, ratio)
-		return route
+		return route, nil
 	}
 	if modelType == string(capability.ModelTypeText) {
+		if !validPricingNumber(price.ModelRatio) || !validPricingNumber(price.CompletionRatio) {
+			return PublicPricingRoute{}, errors.New("token price ratios must be non-negative and finite")
+		}
+		if quotaPerUnit <= 0 || math.IsNaN(quotaPerUnit) || math.IsInf(quotaPerUnit, 0) {
+			return PublicPricingRoute{}, errors.New("quota per unit must be positive and finite")
+		}
 		route.BillingUnit = "token"
 		inputPrice := decimal.NewFromFloat(price.ModelRatio).
 			Mul(decimal.NewFromInt(1_000_000)).
-			Div(decimal.NewFromFloat(common.QuotaPerUnit)).
+			Div(decimal.NewFromFloat(quotaPerUnit)).
 			Mul(decimal.NewFromFloat(ratio))
 		route.InputPricePerMillionTokens = inputPrice.StringFixed(6)
 		route.OutputPricePerMillionTokens = inputPrice.Mul(decimal.NewFromFloat(price.CompletionRatio)).StringFixed(6)
-		return route
+		return route, nil
 	}
 	route.BillingUnit = "dynamic"
-	return route
+	return route, nil
 }
 
 func effectivePricingGroupRatio(group string) float64 {
@@ -217,34 +256,40 @@ func effectivePricingGroupRatio(group string) float64 {
 	return ratio_setting.GetGroupRatio(group)
 }
 
-func scaledPriceMap(source map[string]float64, allowed map[string]bool, ratio float64) map[string]string {
+func scaledPriceMap(source map[string]float64, allowed map[string]bool, ratio float64) (map[string]string, error) {
 	result := make(map[string]string)
 	for key, value := range source {
+		if !validPricingNumber(value) {
+			return nil, fmt.Errorf("image resolution price %q must be non-negative and finite", key)
+		}
 		normalized := strings.ToLower(strings.TrimSpace(key))
 		if len(allowed) > 0 && !allowed[normalized] {
 			continue
 		}
 		result[normalized] = scaledDecimalString(value, ratio)
 	}
-	return result
+	return result, nil
 }
 
-func scaledNestedPriceMap(source map[string]map[string]float64, allowed map[string]bool, ratio float64) map[string]map[string]string {
+func scaledNestedPriceMap(source map[string]map[string]float64, allowed map[string]bool, ratio float64) (map[string]map[string]string, error) {
 	result := make(map[string]map[string]string)
 	for key, variants := range source {
+		converted := make(map[string]string, len(variants))
+		for variant, value := range variants {
+			if !validPricingNumber(value) {
+				return nil, fmt.Errorf("video seconds price %q/%q must be non-negative and finite", key, variant)
+			}
+			converted[strings.ToLower(strings.TrimSpace(variant))] = scaledDecimalString(value, ratio)
+		}
 		normalized := strings.ToLower(strings.TrimSpace(key))
 		if len(allowed) > 0 && !allowed[normalized] {
 			continue
-		}
-		converted := make(map[string]string, len(variants))
-		for variant, value := range variants {
-			converted[strings.ToLower(strings.TrimSpace(variant))] = scaledDecimalString(value, ratio)
 		}
 		if len(converted) > 0 {
 			result[normalized] = converted
 		}
 	}
-	return result
+	return result, nil
 }
 
 func sortedUnique(values []string) []string {
@@ -279,4 +324,8 @@ func scaledDecimalString(value, ratio float64) string {
 
 func decimalString(value float64) string {
 	return decimal.NewFromFloat(value).StringFixed(6)
+}
+
+func validPricingNumber(value float64) bool {
+	return value >= 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
 }
