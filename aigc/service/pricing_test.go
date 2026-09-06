@@ -67,12 +67,12 @@ func TestPricingServiceProjectsPublishedRoutesByPublicModel(t *testing.T) {
 	assert.Equal(t, "second", byID["happyhorse-1.1"].Routes[0].BillingUnit)
 	assert.Equal(t, []string{"16:9"}, byID["happyhorse-1.1"].Routes[0].AspectRatios)
 	assert.Equal(t, []int{5}, byID["happyhorse-1.1"].Routes[0].Durations)
-	assert.Equal(t, "0.200000", byID["happyhorse-1.1"].Routes[0].VideoSecondsPrice["1080p"]["default"])
+	assert.Equal(t, "0.2", byID["happyhorse-1.1"].Routes[0].VideoSecondsPrice["1080p"]["default"])
 	assert.Equal(t, "generation", byID["image-fixed"].Routes[0].BillingUnit)
-	assert.Equal(t, "0.050000", byID["image-fixed"].Routes[0].GenerationPrice)
+	assert.Equal(t, "0.05", byID["image-fixed"].Routes[0].GenerationPrice)
 	assert.Equal(t, "token", byID["writer"].Routes[0].BillingUnit)
-	assert.Equal(t, "1.000000", byID["writer"].Routes[0].InputPricePerMillionTokens)
-	assert.Equal(t, "4.000000", byID["writer"].Routes[0].OutputPricePerMillionTokens)
+	assert.Equal(t, "1", byID["writer"].Routes[0].InputPricePerMillionTokens)
+	assert.Equal(t, "4", byID["writer"].Routes[0].OutputPricePerMillionTokens)
 	assert.Equal(t, "dynamic", byID["wan-public"].Routes[0].BillingUnit)
 
 	repeated, err := service.List(context.Background(), "default")
@@ -99,8 +99,47 @@ func TestPricingServiceUsesConfiguredQuotaPerUnitForTokenPrices(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, document.Models, 1)
 	require.Len(t, document.Models[0].Routes, 1)
-	assert.Equal(t, "2.000000", document.Models[0].Routes[0].InputPricePerMillionTokens)
-	assert.Equal(t, "8.000000", document.Models[0].Routes[0].OutputPricePerMillionTokens)
+	assert.Equal(t, "2", document.Models[0].Routes[0].InputPricePerMillionTokens)
+	assert.Equal(t, "8", document.Models[0].Routes[0].OutputPricePerMillionTokens)
+}
+
+func TestPricingServicePreservesPrecisionBeforeWalletConversion(t *testing.T) {
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 333_333
+	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+
+	textProfile := validTextProfile(entity.ModelStatusPublished)
+	imageProfile := pricingImageProfile("precise-image")
+	service := NewPricingService(
+		&profileStoreStub{profiles: map[string]*entity.ModelProfile{
+			textProfile.PublicModelID:  textProfile,
+			imageProfile.PublicModelID: imageProfile,
+		}},
+		availabilityStub{byGroup: map[string]map[string]bool{"default": {
+			"gpt-5": true, "precise-image": true,
+		}}},
+		pricingSourceStub{items: []model.Pricing{
+			{ModelName: "gpt-5", QuotaType: 0, ModelRatio: 0.5, CompletionRatio: 1},
+			{ModelName: "precise-image", QuotaType: 1, ModelPrice: 0.00000049},
+		}},
+	)
+
+	document, err := service.List(context.Background(), "default")
+
+	require.NoError(t, err)
+	byID := make(map[string]PublicModelPricing, len(document.Models))
+	for _, item := range document.Models {
+		byID[item.ModelID] = item
+	}
+	textPricing, exists := byID[textProfile.PublicModelID]
+	require.True(t, exists)
+	require.Len(t, textPricing.Routes, 1)
+	imagePricing, exists := byID[imageProfile.PublicModelID]
+	require.True(t, exists)
+	require.Len(t, imagePricing.Routes, 1)
+	assert.Equal(t, "333333", document.QuotaPerUnit)
+	assert.Equal(t, "1.500001500001500001500002", textPricing.Routes[0].InputPricePerMillionTokens)
+	assert.Equal(t, "0.00000049", imagePricing.Routes[0].GenerationPrice)
 }
 
 func TestPricingServiceRejectsInvalidQuotaPerUnit(t *testing.T) {
@@ -166,7 +205,7 @@ func TestPricingServiceAppliesEffectiveGroupRatioOnce(t *testing.T) {
 	document, err := service.List(context.Background(), "vip")
 
 	require.NoError(t, err)
-	assert.Equal(t, "1.500000", document.EffectiveGroupRatio)
+	assert.Equal(t, "1.5", document.EffectiveGroupRatio)
 	require.Len(t, document.Models, 4)
 	byID := make(map[string]PublicModelPricing, len(document.Models))
 	for _, item := range document.Models {
@@ -175,20 +214,40 @@ func TestPricingServiceAppliesEffectiveGroupRatioOnce(t *testing.T) {
 	imageGeneration, exists := byID["image-generation"]
 	require.True(t, exists)
 	require.Len(t, imageGeneration.Routes, 1)
-	assert.Equal(t, "0.300000", imageGeneration.Routes[0].GenerationPrice)
+	assert.Equal(t, "0.3", imageGeneration.Routes[0].GenerationPrice)
 	imageResolution, exists := byID["image-resolution"]
 	require.True(t, exists)
 	require.Len(t, imageResolution.Routes, 1)
-	assert.Equal(t, "0.600000", imageResolution.Routes[0].ImageResolutionPrice["1k"])
+	assert.Equal(t, "0.6", imageResolution.Routes[0].ImageResolutionPrice["1k"])
 	video, exists := byID["video"]
 	require.True(t, exists)
 	require.Len(t, video.Routes, 1)
-	assert.Equal(t, "0.750000", video.Routes[0].VideoSecondsPrice["720p"]["default"])
+	assert.Equal(t, "0.75", video.Routes[0].VideoSecondsPrice["720p"]["default"])
 	text, exists := byID["writer-pro"]
 	require.True(t, exists)
 	require.Len(t, text.Routes, 1)
-	assert.Equal(t, "1.500000", text.Routes[0].InputPricePerMillionTokens)
-	assert.Equal(t, "6.000000", text.Routes[0].OutputPricePerMillionTokens)
+	assert.Equal(t, "1.5", text.Routes[0].InputPricePerMillionTokens)
+	assert.Equal(t, "6", text.Routes[0].OutputPricePerMillionTokens)
+}
+
+func TestScaledNestedPriceMapRejectsNormalizedKeyCollisions(t *testing.T) {
+	tests := []struct {
+		name   string
+		prices map[string]map[string]float64
+	}{
+		{name: "resolution", prices: map[string]map[string]float64{
+			"720p": {"default": 0.1}, " 720P ": {"silent": 0.2},
+		}},
+		{name: "variant", prices: map[string]map[string]float64{
+			"720p": {"default": 0.1, " DEFAULT ": 0.2},
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := scaledNestedPriceMap(test.prices, nil, 1)
+			require.ErrorContains(t, err, "duplicated after normalization")
+		})
+	}
 }
 
 func TestPricingServiceRejectsInvalidPublishedPrices(t *testing.T) {

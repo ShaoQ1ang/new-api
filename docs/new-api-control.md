@@ -84,7 +84,9 @@ group. The response `data` is the USD pricing document (`pricing_version`,
 `currency`, `quota_per_unit`, `user_group`, `effective_group_ratio`, and
 `models`) plus `usd_to_cny_rate`, a canonical decimal string from the current
 operation setting. Every route price already includes the effective group
-ratio and must not be multiplied by that ratio again downstream.
+ratio and must not be multiplied by that ratio again downstream. Price strings
+are canonical decimals and are not rounded to a presentation scale before
+Wallet performs its micro-CNY conversion.
 `new-api-control` reloads database-backed options at `SYNC_FREQUENCY`, matching
 the main process, so exchange rate, quota unit, group ratio, and model pricing
 changes become visible without restarting the control process. The reload loop

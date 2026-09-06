@@ -21,6 +21,9 @@ type PricingSource interface {
 	Pricing() []model.Pricing
 }
 
+// pricingDivisionPrecision keeps token prices well below Wallet's micro-CNY rounding boundary.
+const pricingDivisionPrecision int32 = 24
+
 type PricingService struct {
 	profiles     ProfileStore
 	availability Availability
@@ -237,12 +240,15 @@ func projectPricingRoute(modelType, mode string, resolutions []string, price mod
 			return PublicPricingRoute{}, errors.New("quota per unit must be positive and finite")
 		}
 		route.BillingUnit = "token"
-		inputPrice := decimal.NewFromFloat(price.ModelRatio).
+		inputNumerator := decimal.NewFromFloat(price.ModelRatio).
 			Mul(decimal.NewFromInt(1_000_000)).
-			Div(decimal.NewFromFloat(quotaPerUnit)).
 			Mul(decimal.NewFromFloat(ratio))
-		route.InputPricePerMillionTokens = inputPrice.StringFixed(6)
-		route.OutputPricePerMillionTokens = inputPrice.Mul(decimal.NewFromFloat(price.CompletionRatio)).StringFixed(6)
+		quotaUnit := decimal.NewFromFloat(quotaPerUnit)
+		inputPrice := inputNumerator.DivRound(quotaUnit, pricingDivisionPrecision)
+		outputPrice := inputNumerator.Mul(decimal.NewFromFloat(price.CompletionRatio)).
+			DivRound(quotaUnit, pricingDivisionPrecision)
+		route.InputPricePerMillionTokens = inputPrice.String()
+		route.OutputPricePerMillionTokens = outputPrice.String()
 		return route, nil
 	}
 	route.BillingUnit = "dynamic"
@@ -273,15 +279,30 @@ func scaledPriceMap(source map[string]float64, allowed map[string]bool, ratio fl
 
 func scaledNestedPriceMap(source map[string]map[string]float64, allowed map[string]bool, ratio float64) (map[string]map[string]string, error) {
 	result := make(map[string]map[string]string)
+	seenResolutions := make(map[string]struct{}, len(source))
 	for key, variants := range source {
+		normalized := strings.ToLower(strings.TrimSpace(key))
+		if normalized == "" {
+			return nil, errors.New("video seconds price contains an empty resolution")
+		}
+		if _, exists := seenResolutions[normalized]; exists {
+			return nil, fmt.Errorf("video seconds price resolution %q is duplicated after normalization", key)
+		}
+		seenResolutions[normalized] = struct{}{}
 		converted := make(map[string]string, len(variants))
 		for variant, value := range variants {
 			if !validPricingNumber(value) {
 				return nil, fmt.Errorf("video seconds price %q/%q must be non-negative and finite", key, variant)
 			}
-			converted[strings.ToLower(strings.TrimSpace(variant))] = scaledDecimalString(value, ratio)
+			normalizedVariant := strings.ToLower(strings.TrimSpace(variant))
+			if normalizedVariant == "" {
+				return nil, fmt.Errorf("video seconds price %q contains an empty variant", key)
+			}
+			if _, exists := converted[normalizedVariant]; exists {
+				return nil, fmt.Errorf("video seconds price variant %q/%q is duplicated after normalization", key, variant)
+			}
+			converted[normalizedVariant] = scaledDecimalString(value, ratio)
 		}
-		normalized := strings.ToLower(strings.TrimSpace(key))
 		if len(allowed) > 0 && !allowed[normalized] {
 			continue
 		}
@@ -319,11 +340,11 @@ func sortedUniqueInts(values []int) []int {
 }
 
 func scaledDecimalString(value, ratio float64) string {
-	return decimal.NewFromFloat(value).Mul(decimal.NewFromFloat(ratio)).StringFixed(6)
+	return decimal.NewFromFloat(value).Mul(decimal.NewFromFloat(ratio)).String()
 }
 
 func decimalString(value float64) string {
-	return decimal.NewFromFloat(value).StringFixed(6)
+	return decimal.NewFromFloat(value).String()
 }
 
 func validPricingNumber(value float64) bool {
