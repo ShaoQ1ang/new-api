@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -58,6 +60,9 @@ func NewPricingService(profiles ProfileStore, availability Availability, source 
 }
 
 func (service *PricingService) List(ctx context.Context, group string) (PublicPricingDocument, error) {
+	if common.QuotaPerUnit <= 0 || math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) {
+		return PublicPricingDocument{}, errors.New("quota per unit must be positive and finite")
+	}
 	profiles, err := service.profiles.ListPublishedProfiles(ctx, "")
 	if err != nil {
 		return PublicPricingDocument{}, err
@@ -193,7 +198,10 @@ func projectPricingRoute(modelType, mode string, resolutions []string, price mod
 	}
 	if modelType == string(capability.ModelTypeText) {
 		route.BillingUnit = "token"
-		inputPrice := decimal.NewFromFloat(price.ModelRatio).Mul(decimal.NewFromInt(2)).Mul(decimal.NewFromFloat(ratio))
+		inputPrice := decimal.NewFromFloat(price.ModelRatio).
+			Mul(decimal.NewFromInt(1_000_000)).
+			Div(decimal.NewFromFloat(common.QuotaPerUnit)).
+			Mul(decimal.NewFromFloat(ratio))
 		route.InputPricePerMillionTokens = inputPrice.StringFixed(6)
 		route.OutputPricePerMillionTokens = inputPrice.Mul(decimal.NewFromFloat(price.CompletionRatio)).StringFixed(6)
 		return route

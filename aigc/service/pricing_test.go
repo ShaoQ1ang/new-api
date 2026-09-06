@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/aigc/entity"
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -75,6 +76,39 @@ func TestPricingServiceProjectsPublishedRoutesByPublicModel(t *testing.T) {
 	repeated, err := service.List(context.Background(), "default")
 	require.NoError(t, err)
 	assert.Equal(t, document.PricingVersion, repeated.PricingVersion)
+}
+
+func TestPricingServiceUsesConfiguredQuotaPerUnitForTokenPrices(t *testing.T) {
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 250_000
+	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+
+	profile := validTextProfile(entity.ModelStatusPublished)
+	service := NewPricingService(
+		&profileStoreStub{profiles: map[string]*entity.ModelProfile{profile.PublicModelID: profile}},
+		availabilityStub{byGroup: map[string]map[string]bool{"default": {"gpt-5": true}}},
+		pricingSourceStub{items: []model.Pricing{{
+			ModelName: "gpt-5", QuotaType: 0, ModelRatio: 0.5, CompletionRatio: 4,
+		}}},
+	)
+
+	document, err := service.List(context.Background(), "default")
+
+	require.NoError(t, err)
+	require.Len(t, document.Models, 1)
+	require.Len(t, document.Models[0].Routes, 1)
+	assert.Equal(t, "2.000000", document.Models[0].Routes[0].InputPricePerMillionTokens)
+	assert.Equal(t, "8.000000", document.Models[0].Routes[0].OutputPricePerMillionTokens)
+}
+
+func TestPricingServiceRejectsNonPositiveQuotaPerUnit(t *testing.T) {
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 0
+	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+
+	_, err := NewPricingService(nil, nil, nil).List(context.Background(), "default")
+
+	require.EqualError(t, err, "quota per unit must be positive and finite")
 }
 
 func TestPricingServiceOmitsProfilesAndRoutesUnavailableToGroup(t *testing.T) {
