@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/aigc/entity"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -109,6 +110,36 @@ func TestPricingServiceRejectsNonPositiveQuotaPerUnit(t *testing.T) {
 	_, err := NewPricingService(nil, nil, nil).List(context.Background(), "default")
 
 	require.EqualError(t, err, "quota per unit must be positive and finite")
+}
+
+func TestPricingServiceAppliesEffectiveGroupRatioOnce(t *testing.T) {
+	originalGroupRatios := ratio_setting.GroupRatio2JSONString()
+	originalGroupGroupRatios := ratio_setting.GroupGroupRatio2JSONString()
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"vip":9}`))
+	require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(`{"vip":{"vip":1.5}}`))
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalGroupRatios))
+		require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(originalGroupGroupRatios))
+	})
+
+	profile := validTextProfile(entity.ModelStatusPublished)
+	profile.GroupsJSON = `["vip"]`
+	service := NewPricingService(
+		&profileStoreStub{profiles: map[string]*entity.ModelProfile{profile.PublicModelID: profile}},
+		availabilityStub{byGroup: map[string]map[string]bool{"vip": {"gpt-5": true}}},
+		pricingSourceStub{items: []model.Pricing{{
+			ModelName: "gpt-5", QuotaType: 0, ModelRatio: 0.5, CompletionRatio: 4,
+		}}},
+	)
+
+	document, err := service.List(context.Background(), "vip")
+
+	require.NoError(t, err)
+	assert.Equal(t, "1.500000", document.EffectiveGroupRatio)
+	require.Len(t, document.Models, 1)
+	require.Len(t, document.Models[0].Routes, 1)
+	assert.Equal(t, "1.500000", document.Models[0].Routes[0].InputPricePerMillionTokens)
+	assert.Equal(t, "6.000000", document.Models[0].Routes[0].OutputPricePerMillionTokens)
 }
 
 func TestPricingServiceOmitsProfilesAndRoutesUnavailableToGroup(t *testing.T) {
