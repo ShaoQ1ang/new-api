@@ -482,7 +482,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		Request: request,
 
 		RequestId:       reqId,
-		BusinessOrderNo: strings.TrimSpace(c.GetHeader("X-Business-Order")),
+		BusinessOrderNo: c.GetString(common.BusinessBillingOrderContextKey),
 		UserId:          common.GetContextKeyInt(c, constant.ContextKeyUserId),
 		UsingGroup:      common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
 		UserGroup:       common.GetContextKeyString(c, constant.ContextKeyUserGroup),

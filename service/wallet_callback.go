@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -86,19 +87,21 @@ func (b *walletCallbackCircuitBreaker) recordAvailable() {
 }
 
 type walletCallbackConfig struct {
-	Enabled    bool
-	FailClosed bool
-	BaseURL    string
-	Token      string
-	Timeout    time.Duration
+	Enabled          bool
+	FailClosed       bool
+	AutoRetryEnabled bool
+	BaseURL          string
+	Token            string
+	Timeout          time.Duration
 }
 
 type walletUsageCallbackSession struct {
 	apiRequestID string
+	mu           sync.Mutex
 }
 
 type walletReserveRequest struct {
-	APIPlatformUserID int                   `json:"api_platform_user_id"`
+	APIPlatformUserID int                   `json:"api_platform_user_id,string"`
 	APIRequestID      string                `json:"api_request_id"`
 	EstimateAmount    string                `json:"estimate_amount"`
 	UsageAtMS         int64                 `json:"usage_at_ms"`
@@ -116,14 +119,16 @@ type walletOperationExtra struct {
 }
 
 type walletConfirmRequest struct {
-	APIPlatformUserID int    `json:"api_platform_user_id"`
+	BusinessIncluded  bool   `json:"-"`
+	APIPlatformUserID int    `json:"api_platform_user_id,string"`
 	APIRequestID      string `json:"api_request_id"`
 	FinalAmount       string `json:"final_amount"`
 	UsageDetail       string `json:"usage_detail,omitempty"`
 }
 
 type walletCancelRequest struct {
-	APIPlatformUserID int    `json:"api_platform_user_id"`
+	BusinessIncluded  bool   `json:"-"`
+	APIPlatformUserID int    `json:"api_platform_user_id,string"`
 	APIRequestID      string `json:"api_request_id"`
 }
 
@@ -148,11 +153,12 @@ func loadWalletCallbackConfig() walletCallbackConfig {
 		timeoutMS = 3000
 	}
 	return walletCallbackConfig{
-		Enabled:    common.GetEnvOrDefaultBool("WALLET_CALLBACK_ENABLED", baseURL != "") && baseURL != "",
-		FailClosed: common.GetEnvOrDefaultBool("WALLET_CALLBACK_FAIL_CLOSED", false),
-		BaseURL:    baseURL,
-		Token:      strings.TrimSpace(os.Getenv("WALLET_CALLBACK_TOKEN")),
-		Timeout:    time.Duration(timeoutMS) * time.Millisecond,
+		Enabled:          common.GetEnvOrDefaultBool("WALLET_CALLBACK_ENABLED", baseURL != "") && baseURL != "",
+		FailClosed:       common.GetEnvOrDefaultBool("WALLET_CALLBACK_FAIL_CLOSED", false),
+		AutoRetryEnabled: common.GetEnvOrDefaultBool("WALLET_CALLBACK_AUTO_RETRY_ENABLED", false),
+		BaseURL:          baseURL,
+		Token:            strings.TrimSpace(os.Getenv("WALLET_CALLBACK_TOKEN")),
+		Timeout:          time.Duration(timeoutMS) * time.Millisecond,
 	}
 }
 
@@ -183,7 +189,19 @@ func quotaToWalletAmount(quota int64, exchangeRate decimal.Decimal) (int64, erro
 
 func newWalletUsageCallbackSession(relayInfo *relaycommon.RelayInfo, estimatedQuota int) (*walletUsageCallbackSession, error) {
 	config := loadWalletCallbackConfig()
-	if !config.Enabled || relayInfo == nil || estimatedQuota <= 0 {
+	if relayInfo == nil {
+		return nil, nil
+	}
+	if estimatedQuota < 0 {
+		return nil, fmt.Errorf("wallet estimated quota cannot be negative")
+	}
+	covered := relayInfo.BusinessOrderNo != ""
+	if covered {
+		if err := validateCoveredWalletConfig(config); err != nil {
+			return nil, err
+		}
+	}
+	if !config.Enabled || (!covered && estimatedQuota == 0) {
 		return nil, nil
 	}
 	if strings.TrimSpace(relayInfo.OriginModelName) == "" || strings.TrimSpace(relayInfo.TokenName) == "" {
@@ -194,6 +212,11 @@ func newWalletUsageCallbackSession(relayInfo *relaycommon.RelayInfo, estimatedQu
 	estimatedAmount, err := quotaToWalletAmount(int64(estimatedQuota), exchangeRate)
 	if err != nil {
 		return nil, err
+	}
+	// A positive reserve is required by Wallet even for a zero-cost model.
+	// BUSINESS_INCLUDED records this amount but never debits the balance.
+	if covered && estimatedAmount == 0 {
+		estimatedAmount = 1
 	}
 	usageAtMS := relayInfo.StartTime.UnixMilli()
 	if relayInfo.StartTime.IsZero() {
@@ -230,6 +253,8 @@ func (s *walletUsageCallbackSession) Confirm(actualQuota int) error {
 	if s == nil {
 		return nil
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	record, err := model.GetWalletUsageCallback(s.apiRequestID)
 	if err != nil {
 		return err
@@ -257,6 +282,8 @@ func (s *walletUsageCallbackSession) Cancel() error {
 	if s == nil {
 		return nil
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	config := loadWalletCallbackConfig()
 	if err := model.PrepareWalletUsageCancel(s.apiRequestID, walletCallbackProtectedUntil(config)); err != nil {
 		return err
@@ -269,8 +296,11 @@ func (s *walletUsageCallbackSession) Cancel() error {
 }
 
 func processWalletUsageCallback(ctx context.Context, record *model.WalletUsageCallback, config walletCallbackConfig) error {
-	if record == nil || !config.Enabled {
+	if record == nil {
 		return nil
+	}
+	if !config.Enabled {
+		return fmt.Errorf("wallet callback is disabled; reconciliation is pending")
 	}
 	switch record.Status {
 	case model.WalletCallbackStatusReserved,
@@ -315,6 +345,7 @@ func processWalletUsageCallback(ctx context.Context, record *model.WalletUsageCa
 			return fmt.Errorf("wallet confirm amount is missing for request %s", record.APIRequestID)
 		}
 		request := walletConfirmRequest{
+			BusinessIncluded:  record.BusinessOrderNo != nil,
 			APIPlatformUserID: record.APIPlatformUserID,
 			APIRequestID:      record.APIRequestID,
 			FinalAmount:       strconv.FormatInt(*record.FinalAmount, 10),
@@ -327,7 +358,7 @@ func processWalletUsageCallback(ctx context.Context, record *model.WalletUsageCa
 		walletBreaker.recordAvailable()
 		return model.MarkWalletUsageFinalized(record.APIRequestID, model.WalletCallbackStatusConfirmed)
 	case model.WalletCallbackStatusCancelPending:
-		request := walletCancelRequest{APIPlatformUserID: record.APIPlatformUserID, APIRequestID: record.APIRequestID}
+		request := walletCancelRequest{APIPlatformUserID: record.APIPlatformUserID, APIRequestID: record.APIRequestID, BusinessIncluded: record.BusinessOrderNo != nil}
 		if err := sendWalletCallback(ctx, config, "/api/v1/callback/wallet/api-platform/usage/cancel", request); err != nil {
 			handleWalletCallbackFailure(record, config, err)
 			return err
@@ -354,25 +385,73 @@ func sendWalletCallback(ctx context.Context, config walletCallbackConfig, path s
 	if config.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+config.Token)
 	}
-	response, err := walletCallbackClient.Do(req)
+	// Never forward the callback credential to a redirect target, including a
+	// same-origin redirect. Copy the client to retain any injected TLS transport.
+	client := *walletCallbackClient
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	response, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("wallet callback request failed: %w", err)
 	}
 	defer response.Body.Close()
-	if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
-		_, _ = io.Copy(io.Discard, response.Body)
-		return nil
+	responseBody, err := io.ReadAll(io.LimitReader(response.Body, 16*1024+1))
+	if err != nil || len(responseBody) > 16*1024 {
+		return fmt.Errorf("wallet callback response unreadable or oversized")
 	}
-	responseBody, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
-	message := strings.TrimSpace(string(responseBody))
-	var errorPayload struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
+	var envelope struct {
+		Code    int             `json:"code"`
+		Success *bool           `json:"success"`
+		Data    json.RawMessage `json:"data"`
 	}
-	if common.Unmarshal(responseBody, &errorPayload) == nil && errorPayload.Message != "" {
-		message = errorPayload.Message
+	decodeErr := common.Unmarshal(responseBody, &envelope)
+	if response.StatusCode != http.StatusOK || envelope.Code != 0 || (envelope.Success != nil && !*envelope.Success) {
+		return &walletCallbackHTTPError{StatusCode: response.StatusCode, Code: envelope.Code, Message: "wallet callback rejected"}
 	}
-	return &walletCallbackHTTPError{StatusCode: response.StatusCode, Code: errorPayload.Code, Message: message}
+	if decodeErr != nil || len(envelope.Data) == 0 || string(envelope.Data) == "null" {
+		return fmt.Errorf("wallet callback returned invalid success envelope")
+	}
+	return validateWalletCallbackResponse(envelope.Data, payload)
+}
+
+// Validate the actual Facade contract, including decimal strings and the
+// covered funding source. A HTTP 200 alone must never authorize a model call.
+func validateWalletCallbackResponse(data []byte, payload any) error {
+	var response struct {
+		FundingSource      *int    `json:"funding_source"`
+		ReservedAmount     *string `json:"reserved_amount"`
+		APIRequestID       string  `json:"api_request_id"`
+		FinalAmount        *string `json:"final_amount"`
+		BalanceDeltaAmount *string `json:"balance_delta_amount"`
+		ReturnedAmount     *string `json:"returned_amount"`
+	}
+	if err := common.Unmarshal(data, &response); err != nil {
+		return fmt.Errorf("wallet callback returned invalid data")
+	}
+	switch request := payload.(type) {
+	case walletReserveRequest:
+		if response.FundingSource == nil || response.ReservedAmount == nil || *response.ReservedAmount != request.EstimateAmount || *response.FundingSource < 1 || *response.FundingSource > 3 || ((request.BusinessOrderNo != nil) != (*response.FundingSource == 3)) {
+			return fmt.Errorf("wallet reserve response did not confirm the requested funding source and amount")
+		}
+	case walletConfirmRequest:
+		if response.APIRequestID != request.APIRequestID || response.FinalAmount == nil || *response.FinalAmount != request.FinalAmount || response.BalanceDeltaAmount == nil {
+			return fmt.Errorf("wallet confirm response did not match the request")
+		}
+		delta, err := strconv.ParseInt(*response.BalanceDeltaAmount, 10, 64)
+		if err != nil || (request.BusinessIncluded && delta != 0) {
+			return fmt.Errorf("wallet confirm returned invalid balance delta")
+		}
+	case walletCancelRequest:
+		if response.APIRequestID != request.APIRequestID || response.ReturnedAmount == nil {
+			return fmt.Errorf("wallet cancel response did not match the request")
+		}
+		returned, err := strconv.ParseInt(*response.ReturnedAmount, 10, 64)
+		if err != nil || returned < 0 || (request.BusinessIncluded && returned != 0) {
+			return fmt.Errorf("wallet cancel returned invalid amount")
+		}
+	default:
+		return fmt.Errorf("unsupported wallet callback payload")
+	}
+	return nil
 }
 
 func handleWalletCallbackFailure(record *model.WalletUsageCallback, config walletCallbackConfig, callbackErr error) {
@@ -388,7 +467,9 @@ func handleWalletCallbackFailure(record *model.WalletUsageCallback, config walle
 		if err != nil {
 			common.SysLog(fmt.Sprintf("record wallet callback retry failed (request_id=%s): %v", record.APIRequestID, err))
 		}
-		wakeWalletCallbackWorker()
+		if config.AutoRetryEnabled {
+			wakeWalletCallbackWorker()
+		}
 		return
 	}
 	walletBreaker.recordAvailable()
@@ -436,6 +517,39 @@ func claimWalletUsageCallback(record *model.WalletUsageCallback, now time.Time, 
 	return model.ClaimWalletUsageCallback(record.ID, record.Status, now.UnixMilli(), now.Add(leaseDuration).UnixMilli())
 }
 
+// ReconcileWalletUsageCallback performs one explicitly requested accounting
+// recovery. It does not call a model or choose a new financial intent. Callers
+// must enforce operator authorization; no public HTTP route exposes this helper.
+func ReconcileWalletUsageCallback(ctx context.Context, apiRequestID string) error {
+	record, err := model.GetWalletUsageCallback(apiRequestID)
+	if err != nil {
+		return err
+	}
+	if record.Status == model.WalletCallbackStatusConfirmed || record.Status == model.WalletCallbackStatusCancelled || record.Status == model.WalletCallbackStatusRejected {
+		return nil
+	}
+	if record.Status != model.WalletCallbackStatusConfirmPending && record.Status != model.WalletCallbackStatusCancelPending {
+		return fmt.Errorf("wallet callback has no persisted finalization intent")
+	}
+	config := loadWalletCallbackConfig()
+	if !config.Enabled {
+		return fmt.Errorf("wallet callback is disabled")
+	}
+	if record.BusinessOrderNo != nil {
+		if err := validateCoveredWalletConfig(config); err != nil {
+			return err
+		}
+	}
+	claimed, err := claimWalletUsageCallback(record, time.Now(), config)
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return fmt.Errorf("wallet callback reconciliation is in progress or protected")
+	}
+	return processWalletUsageCallback(ctx, record, config)
+}
+
 func logWalletCallbackFailure(record *model.WalletUsageCallback, callbackErr error) {
 	if callbackErr != nil {
 		logger.LogWarn(context.Background(), fmt.Sprintf("wallet callback failed (request_id=%s status=%s): %v", record.APIRequestID, record.Status, callbackErr))
@@ -475,7 +589,7 @@ func claimDueWalletUsageCallbacks(callbacks []*model.WalletUsageCallback, now ti
 
 func StartWalletCallbackTask() {
 	walletCallbackOnce.Do(func() {
-		if !common.IsMasterNode {
+		if !common.IsMasterNode || !loadWalletCallbackConfig().AutoRetryEnabled {
 			return
 		}
 		gopool.Go(func() {
@@ -499,7 +613,7 @@ func runWalletCallbackTaskOnce() {
 	}
 	defer walletCallbackRunning.Store(false)
 	config := loadWalletCallbackConfig()
-	if !config.Enabled {
+	if !config.Enabled || !config.AutoRetryEnabled {
 		return
 	}
 	now := time.Now()
