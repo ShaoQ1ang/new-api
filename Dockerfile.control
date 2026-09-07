@@ -1,16 +1,25 @@
-FROM golang:1.26.1-alpine@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039 AS builder
+ARG GO_IMAGE=golang:1.26.1
+ARG RUNTIME_IMAGE=debian:bookworm-slim
+ARG APT_MIRROR=https://mirrors.aliyun.com
+
+FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS builder
 ENV CGO_ENABLED=0 GOEXPERIMENT=greenteagc
 ARG TARGETOS
 ARG TARGETARCH
+ARG GOPROXY=https://proxy.golang.org,direct
+ARG GOSUMDB=sum.golang.org
 ENV GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64}
+ENV GOPROXY=${GOPROXY} GOSUMDB=${GOSUMDB}
 WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN go build -trimpath -ldflags "-s -w" -o /out/new-api-control ./cmd/new-api-control
 
-FROM debian:bookworm-slim@sha256:f06537653ac770703bc45b4b113475bd402f451e85223f0f2837acbf89ab020a
-RUN apt-get update \
+FROM ${RUNTIME_IMAGE}
+ARG APT_MIRROR
+RUN sed -i "s@https\?://deb.debian.org@${APT_MIRROR}@g; s@https\?://security.debian.org@${APT_MIRROR}@g" /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates tzdata \
     && rm -rf /var/lib/apt/lists/* \
     && update-ca-certificates
