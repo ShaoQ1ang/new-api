@@ -46,6 +46,9 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	if s.settled {
 		return nil
 	}
+	if actualQuota < 0 {
+		return fmt.Errorf("settlement quota cannot be negative")
+	}
 	delta := actualQuota - s.preConsumedQuota
 	// 1) 调整资金来源（仅在尚未提交时执行，防止重复调用）
 	if !s.fundingSettled {
@@ -58,7 +61,7 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	}
 	// 2) 调整令牌额度
 	var tokenErr error
-	if !s.relayInfo.IsPlayground {
+	if !s.relayInfo.IsPlayground && s.funding.Source() != BillingSourceBusinessIncluded {
 		if delta > 0 {
 			tokenErr = model.DecreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, delta)
 		} else if delta < 0 {
@@ -76,7 +79,8 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	}
 	s.settled = true
 	if err := s.walletCallback.Confirm(actualQuota); err != nil {
-		common.SysLog(fmt.Sprintf("wallet confirm callback pending retry (request_id=%s): %v", s.relayInfo.RequestId, err))
+		common.SysLog(fmt.Sprintf("wallet confirm callback requires reconciliation (request_id=%s): %v", s.relayInfo.RequestId, err))
+		return errors.Join(tokenErr, err)
 	}
 	return tokenErr
 }
@@ -92,7 +96,7 @@ func (s *BillingSession) Refund(c *gin.Context) {
 	walletCallback := s.walletCallback
 	s.mu.Unlock()
 	if err := walletCallback.Cancel(); err != nil {
-		common.SysLog(fmt.Sprintf("wallet cancel callback pending retry (request_id=%s): %v", s.relayInfo.RequestId, err))
+		common.SysLog(fmt.Sprintf("wallet cancel callback requires reconciliation (request_id=%s): %v", s.relayInfo.RequestId, err))
 	}
 
 	logger.LogInfo(c, fmt.Sprintf("用户 %d 请求失败, 返还预扣费（token_quota=%s, funding=%s）",
@@ -186,6 +190,12 @@ func (s *BillingSession) GetPreConsumedQuota() int {
 func (s *BillingSession) Reserve(targetQuota int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if targetQuota < 0 {
+		return fmt.Errorf("reserve quota cannot be negative")
+	}
+	if s.funding.Source() == BillingSourceBusinessIncluded {
+		return nil
+	}
 
 	if s.settled || s.refunded || s.trusted || targetQuota <= s.preConsumedQuota {
 		return nil
@@ -383,11 +393,17 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	// In fail-closed mode, the remote wallet is authoritative for availability,
 	// so local quota checks must allow an overdraft. In fail-open mode, local
 	// quota remains a required guard even when the callback is unavailable.
-	allowWalletOverdraft := walletCallbackConfig.FailClosed
+	allowWalletOverdraft := walletCallbackConfig.Enabled && walletCallbackConfig.FailClosed
 
 	// 覆盖模式：受信调用方通过 X-Business-Order 指定父订单，资金由父 CHARGE 承担，
 	// 不做本地 user/token 额度扣减；钱包回调 reserve 失败即拒绝请求。
 	if relayInfo.BusinessOrderNo != "" {
+		if c == nil || !c.GetBool(common.BusinessBillingAuthenticatedContextKey) || c.GetString(common.BusinessBillingOrderContextKey) != relayInfo.BusinessOrderNo || c.GetInt("id") <= 0 || c.GetInt("id") != relayInfo.UserId || c.GetInt("token_id") <= 0 || c.GetInt("token_id") != relayInfo.TokenId || relayInfo.IsPlayground {
+			return nil, types.NewErrorWithStatusCode(fmt.Errorf("business billing requires an authenticated workload and user token"), types.ErrorCodeAccessDenied, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+		}
+		if err := validateCoveredWalletConfig(walletCallbackConfig); err != nil {
+			return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeAccessDenied, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+		}
 		session := &BillingSession{
 			relayInfo: relayInfo,
 			funding:   &CoveredFunding{},

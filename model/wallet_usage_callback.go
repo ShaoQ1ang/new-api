@@ -65,7 +65,8 @@ func PrepareWalletUsageConfirm(apiRequestID string, finalQuota int64, finalAmoun
 	}
 	nowMS := time.Now().UnixMilli()
 	return DB.Model(&WalletUsageCallback{}).
-		Where("api_request_id = ? AND status NOT IN ?", apiRequestID, []string{WalletCallbackStatusConfirmed, WalletCallbackStatusCancelled, WalletCallbackStatusRejected}).
+		Where("api_request_id = ? AND status IN ?", apiRequestID, []string{WalletCallbackStatusReservePending, WalletCallbackStatusReserved, WalletCallbackStatusConfirmPending}).
+		Where("final_amount IS NULL OR (final_amount = ? AND final_quota = ?)", finalAmount, finalQuota).
 		Updates(map[string]any{
 			"final_quota":      finalQuota,
 			"final_amount":     finalAmount,
@@ -83,7 +84,7 @@ func PrepareWalletUsageCancel(apiRequestID string, protectedUntilMS int64) error
 	}
 	nowMS := time.Now().UnixMilli()
 	return DB.Model(&WalletUsageCallback{}).
-		Where("api_request_id = ? AND status NOT IN ?", apiRequestID, []string{WalletCallbackStatusConfirmed, WalletCallbackStatusCancelled, WalletCallbackStatusRejected}).
+		Where("api_request_id = ? AND status IN ?", apiRequestID, []string{WalletCallbackStatusReservePending, WalletCallbackStatusReserved, WalletCallbackStatusCancelPending}).
 		Updates(map[string]any{
 			"status":           WalletCallbackStatusCancelPending,
 			"next_retry_at_ms": protectedUntilMS,

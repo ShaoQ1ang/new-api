@@ -1,0 +1,23 @@
+# Append after docker-compose.yml. This changes only new-api, never its data/log
+# volumes, database, control-plane process or existing control-plane certificates.
+services:
+  new-api:
+    image: lingentic/new-api:local-knowledge-20260905-2
+    env_file:
+      - ../k8s-deploy/secrets/local-billing/new-api.env
+    environment:
+      WALLET_CALLBACK_ENABLED: 'true'
+      WALLET_CALLBACK_FAIL_CLOSED: 'true'
+      WALLET_CALLBACK_AUTO_RETRY_ENABLED: 'false'
+      WALLET_CALLBACK_BASE_URL: https://lingentic-control-plane:31444
+      WALLET_CALLBACK_TIMEOUT_MS: '10000'
+      SSL_CERT_FILE: /run/local-billing/ca-bundle.crt
+    volumes:
+      - ../k8s-deploy/secrets/local-billing/ca-bundle.crt:/run/local-billing/ca-bundle.crt:ro
+    networks:
+      - new-api-network
+      - local-billing-kind
+networks:
+  local-billing-kind:
+    external: true
+    name: kind

@@ -53,7 +53,7 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 	if callbackErr != nil {
 		config := loadWalletCallbackConfig()
 		if config.FailClosed {
-			if walletCallback != nil {
+			if walletCallback != nil && config.AutoRetryEnabled {
 				if cancelErr := walletCallback.Cancel(); cancelErr != nil {
 					logger.LogWarn(c, fmt.Sprintf("wallet callback compensation pending retry: %v", cancelErr))
 				}
@@ -79,6 +79,9 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 // SettleBilling 执行计费结算。如果 RelayInfo 上有 BillingSession 则通过 session 结算，
 // 否则回退到旧的 PostConsumeQuota 路径（兼容按次计费等场景）。
 func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuota int) error {
+	if relayInfo.BusinessOrderNo != "" && (relayInfo.Billing == nil || relayInfo.BillingSource != BillingSourceBusinessIncluded) {
+		return fmt.Errorf("covered billing requires a reserved parent-order session")
+	}
 	if relayInfo.Billing != nil {
 		preConsumed := relayInfo.Billing.GetPreConsumedQuota()
 		delta := actualQuota - preConsumed
@@ -106,7 +109,7 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 		}
 
 		// 发送额度通知（订阅计费使用订阅剩余额度）
-		if actualQuota != 0 {
+		if actualQuota != 0 && relayInfo.BillingSource != BillingSourceBusinessIncluded {
 			if relayInfo.BillingSource == BillingSourceSubscription {
 				checkAndSendSubscriptionQuotaNotify(relayInfo)
 			} else {

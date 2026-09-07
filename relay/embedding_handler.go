@@ -17,6 +17,11 @@ import (
 )
 
 func EmbeddingHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
+	// Covered embeddings must already have a successful parent-order reserve.
+	// Never let a direct helper call fall back to ordinary token billing.
+	if info.BusinessOrderNo != "" && (info.Billing == nil || info.BillingSource != service.BillingSourceBusinessIncluded) {
+		return types.NewErrorWithStatusCode(fmt.Errorf("covered embedding billing was not reserved"), types.ErrorCodeUpdateDataError, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+	}
 	info.InitChannelMeta(c)
 
 	embeddingReq, ok := info.Request.(*dto.EmbeddingRequest)
@@ -89,6 +94,10 @@ func EmbeddingHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
 		return newAPIError
 	}
-	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), nil)
+	embeddingUsage, ok := usage.(*dto.Usage)
+	if !ok || embeddingUsage == nil {
+		return types.NewErrorWithStatusCode(fmt.Errorf("embedding provider returned invalid usage"), types.ErrorCodeDoRequestFailed, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
+	}
+	service.PostTextConsumeQuota(c, info, embeddingUsage, nil)
 	return nil
 }
