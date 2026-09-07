@@ -10,6 +10,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestProcessHeaderOverrideNeverForwardsBusinessBillingCredentials(t *testing.T) {
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	ctx.Request.Header.Set("X-Business-Order", "private-order")
+	ctx.Request.Header.Set("X-Business-Billing-Authorization", "Bearer workload-secret")
+	ctx.Request.Header.Set("X-Business-Billing-Future", "private-metadata")
+	ctx.Request.Header.Set("X-Trace-Id", "public-trace")
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{HeadersOverride: map[string]any{
+		"*":                                "",
+		"X-Business-Order":                 "configured-order",
+		"X-Business-Billing-Authorization": "configured-secret",
+	}}}
+	headers, err := processHeaderOverride(info, ctx)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"x-trace-id": "public-trace"}, headers)
+}
+
 func TestProcessHeaderOverride_ChannelTestSkipsPassthroughRules(t *testing.T) {
 	t.Parallel()
 

@@ -63,7 +63,7 @@ func (workflow *SyncWorkflow) Execute(source *gin.Context, relayFormat types.Rel
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 	}
-	if !priceData.FreeModel {
+	if !priceData.FreeModel || relayInfo.BusinessOrderNo != "" {
 		if workflowErr = service.PreConsumeBilling(c, priceData.QuotaToPreConsume, relayInfo); workflowErr != nil {
 			return nil, workflowErr
 		}
@@ -117,7 +117,7 @@ func (workflow *SyncWorkflow) Execute(source *gin.Context, relayFormat types.Rel
 				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
 					common.GetContextKeyString(attempt, constant.ContextKeyChannelKey), channel.GetAutoBan()), workflowErr)
 		}
-		if !shouldRetrySync(c, workflowErr, common.RetryTimes-retryParam.GetRetry()) {
+		if relayInfo.BusinessOrderNo != "" || !shouldRetrySync(c, workflowErr, common.RetryTimes-retryParam.GetRetry()) {
 			break
 		}
 	}
