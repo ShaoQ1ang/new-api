@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"mime"
 	"net/http"
 	"net/netip"
@@ -18,12 +19,16 @@ import (
 	"syscall"
 	"time"
 
+	aigcrepository "github.com/QuantumNous/new-api/aigc/repository"
+	aigcservice "github.com/QuantumNous/new-api/aigc/service"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/joho/godotenv"
+	"github.com/shopspring/decimal"
 )
 
 const maxRequestBodyBytes = 64 << 10
@@ -78,6 +83,22 @@ type revokeAPIKeyPayload struct {
 	APIKeyVersion int64 `json:"api_key_version"`
 }
 
+type pricingCatalog interface {
+	List(ctx context.Context, group string) (aigcservice.PublicPricingDocument, error)
+}
+
+type pricingRouteDependencies struct {
+	resolveActiveIAMIdentity func(iamUserID, minimumVersion int64) (model.IAMIdentityLink, error)
+	getUserGroup             func(userID int, fromDB bool) (string, error)
+	catalog                  pricingCatalog
+	usdExchangeRate          func() float64
+}
+
+type controlPricingDocument struct {
+	aigcservice.PublicPricingDocument
+	USDToCNYRate string `json:"usd_to_cny_rate"`
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -102,6 +123,12 @@ func run(ctx context.Context) error {
 	}
 	defer model.CloseDB()
 	model.InitOptionMap()
+	optionSyncContext, stopOptionSync := context.WithCancel(ctx)
+	optionSyncDone := startControlOptionSync(optionSyncContext, model.SyncOptionsContext)
+	defer func() {
+		stopOptionSync()
+		<-optionSyncDone
+	}()
 	if err := common.InitRedisClient(); err != nil {
 		return fmt.Errorf("initialize Redis: %w", err)
 	}
@@ -135,6 +162,15 @@ func run(ctx context.Context) error {
 	case err := <-errChannel:
 		return err
 	}
+}
+
+func startControlOptionSync(ctx context.Context, syncOptions func(context.Context, int)) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		syncOptions(ctx, common.SyncFrequency)
+	}()
+	return done
 }
 
 func loadConfig() (config, error) {
@@ -193,6 +229,21 @@ func loadMTLSConfig(processConfig config) (*tls.Config, error) {
 }
 
 func routes() http.Handler {
+	profiles := aigcrepository.New(model.DB)
+	pricing := aigcservice.NewPricingService(
+		profiles,
+		aigcservice.NewModelAvailability(),
+		aigcservice.NewModelUpstreamSource(),
+	)
+	return routesWithPricingDependencies(pricingRouteDependencies{
+		resolveActiveIAMIdentity: model.ResolveActiveIAMIdentity,
+		getUserGroup:             model.GetUserGroup,
+		catalog:                  pricing,
+		usdExchangeRate:          func() float64 { return operation_setting.USDExchangeRate },
+	})
+}
+
+func routesWithPricingDependencies(dependencies pricingRouteDependencies) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health/live", func(writer http.ResponseWriter, _ *http.Request) {
 		writeJSON(writer, http.StatusOK, envelope{Success: true, Data: map[string]string{"status": "live"}})
@@ -203,6 +254,7 @@ func routes() http.Handler {
 	mux.HandleFunc("POST /internal/v1/api-keys/revoke", handleRevokeAPIKey)
 	mux.HandleFunc("GET /internal/v1/api-keys/{apiKeyID}", handleGetAPIKey)
 	mux.HandleFunc("GET /internal/v1/chat-models", handleListChatModels)
+	mux.HandleFunc("GET /internal/v1/aigc/pricing", handleListAIGCPricing(dependencies))
 	return securityHeaders(mux)
 }
 
@@ -334,6 +386,62 @@ func handleListChatModels(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	writeJSON(writer, http.StatusOK, envelope{Success: true, Data: models})
+}
+
+func handleListAIGCPricing(dependencies pricingRouteDependencies) http.HandlerFunc {
+	return func(writer http.ResponseWriter, request *http.Request) {
+		for _, name := range []string{"Authorization", "Cookie", "New-Api-User", "Session"} {
+			if strings.TrimSpace(request.Header.Get(name)) != "" {
+				writeAPIError(writer, http.StatusBadRequest, "INVALID_ARGUMENT", "identity headers are not accepted")
+				return
+			}
+		}
+		iamUserID, err := strconv.ParseInt(request.URL.Query().Get("iam_user_id"), 10, 64)
+		if err != nil || iamUserID <= 0 {
+			writeAPIError(writer, http.StatusBadRequest, "INVALID_ARGUMENT", "IAM user ID is invalid")
+			return
+		}
+		identityVersion, err := strconv.ParseInt(request.URL.Query().Get("identity_version"), 10, 64)
+		if err != nil || identityVersion <= 0 {
+			writeAPIError(writer, http.StatusBadRequest, "INVALID_ARGUMENT", "identity version is invalid")
+			return
+		}
+		identity, err := dependencies.resolveActiveIAMIdentity(iamUserID, identityVersion)
+		if err != nil {
+			writeModelError(writer, err)
+			return
+		}
+		group, err := dependencies.getUserGroup(identity.NewAPIUserID, true)
+		if err != nil {
+			common.SysError("new-api-control failed to load pricing group: " + err.Error())
+			writeAPIError(writer, http.StatusInternalServerError, "PRICING_UNAVAILABLE", "AIGC pricing is unavailable")
+			return
+		}
+		group = strings.TrimSpace(group)
+		if strings.EqualFold(group, "auto") {
+			writeAPIError(writer, http.StatusConflict, "AUTO_GROUP_UNSUPPORTED", "AIGC pricing is unavailable for auto group")
+			return
+		}
+		if group == "" {
+			writeAPIError(writer, http.StatusInternalServerError, "PRICING_UNAVAILABLE", "AIGC pricing group is unavailable")
+			return
+		}
+		document, err := dependencies.catalog.List(request.Context(), group)
+		if err != nil {
+			common.SysError("new-api-control failed to load AIGC pricing: " + err.Error())
+			writeAPIError(writer, http.StatusInternalServerError, "PRICING_UNAVAILABLE", "AIGC pricing is unavailable")
+			return
+		}
+		exchangeRate := dependencies.usdExchangeRate()
+		if exchangeRate <= 0 || math.IsNaN(exchangeRate) || math.IsInf(exchangeRate, 0) {
+			writeAPIError(writer, http.StatusInternalServerError, "PRICING_UNAVAILABLE", "USD exchange rate is unavailable")
+			return
+		}
+		writeJSON(writer, http.StatusOK, envelope{Success: true, Data: controlPricingDocument{
+			PublicPricingDocument: document,
+			USDToCNYRate:          decimal.NewFromFloat(exchangeRate).String(),
+		}})
+	}
 }
 
 func decodeRequest(writer http.ResponseWriter, request *http.Request, destination any) bool {

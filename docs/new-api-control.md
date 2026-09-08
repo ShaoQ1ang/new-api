@@ -28,6 +28,9 @@ dedicated-server component rather than adding it to a generic service list.
 - The service never logs API-key secrets. Responses use `Cache-Control:
   no-store`, request bodies are limited to 64 KiB, and server timeouts are
   bounded.
+- The AIGC pricing endpoint accepts identity only through its typed query
+  parameters. Requests carrying `Cookie`, `Authorization`, `New-Api-User`, or
+  `Session` headers are rejected; none of those headers are returned.
 - The supplied Compose service runs as UID 65532 with a read-only root
   filesystem, no additional privileges or Linux capabilities, a PID limit,
   and a dedicated in-memory writable log directory.
@@ -68,6 +71,23 @@ All business endpoints live below `/internal/v1`:
 - `POST /internal/v1/api-keys/revoke`
 - `GET /internal/v1/api-keys/{id}`
 - `GET /internal/v1/chat-models`
+- `GET /internal/v1/aigc/pricing?iam_user_id={id}&identity_version={version}`
 
 Health endpoints are `/health/live` and `/health/ready`; when called over the
 network they are protected by the same mTLS listener.
+
+The AIGC pricing endpoint resolves an active IAM identity at no less than the
+requested identity version, loads the mapped new-api user's current group from
+the database, and uses the same AIGC pricing service as runtime requests. An
+`auto` user group is rejected because it does not identify a stable runtime
+group. The response `data` is the USD pricing document (`pricing_version`,
+`currency`, `quota_per_unit`, `user_group`, `effective_group_ratio`, and
+`models`) plus `usd_to_cny_rate`, a canonical decimal string from the current
+operation setting. Every route price already includes the effective group
+ratio and must not be multiplied by that ratio again downstream. Price strings
+are canonical decimals and are not rounded to a presentation scale before
+Wallet performs its micro-CNY conversion.
+`new-api-control` reloads database-backed options at `SYNC_FREQUENCY`, matching
+the main process, so exchange rate, quota unit, group ratio, and model pricing
+changes become visible without restarting the control process. The reload loop
+is canceled and joined during process shutdown.

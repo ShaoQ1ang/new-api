@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"time"
@@ -235,10 +236,27 @@ func loadOptionsFromDatabase() {
 }
 
 func SyncOptions(frequency int) {
+	SyncOptionsContext(context.Background(), frequency)
+}
+
+// SyncOptionsContext reloads database-backed options until the context is canceled.
+func SyncOptionsContext(ctx context.Context, frequency int) {
+	interval := time.Duration(frequency) * time.Second
+	if interval <= 0 {
+		common.SysError("option sync frequency must be positive")
+		return
+	}
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
 	for {
-		time.Sleep(time.Duration(frequency) * time.Second)
-		common.SysLog("syncing options from database")
-		loadOptionsFromDatabase()
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			common.SysLog("syncing options from database")
+			loadOptionsFromDatabase()
+			timer.Reset(interval)
+		}
 	}
 }
 

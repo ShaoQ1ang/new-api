@@ -122,3 +122,54 @@ func TestGetVideoSecondsPriceFallsBackToDefault(t *testing.T) {
 		t.Fatalf("expected fallback price 1.2, got ok=%v price=%v", ok, price)
 	}
 }
+
+func TestUpdateVideoSecondsPriceNormalizesRuntimeLookupKeys(t *testing.T) {
+	t.Cleanup(func() { require.NoError(t, UpdateVideoSecondsPriceByJSONString(`{}`)) })
+	require.NoError(t, UpdateVideoSecondsPriceByJSONString(`{
+		" precise-video ": {
+			" 720P ": {" Default ": 0.9, " SILENT ": 0.6}
+		}
+	}`))
+
+	price, ok := GetVideoSecondsPrice("precise-video", "720p", false)
+	require.True(t, ok)
+	assert.Equal(t, 0.6, price)
+	price, ok = GetVideoSecondsPrice("precise-video", "720p", true)
+	require.True(t, ok)
+	assert.Equal(t, 0.9, price)
+}
+
+func TestUpdateVideoSecondsPriceRejectsNormalizedKeyCollisions(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "model", value: `{
+			"video": {"720p": {"default": 0.1}},
+			" video ": {"1080p": {"default": 0.2}}
+		}`},
+		{name: "resolution", value: `{
+			"video": {
+				"720p": {"default": 0.1},
+				" 720P ": {"silent": 0.2}
+			}
+		}`},
+		{name: "variant", value: `{
+			"video": {"720p": {"default": 0.1, " DEFAULT ": 0.2}}
+		}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := UpdateVideoSecondsPriceByJSONString(test.value)
+			require.ErrorContains(t, err, "duplicated after normalization")
+		})
+	}
+}
+
+func TestUpdateVideoSecondsPriceRejectsNegativePrice(t *testing.T) {
+	err := UpdateVideoSecondsPriceByJSONString(`{
+		"video": {"720p": {"default": -0.1}}
+	}`)
+
+	require.ErrorContains(t, err, "invalid video seconds price")
+}

@@ -1,8 +1,11 @@
 package ratio_setting
 
 import (
+	"fmt"
+	"math"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/types"
 )
 
@@ -74,7 +77,51 @@ func VideoSecondsPrice2JSONString() string {
 }
 
 func UpdateVideoSecondsPriceByJSONString(jsonStr string) error {
-	return types.LoadFromJsonStringWithCallback(videoSecondsPriceMap, jsonStr, InvalidateExposedDataCache)
+	var parsed VideoSecondsPriceMap
+	if err := common.UnmarshalJsonStr(jsonStr, &parsed); err != nil {
+		return err
+	}
+	normalized := make(VideoSecondsPriceMap, len(parsed))
+	for modelName, tiers := range parsed {
+		normalizedModelName := strings.TrimSpace(modelName)
+		if normalizedModelName == "" {
+			return fmt.Errorf("video seconds price contains an empty model name")
+		}
+		if _, exists := normalized[normalizedModelName]; exists {
+			return fmt.Errorf("video seconds price model %q is duplicated after normalization", modelName)
+		}
+		normalizedTiers := make(map[string]map[string]float64, len(tiers))
+		for tier, variants := range tiers {
+			normalizedTier := strings.ToLower(strings.TrimSpace(tier))
+			if normalizedTier == "" {
+				return fmt.Errorf("video seconds price for model %s contains an empty resolution", normalizedModelName)
+			}
+			if _, exists := normalizedTiers[normalizedTier]; exists {
+				return fmt.Errorf("video seconds price resolution %q for model %s is duplicated after normalization", tier, normalizedModelName)
+			}
+			normalizedVariants := make(map[string]float64, len(variants))
+			for variant, price := range variants {
+				normalizedVariant := strings.ToLower(strings.TrimSpace(variant))
+				if normalizedVariant == "" {
+					return fmt.Errorf("video seconds price for model %s resolution %s contains an empty variant", normalizedModelName, normalizedTier)
+				}
+				if _, exists := normalizedVariants[normalizedVariant]; exists {
+					return fmt.Errorf("video seconds price variant %q for model %s resolution %s is duplicated after normalization", variant, normalizedModelName, normalizedTier)
+				}
+				if price < 0 || math.IsNaN(price) || math.IsInf(price, 0) {
+					return fmt.Errorf("invalid video seconds price for model %s resolution %s variant %s", normalizedModelName, normalizedTier, normalizedVariant)
+				}
+				normalizedVariants[normalizedVariant] = price
+			}
+			normalizedTiers[normalizedTier] = normalizedVariants
+		}
+		normalized[normalizedModelName] = normalizedTiers
+	}
+	data, err := common.Marshal(normalized)
+	if err != nil {
+		return err
+	}
+	return types.LoadFromJsonStringWithCallback(videoSecondsPriceMap, string(data), InvalidateExposedDataCache)
 }
 
 func GetVideoSecondsPrice(modelName, tier string, audioEnabled bool) (float64, bool) {
