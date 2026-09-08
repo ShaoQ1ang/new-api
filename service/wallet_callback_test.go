@@ -359,6 +359,47 @@ func TestWalletReserveInsufficientFundsRefundsLocalCharge(t *testing.T) {
 	assert.Equal(t, walletFailureInsufficientFunds, record.FailureCode)
 }
 
+func TestWalletReserveInsufficientFundsReturnsStableBillingErrorWhenFailOpen(t *testing.T) {
+	useWalletCallbackTestDB(t, &model.User{}, &model.WalletUsageCallback{})
+	require.NoError(t, model.DB.Create(&model.User{Id: 42, Username: "wallet_callback_user", Quota: 1000}).Error)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"code":210008,"message":"private wallet diagnostic"}`))
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("WALLET_CALLBACK_BASE_URL", server.URL)
+	t.Setenv("WALLET_CALLBACK_ENABLED", "true")
+	t.Setenv("WALLET_CALLBACK_FAIL_CLOSED", "false")
+
+	ginContext, _ := gin.CreateTestContext(httptest.NewRecorder())
+	relayInfo := &relaycommon.RelayInfo{
+		RequestId: "wallet-insufficient-funds-fail-open",
+		UserId:    42, StartTime: time.Now(), IsPlayground: true, ForcePreConsume: true,
+		OriginModelName: "gpt-5", TokenName: "desktop",
+		UserSetting: dto.UserSetting{BillingPreference: "wallet_only"},
+	}
+
+	apiErr := PreConsumeBilling(ginContext, 100, relayInfo)
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusPaymentRequired, apiErr.StatusCode)
+	openAI := apiErr.ToOpenAIError()
+	assert.Equal(t, types.ErrorCodeInsufficientFunds, openAI.Code)
+	assert.Equal(t, "billing_error", openAI.Type)
+	assert.Equal(t, "可用余额不足，请充值或购买套餐", openAI.Message)
+	assert.True(t, types.IsSkipRetryError(apiErr))
+	assert.NotContains(t, apiErr.Error(), "private wallet diagnostic")
+
+	var user model.User
+	require.NoError(t, model.DB.First(&user, 42).Error)
+	assert.Equal(t, 1000, user.Quota)
+	record, err := model.GetWalletUsageCallback(relayInfo.RequestId)
+	require.NoError(t, err)
+	assert.Equal(t, model.WalletCallbackStatusRejected, record.Status)
+	assert.Equal(t, walletFailureInsufficientFunds, record.FailureCode)
+}
+
 func TestWalletReserveCompletionDoesNotOverwriteNewerCancelTarget(t *testing.T) {
 	useWalletCallbackTestDB(t, &model.WalletUsageCallback{})
 	record := &model.WalletUsageCallback{
