@@ -52,18 +52,25 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 	session.walletCallback = walletCallback
 	if callbackErr != nil {
 		config := loadWalletCallbackConfig()
+		failureCode, _ := classifyWalletCallbackFailure(callbackErr)
+		if failureCode == walletFailureInsufficientFunds {
+			if rollbackErr := session.rollbackPreConsume(); rollbackErr != nil {
+				logger.LogWarn(c, fmt.Sprintf("local billing rollback failed after wallet insufficient funds: %v", rollbackErr))
+			}
+			// A definitive balance rejection is safe to expose as a billing error;
+			// the callback classifier has already marked it rejected and available.
+			return types.WithOpenAIError(types.OpenAIError{
+				Message: "可用余额不足，请充值或购买套餐",
+				Type:    "billing_error",
+				Code:    types.ErrorCodeInsufficientFunds,
+			}, http.StatusPaymentRequired, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		}
 		if config.FailClosed {
 			if walletCallback != nil && config.AutoRetryEnabled {
 				if cancelErr := walletCallback.Cancel(); cancelErr != nil {
 					logger.LogWarn(c, fmt.Sprintf("wallet callback compensation pending retry: %v", cancelErr))
 				}
 			}
-			failureCode, _ := classifyWalletCallbackFailure(callbackErr)
-			if failureCode == walletFailureInsufficientFunds {
-				if rollbackErr := session.rollbackPreConsume(); rollbackErr != nil {
-					logger.LogWarn(c, fmt.Sprintf("local billing rollback failed after wallet insufficient funds: %v", rollbackErr))
-				}
-			} // Other failures are ambiguous; retain the local pre-consume.
 			return types.NewError(callbackErr, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 		}
 		logger.LogWarn(c, fmt.Sprintf("wallet reserve callback pending retry (request_id=%s): %v", relayInfo.RequestId, callbackErr))
