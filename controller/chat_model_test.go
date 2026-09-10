@@ -153,7 +153,7 @@ func TestGetUserChatModelsReturnsAutoAndFiltersUnavailableModels(t *testing.T) {
 	require.Len(t, payload.Data.Models, 2)
 	require.Equal(t, "gpt-4o-mini", payload.Data.Models[0].Model)
 	require.Equal(t, "Auto", payload.Data.Models[0].Name)
-	require.Equal(t, 0.15, payload.Data.Models[0].Price)
+	require.Equal(t, 0.017114, payload.Data.Models[0].Price)
 	require.Equal(t, "openai-responses", payload.Data.Models[0].Api)
 	require.Equal(t, []string{"text", "image", "video", "audio"}, payload.Data.Models[0].Input)
 	require.Equal(t, 128000, payload.Data.Models[0].ContextWindow)
@@ -165,7 +165,7 @@ func TestGetUserChatModelsReturnsAutoAndFiltersUnavailableModels(t *testing.T) {
 	require.True(t, payload.Data.Models[0].SupportsFastMode)
 	require.Equal(t, "gpt-4o-mini", payload.Data.Models[1].Model)
 	require.Equal(t, "GPT-4o mini", payload.Data.Models[1].Name)
-	require.Equal(t, 0.15, payload.Data.Models[1].Price)
+	require.Equal(t, 0.017114, payload.Data.Models[1].Price)
 	require.Equal(t, payload.Data.Models[0].Input, payload.Data.Models[1].Input)
 	require.Equal(t, payload.Data.Models[0].Api, payload.Data.Models[1].Api)
 	require.Equal(t, payload.Data.Models[0].ContextWindow, payload.Data.Models[1].ContextWindow)
@@ -175,6 +175,40 @@ func TestGetUserChatModelsReturnsAutoAndFiltersUnavailableModels(t *testing.T) {
 	require.Equal(t, payload.Data.Models[0].ThinkingLevels, payload.Data.Models[1].ThinkingLevels)
 	require.Equal(t, payload.Data.Models[0].ThinkingDefault, payload.Data.Models[1].ThinkingDefault)
 	require.Equal(t, payload.Data.Models[0].SupportsFastMode, payload.Data.Models[1].SupportsFastMode)
+}
+
+func TestEstimateChatModelPrice(t *testing.T) {
+	cacheRatio := 0.1
+	price, ok := estimateChatModelPrice(model.Pricing{
+		ModelRatio:      2,
+		CompletionRatio: 4,
+		CacheRatio:      &cacheRatio,
+		EnableGroup:     []string{"default"},
+	}, map[string]float64{"default": 1.5})
+	require.True(t, ok)
+	require.Equal(t, 0.30604, price)
+
+	price, ok = estimateChatModelPrice(model.Pricing{
+		ModelRatio:      2,
+		CompletionRatio: 4,
+		EnableGroup:     []string{"default"},
+	}, map[string]float64{"default": 1.5})
+	require.True(t, ok)
+	require.Equal(t, 1.157718, price)
+
+	price, ok = estimateChatModelPrice(model.Pricing{
+		BillingMode: "tiered_expr",
+		BillingExpr: `tier("base", p * 2 + c * 8 + cr * 0.2)`,
+		EnableGroup: []string{"default"},
+	}, map[string]float64{"default": 1.5})
+	require.True(t, ok)
+	require.Equal(t, 0.30604, price)
+
+	_, ok = estimateChatModelPrice(model.Pricing{
+		BillingMode: "tiered_expr",
+		BillingExpr: `tier("standard", p * 2 + c * 8)`,
+	}, nil)
+	require.False(t, ok)
 }
 
 func TestUpdateChatModelSetsSingleAutoWithOptionalFields(t *testing.T) {

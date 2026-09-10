@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
@@ -20,6 +21,7 @@ import (
 )
 
 const maxBatchCreateChatModels = 1000
+const chatModelDisplayPriceBaseline = 2.98
 
 var supportedChatModelInputTypes = map[string]struct{}{
 	"text":  {},
@@ -66,10 +68,14 @@ func GetUserChatModelsForUser(userID int) (dto.UserChatModelsResponse, error) {
 		if !ok {
 			continue
 		}
+		price, priced := estimateChatModelPrice(pricing, groupRatio)
+		if !priced {
+			continue
+		}
 		item := dto.UserChatModelItem{
 			Model:            option.ModelName,
 			Name:             chatModelDisplayName(option.DisplayName, option.ModelName),
-			Price:            estimateChatModelPrice(pricing, groupRatio),
+			Price:            price,
 			Api:              parseChatModelAPI(option.ApiFormat),
 			Input:            parseChatModelInputTypes(option.InputTypes),
 			ContextWindow:    option.ContextWindow,
@@ -150,10 +156,14 @@ func ListChatModelCandidates(c *gin.Context) {
 	for _, name := range modelNames {
 		pricing := pricingMap[name]
 		_, isConfigured := configured[name]
+		price, priced := estimateChatModelPrice(pricing, nil)
+		if !priced {
+			continue
+		}
 		candidates = append(candidates, dto.ChatModelCandidate{
 			Model:      name,
 			Name:       name,
-			Price:      estimateChatModelPrice(pricing, nil),
+			Price:      price,
 			Configured: isConfigured,
 		})
 	}
@@ -622,7 +632,9 @@ func buildAdminChatModelItem(option model.ChatModelOption, pricingMap map[string
 	pricing, available := pricingMap[option.ModelName]
 	price := 0.0
 	if available {
-		price = estimateChatModelPrice(pricing, nil)
+		var priced bool
+		price, priced = estimateChatModelPrice(pricing, nil)
+		available = priced
 	}
 	return dto.AdminChatModelItem{
 		Id:               option.Id,
@@ -822,12 +834,23 @@ func validateChatModelTokenLimits(contextWindow int, contextTokens int, maxToken
 	return nil
 }
 
-func estimateChatModelPrice(pricing model.Pricing, groupRatio map[string]float64) float64 {
+func estimateChatModelPrice(pricing model.Pricing, groupRatio map[string]float64) (float64, bool) {
 	ratio := minApplicableGroupRatio(pricing.EnableGroup, groupRatio)
-	if pricing.QuotaType == 1 {
-		return roundChatModelPrice(pricing.ModelPrice * ratio)
+	if pricing.BillingMode == "tiered_expr" {
+		input, output, cache, ok, err := billingexpr.BaseTierUnitPrices(pricing.BillingExpr)
+		if err != nil || !ok {
+			return 0, false
+		}
+		return roundChatModelPrice((input*0.01 + output*0.05 + cache*0.94) * ratio / chatModelDisplayPriceBaseline), true
 	}
-	return roundChatModelPrice(pricing.ModelRatio * 2 * ratio)
+	if pricing.QuotaType == 1 {
+		return roundChatModelPrice(pricing.ModelPrice * ratio / chatModelDisplayPriceBaseline), true
+	}
+	cacheRatio := 1.0
+	if pricing.CacheRatio != nil {
+		cacheRatio = *pricing.CacheRatio
+	}
+	return roundChatModelPrice(pricing.ModelRatio * (0.01 + pricing.CompletionRatio*0.05 + cacheRatio*0.94) * ratio / chatModelDisplayPriceBaseline), true
 }
 
 func minApplicableGroupRatio(enableGroups []string, groupRatio map[string]float64) float64 {
