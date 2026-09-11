@@ -73,4 +73,9 @@ func TestStudioImageResolutionUsesExactSizeBeforeLegacyFallback(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "2k", tier)
 	assert.Equal(t, 0.2, price)
+
+	price, tier, ok = GetImageResolutionPrice("seedream-4.5", "3024x1296")
+	require.True(t, ok)
+	assert.Equal(t, "2k", tier)
+	assert.Equal(t, 0.2, price)
 }

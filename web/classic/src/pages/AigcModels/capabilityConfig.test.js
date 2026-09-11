@@ -37,6 +37,9 @@ import {
 test('offers common image sizes across compact, 1K, 2K, 4K and provider presets', () => {
   for (const size of [
     '256x256',
+    '1456x624',
+    '3024x1296',
+    '6160x2640',
     '1024x576',
     '2560x1440',
     '5376x3024',
@@ -56,8 +59,8 @@ describe('AIGC capability config helpers', () => {
   test('creates image modes with the complete studio matrix', () => {
     const output = configTemplate('image').image.modes.text_to_image.output;
     assert.deepEqual(output.sizes, DEFAULT_IMAGE_SIZES);
-    assert.equal(output.sizes.length, 21);
-    assert.equal(new Set(output.sizes).size, 21);
+    assert.equal(output.sizes.length, 24);
+    assert.equal(new Set(output.sizes).size, 24);
     assert.equal(output.default_size, '1024x1024');
   });
 

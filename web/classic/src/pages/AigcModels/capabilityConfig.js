@@ -38,7 +38,7 @@ export const IMAGE_SIZE_OPTIONS = [
   '768x768',
 
   // OpenAI-compatible 1K presets: 21:9 through 9:16.
-  '1008x432',
+  '1456x624',
   '1024x576',
   '1008x672',
   '1024x768',
@@ -48,7 +48,7 @@ export const IMAGE_SIZE_OPTIONS = [
   '576x1024',
 
   // OpenAI-compatible 2K presets.
-  '2016x864',
+  '3024x1296',
   '2560x1440',
   '2496x1664',
   '2304x1728',
@@ -65,6 +65,7 @@ export const IMAGE_SIZE_OPTIONS = [
   '3504x4672',
   '3328x4992',
   '3024x5376',
+  '6160x2640',
 
   // Provider-specific sizes used by GPT Image, DALL-E and Qwen Image.
   '1024x1536',
@@ -81,6 +82,7 @@ export const IMAGE_SIZE_OPTIONS = [
 // The visual image-size picker uses these canonical dimensions while the
 // persisted capability format continues to store plain `WIDTHxHEIGHT` sizes.
 export const IMAGE_SIZE_PRESETS = {
+  '21:9': { '1K': '1456x624', '2K': '3024x1296', '4K': '6160x2640' },
   '16:9': { '1K': '1024x576', '2K': '2560x1440', '4K': '5376x3024' },
   '3:2': { '1K': '1008x672', '2K': '2496x1664', '4K': '4992x3328' },
   '4:3': { '1K': '1024x768', '2K': '2304x1728', '4K': '4672x3504' },
