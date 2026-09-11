@@ -21,7 +21,7 @@ import (
 )
 
 const maxBatchCreateChatModels = 1000
-const chatModelDisplayPriceBaseline = 2.98
+const chatModelDisplayPriceBaseline = 5.96
 
 var supportedChatModelInputTypes = map[string]struct{}{
 	"text":  {},
