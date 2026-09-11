@@ -151,16 +151,17 @@ function StringMultiSelect({ value, presets, onChange, placeholder }) {
 }
 
 function ImageSizePicker({ value, onChange }) {
+  const presets = IMAGE_SIZE_PRESETS;
   const configuredSizes = value || [];
   const matchedRatios = IMAGE_ASPECT_RATIOS.filter((ratio) =>
     IMAGE_RESOLUTIONS.some((resolution) =>
-      configuredSizes.includes(IMAGE_SIZE_PRESETS[ratio][resolution]),
+      configuredSizes.includes(presets[ratio]?.[resolution]),
     ),
   );
   const selectedRatios = matchedRatios.length ? matchedRatios : ['1:1'];
   const matchedResolutions = IMAGE_RESOLUTIONS.filter((resolution) =>
     selectedRatios.some((ratio) =>
-      configuredSizes.includes(IMAGE_SIZE_PRESETS[ratio][resolution]),
+      configuredSizes.includes(presets[ratio]?.[resolution]),
     ),
   );
   const selectedResolutions = matchedResolutions.length
@@ -168,15 +169,15 @@ function ImageSizePicker({ value, onChange }) {
     : ['1K'];
   const update = (ratios, resolutions) => {
     const sizes = ratios.flatMap((ratio) =>
-      resolutions.map((resolution) => IMAGE_SIZE_PRESETS[ratio][resolution]),
+      resolutions.map((resolution) => presets[ratio]?.[resolution]),
     );
     const canonicalSizes = new Set(
-      Object.values(IMAGE_SIZE_PRESETS).flatMap(Object.values),
+      Object.values(presets).flatMap(Object.values),
     );
     const customSizes = configuredSizes.filter(
       (size) => !canonicalSizes.has(size),
     );
-    onChange([...new Set([...customSizes, ...sizes])]);
+    onChange([...new Set([...customSizes, ...sizes.filter(Boolean)])]);
   };
   const toggle = (items, item) => {
     if (items.includes(item)) {
@@ -293,6 +294,7 @@ function ImageCapabilityEditor({ config, onChange }) {
       if (key === 'sizes' && !value.includes(mode.output.default_size)) {
         mode.output.default_size = value[0] || '';
       }
+      if (key === 'sizes') delete mode.output.size_tiers;
       if (key === 'counts' && !value.includes(mode.output.default_count)) {
         mode.output.default_count = value[0] || 0;
       }

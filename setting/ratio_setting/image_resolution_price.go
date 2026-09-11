@@ -70,6 +70,9 @@ func ResolveImageResolutionTier(size string) (string, bool) {
 		return "2k", true
 	}
 	normalized = strings.NewReplacer("*", "x", "×", "x").Replace(normalized)
+	if tier, ok := studioImageResolutionTiers[normalized]; ok {
+		return tier, true
+	}
 	parts := strings.Split(normalized, "x")
 	if len(parts) != 2 {
 		return "2k", true
@@ -90,6 +93,15 @@ func ResolveImageResolutionTier(size string) (string, bool) {
 		return "2k", true
 	}
 	return "4k", true
+}
+
+var studioImageResolutionTiers = map[string]string{
+	"1024x576": "1k", "1008x672": "1k", "1024x768": "1k", "1024x1024": "1k",
+	"768x1024": "1k", "672x1008": "1k", "576x1024": "1k",
+	"2560x1440": "2k", "2496x1664": "2k", "2304x1728": "2k", "2048x2048": "2k",
+	"1728x2304": "2k", "1664x2496": "2k", "1440x2560": "2k",
+	"5376x3024": "4k", "4992x3328": "4k", "4672x3504": "4k", "4096x4096": "4k",
+	"3504x4672": "4k", "3328x4992": "4k", "3024x5376": "4k",
 }
 
 func GetImageResolutionPriceCopy() ImageResolutionPriceMap {

@@ -45,7 +45,7 @@ func TestGenerationResolverRejectsInvalidInputRole(t *testing.T) {
 		GroupsJSON: `[]`, ConfigVersion: 1, ConfigJSON: `{
 			"image":{"adapter":"image-relay","modes":{"image_edit":{
 				"upstream_model_id":"image-upstream","input":{"role":"source_image","min":1,"max":2},
-				"output":{"sizes":["1024x1024"],"counts":[1],"default_size":"1024x1024","default_count":1}
+				"output":{"sizes":["1024x1024"],"size_tiers":{"1024x1024":"1k"},"counts":[1],"default_size":"1024x1024","default_count":1}
 			}}}
 		}`,
 	}

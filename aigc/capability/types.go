@@ -34,10 +34,11 @@ type ImageInputSpec struct {
 }
 
 type ImageOutputSpec struct {
-	Sizes        []string `json:"sizes"`
-	Counts       []int    `json:"counts"`
-	DefaultSize  string   `json:"default_size"`
-	DefaultCount int      `json:"default_count"`
+	Sizes        []string          `json:"sizes"`
+	SizeTiers    map[string]string `json:"size_tiers,omitempty"`
+	Counts       []int             `json:"counts"`
+	DefaultSize  string            `json:"default_size"`
+	DefaultCount int               `json:"default_count"`
 }
 
 type ImageModeConfig struct {

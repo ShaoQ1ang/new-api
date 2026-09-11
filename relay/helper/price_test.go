@@ -208,12 +208,12 @@ func TestModelPriceHelperUsesConfiguredImageResolutionPrice(t *testing.T) {
 			}
 	}
 
-	ctx, info, meta := newRequest("1600x1600")
+	ctx, info, meta := newRequest("2560x1440")
 	priceData, err := ModelPriceHelper(ctx, info, 0, meta)
 	require.NoError(t, err)
 	assert.Equal(t, 0.08, priceData.ModelPrice)
 	assert.Equal(t, "2k", priceData.ImageResolutionTier)
-	assert.Equal(t, "1600x1600", priceData.ImageSize)
+	assert.Equal(t, "2560x1440", priceData.ImageSize)
 	assert.Equal(t, int(0.08*common.QuotaPerUnit*2), priceData.QuotaToPreConsume)
 
 	ctx, info, meta = newRequest("4096x4096")

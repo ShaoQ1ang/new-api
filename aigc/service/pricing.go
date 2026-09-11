@@ -147,6 +147,19 @@ func pricingRoutes(modelType capability.ModelType, config capability.Config, ava
 		result = append(result, route)
 		return nil
 	}
+	appendImageRoute := func(mode, upstreamID string, output capability.ImageOutputSpec) error {
+		upstreamID = strings.TrimSpace(upstreamID)
+		if upstreamID == "" || !available[upstreamID] {
+			return nil
+		}
+		price, configured := prices[upstreamID]
+		route, err := projectImagePricingRoute(mode, output, price, configured, ratio, quotaPerUnit)
+		if err != nil {
+			return fmt.Errorf("route %s: %w", mode, err)
+		}
+		result = append(result, route)
+		return nil
+	}
 	switch modelType {
 	case capability.ModelTypeText:
 		if err := appendRoute("text", config.Text.UpstreamModelID, nil, nil, nil); err != nil {
@@ -154,7 +167,7 @@ func pricingRoutes(modelType capability.ModelType, config capability.Config, ava
 		}
 	case capability.ModelTypeImage:
 		for mode, item := range config.Image.Modes {
-			if err := appendRoute(mode, item.UpstreamModelID, item.Output.Sizes, nil, nil); err != nil {
+			if err := appendImageRoute(mode, item.UpstreamModelID, item.Output); err != nil {
 				return nil, err
 			}
 		}
@@ -182,6 +195,26 @@ func pricingRoutes(modelType capability.ModelType, config capability.Config, ava
 		}
 	}
 	return result, nil
+}
+
+func projectImagePricingRoute(mode string, output capability.ImageOutputSpec, price model.Pricing, configured bool, ratio, quotaPerUnit float64) (PublicPricingRoute, error) {
+	route := PublicPricingRoute{Mode: mode, Resolutions: sortedUnique(output.Sizes), BillingUnit: "unconfigured"}
+	if !configured || len(price.ImageResolutionPrice) == 0 {
+		return projectPricingRoute(string(capability.ModelTypeImage), mode, output.Sizes, price, configured, ratio, quotaPerUnit)
+	}
+	allowed := make(map[string]bool)
+	for _, size := range output.Sizes {
+		allowed[output.SizeTiers[size]] = true
+	}
+	var err error
+	route.ImageResolutionPrice, err = scaledPriceMap(price.ImageResolutionPrice, allowed, ratio)
+	if err != nil {
+		return PublicPricingRoute{}, err
+	}
+	if len(route.ImageResolutionPrice) > 0 {
+		route.BillingUnit = "image"
+	}
+	return route, nil
 }
 
 func projectPricingRoute(modelType, mode string, resolutions []string, price model.Pricing, configured bool, ratio, quotaPerUnit float64) (PublicPricingRoute, error) {

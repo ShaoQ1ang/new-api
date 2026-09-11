@@ -26,6 +26,7 @@ func Parse(modelType ModelType, raw []byte) (Config, error) {
 	if err := common.Unmarshal(raw, &config); err != nil {
 		return Config{}, fmt.Errorf("invalid AIGC model configuration: %w", err)
 	}
+	normalizeImageSizeTiers(&config)
 	if err := config.validate(modelType); err != nil {
 		return Config{}, err
 	}
@@ -150,6 +151,16 @@ func validateImageOutput(output ImageOutputSpec) error {
 		if !imageSizePattern.MatchString(strings.TrimSpace(size)) {
 			return fmt.Errorf("invalid image size %q", size)
 		}
+		tier, ok := output.SizeTiers[size]
+		if !ok {
+			return fmt.Errorf("image size %q has no resolution tier", size)
+		}
+		if tier != "1k" && tier != "2k" && tier != "4k" {
+			return fmt.Errorf("image size %q has invalid resolution tier %q", size, tier)
+		}
+	}
+	if len(output.SizeTiers) != len(output.Sizes) {
+		return fmt.Errorf("image size tiers must match output sizes exactly")
 	}
 	for _, count := range output.Counts {
 		if count < 1 || count > 8 {

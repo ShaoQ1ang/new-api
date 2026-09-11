@@ -16,6 +16,9 @@ func TestResolveImageResolutionTier(t *testing.T) {
 	}{
 		{name: "direct tier", size: " 2K ", wantTier: "2k", wantOK: true},
 		{name: "one k square", size: "1024x1024", wantTier: "1k", wantOK: true},
+		{name: "studio two k landscape", size: "2560x1440", wantTier: "2k", wantOK: true},
+		{name: "studio two k portrait", size: "1440x2560", wantTier: "2k", wantOK: true},
+		{name: "studio two k four three", size: "2304x1728", wantTier: "2k", wantOK: true},
 		{name: "large portrait", size: "1696*2528", wantTier: "4k", wantOK: true},
 		{name: "four k ultrawide", size: "6336×2688", wantTier: "4k", wantOK: true},
 		{name: "maximum edge decides tier", size: "1280X720", wantTier: "2k", wantOK: true},
@@ -60,4 +63,14 @@ func TestImageResolutionPriceConfiguration(t *testing.T) {
 	assert.Equal(t, 0.04, price)
 
 	require.Error(t, UpdateImageResolutionPriceByJSONString(`{"image-model":{"1k":-1}}`))
+}
+
+func TestStudioImageResolutionUsesExactSizeBeforeLegacyFallback(t *testing.T) {
+	require.NoError(t, UpdateImageResolutionPriceByJSONString(`{"seedream-4.5":{"2k":0.2,"4k":0.3}}`))
+	t.Cleanup(func() { require.NoError(t, UpdateImageResolutionPriceByJSONString(`{}`)) })
+
+	price, tier, ok := GetImageResolutionPrice("seedream-4.5", "2560x1440")
+	require.True(t, ok)
+	assert.Equal(t, "2k", tier)
+	assert.Equal(t, 0.2, price)
 }

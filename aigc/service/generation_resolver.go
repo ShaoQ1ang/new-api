@@ -131,6 +131,7 @@ func resolveImageGeneration(spec *execution.Spec, config *capability.ImageConfig
 	if !stringIn(configured.Output.Sizes, spec.Request.Output.Size) || !intIn(configured.Output.Counts, spec.Request.Output.Count) {
 		return generationError(http.StatusBadRequest, "OUTPUT_NOT_SUPPORTED", "image output size or count is not supported", false)
 	}
+	spec.Request.Output.Resolution = configured.Output.SizeTiers[spec.Request.Output.Size]
 	spec.Mode = mode
 	spec.Request.Mode = mode
 	spec.Adapter = config.Adapter

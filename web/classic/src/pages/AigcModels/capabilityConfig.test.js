@@ -21,6 +21,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
   IMAGE_SIZE_OPTIONS,
+  DEFAULT_IMAGE_SIZES,
   MUSIC_PROTOCOL_LEGACY,
   MUSIC_PROTOCOL_SUNOAPI_V1,
   combinationValue,
@@ -37,8 +38,8 @@ test('offers common image sizes across compact, 1K, 2K, 4K and provider presets'
   for (const size of [
     '256x256',
     '1024x576',
-    '2048x1152',
-    '3840x2160',
+    '2560x1440',
+    '5376x3024',
     '1024x1792',
     '1328x1328',
   ]) {
@@ -52,6 +53,14 @@ test('offers common image sizes across compact, 1K, 2K, 4K and provider presets'
 });
 
 describe('AIGC capability config helpers', () => {
+  test('creates image modes with the complete studio matrix', () => {
+    const output = configTemplate('image').image.modes.text_to_image.output;
+    assert.deepEqual(output.sizes, DEFAULT_IMAGE_SIZES);
+    assert.equal(output.sizes.length, 21);
+    assert.equal(new Set(output.sizes).size, 21);
+    assert.equal(output.default_size, '1024x1024');
+  });
+
   test('adds image edit with a valid source image input', () => {
     const config = setImageModes(configTemplate('image'), [
       'text_to_image',

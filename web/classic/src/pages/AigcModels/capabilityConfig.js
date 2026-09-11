@@ -49,23 +49,22 @@ export const IMAGE_SIZE_OPTIONS = [
 
   // OpenAI-compatible 2K presets.
   '2016x864',
-  '2048x1152',
-  '2016x1344',
-  '2048x1536',
+  '2560x1440',
+  '2496x1664',
+  '2304x1728',
   '2048x2048',
-  '1536x2048',
-  '1344x2016',
-  '1152x2048',
+  '1728x2304',
+  '1664x2496',
+  '1440x2560',
 
   // OpenAI-compatible 4K presets.
-  '3808x1632',
-  '3840x2160',
-  '3504x2336',
-  '3264x2448',
-  '2880x2880',
-  '2448x3264',
-  '2336x3504',
-  '2160x3840',
+  '5376x3024',
+  '4992x3328',
+  '4672x3504',
+  '4096x4096',
+  '3504x4672',
+  '3328x4992',
+  '3024x5376',
 
   // Provider-specific sizes used by GPT Image, DALL-E and Qwen Image.
   '1024x1536',
@@ -82,16 +81,19 @@ export const IMAGE_SIZE_OPTIONS = [
 // The visual image-size picker uses these canonical dimensions while the
 // persisted capability format continues to store plain `WIDTHxHEIGHT` sizes.
 export const IMAGE_SIZE_PRESETS = {
-  '16:9': { '1K': '1024x576', '2K': '2048x1152', '4K': '3840x2160' },
-  '3:2': { '1K': '1008x672', '2K': '2016x1344', '4K': '3504x2336' },
-  '4:3': { '1K': '1024x768', '2K': '2048x1536', '4K': '3264x2448' },
-  '1:1': { '1K': '1024x1024', '2K': '2048x2048', '4K': '2880x2880' },
-  '3:4': { '1K': '768x1024', '2K': '1536x2048', '4K': '2448x3264' },
-  '2:3': { '1K': '672x1008', '2K': '1344x2016', '4K': '2336x3504' },
-  '9:16': { '1K': '576x1024', '2K': '1152x2048', '4K': '2160x3840' },
+  '16:9': { '1K': '1024x576', '2K': '2560x1440', '4K': '5376x3024' },
+  '3:2': { '1K': '1008x672', '2K': '2496x1664', '4K': '4992x3328' },
+  '4:3': { '1K': '1024x768', '2K': '2304x1728', '4K': '4672x3504' },
+  '1:1': { '1K': '1024x1024', '2K': '2048x2048', '4K': '4096x4096' },
+  '3:4': { '1K': '768x1024', '2K': '1728x2304', '4K': '3504x4672' },
+  '2:3': { '1K': '672x1008', '2K': '1664x2496', '4K': '3328x4992' },
+  '9:16': { '1K': '576x1024', '2K': '1440x2560', '4K': '3024x5376' },
 };
 export const IMAGE_ASPECT_RATIOS = Object.keys(IMAGE_SIZE_PRESETS);
 export const IMAGE_RESOLUTIONS = ['1K', '2K', '4K'];
+export const DEFAULT_IMAGE_SIZES = Object.values(IMAGE_SIZE_PRESETS).flatMap(
+  (tiers) => IMAGE_RESOLUTIONS.map((resolution) => tiers[resolution]),
+);
 
 export const VIDEO_RESOLUTION_OPTIONS = ['480p', '720p', '1080p', '2k', '4k'];
 export const VIDEO_RATIO_OPTIONS = [
@@ -240,7 +242,7 @@ export function imageModeTemplate(mode, upstreamModelID = '') {
         }
       : {}),
     output: {
-      sizes: ['1024x1024'],
+      sizes: [...DEFAULT_IMAGE_SIZES],
       counts: [1],
       default_size: '1024x1024',
       default_count: 1,
