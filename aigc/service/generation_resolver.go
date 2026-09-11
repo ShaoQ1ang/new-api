@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/aigc/dto"
 	"github.com/QuantumNous/new-api/aigc/entity"
 	"github.com/QuantumNous/new-api/aigc/execution"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
 type GenerationError struct {
@@ -131,7 +132,11 @@ func resolveImageGeneration(spec *execution.Spec, config *capability.ImageConfig
 	if !stringIn(configured.Output.Sizes, spec.Request.Output.Size) || !intIn(configured.Output.Counts, spec.Request.Output.Count) {
 		return generationError(http.StatusBadRequest, "OUTPUT_NOT_SUPPORTED", "image output size or count is not supported", false)
 	}
-	spec.Request.Output.Resolution = configured.Output.SizeTiers[spec.Request.Output.Size]
+	resolution, ok := ratio_setting.ResolveImageResolutionTier(spec.Request.Output.Size)
+	if !ok {
+		return generationError(http.StatusBadRequest, "OUTPUT_NOT_SUPPORTED", "image output size has no resolution tier", false)
+	}
+	spec.Request.Output.Resolution = resolution
 	spec.Mode = mode
 	spec.Request.Mode = mode
 	spec.Adapter = config.Adapter

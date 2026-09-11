@@ -29,7 +29,7 @@ func TestPricingServiceProjectsPublishedRoutesByPublicModel(t *testing.T) {
 		"image-fixed": {
 			PublicModelID: "image-fixed", DisplayName: "Image", ModelType: "image", Status: entity.ModelStatusPublished,
 			GroupsJSON: `[]`, ConfigVersion: 1,
-			ConfigJSON: `{"image":{"adapter":"openai-image","modes":{"text_to_image":{"upstream_model_id":"image-upstream","output":{"sizes":["1024x1024"],"size_tiers":{"1024x1024":"1k"},"counts":[1],"default_size":"1024x1024","default_count":1}}}}}`,
+			ConfigJSON: `{"image":{"adapter":"openai-image","modes":{"text_to_image":{"upstream_model_id":"image-upstream","output":{"sizes":["1024x1024"],"counts":[1],"default_size":"1024x1024","default_count":1}}}}}`,
 		},
 		"writer": {
 			PublicModelID: "writer", DisplayName: "Writer", ModelType: "text", Status: entity.ModelStatusPublished,
@@ -175,12 +175,12 @@ func TestPricingServiceAppliesEffectiveGroupRatioOnce(t *testing.T) {
 		"image-generation": {
 			PublicModelID: "image-generation", DisplayName: "Image Generation", ModelType: "image",
 			Status: entity.ModelStatusPublished, GroupsJSON: `["vip"]`, ConfigVersion: 1,
-			ConfigJSON: `{"image":{"adapter":"openai-image","modes":{"text_to_image":{"upstream_model_id":"image-generation-upstream","output":{"sizes":["1024x1024"],"size_tiers":{"1024x1024":"1k"},"counts":[1],"default_size":"1024x1024","default_count":1}}}}}`,
+			ConfigJSON: `{"image":{"adapter":"openai-image","modes":{"text_to_image":{"upstream_model_id":"image-generation-upstream","output":{"sizes":["1024x1024"],"counts":[1],"default_size":"1024x1024","default_count":1}}}}}`,
 		},
 		"image-resolution": {
 			PublicModelID: "image-resolution", DisplayName: "Image Resolution", ModelType: "image",
 			Status: entity.ModelStatusPublished, GroupsJSON: `["vip"]`, ConfigVersion: 1,
-			ConfigJSON: `{"image":{"adapter":"openai-image","modes":{"text_to_image":{"upstream_model_id":"image-resolution-upstream","output":{"sizes":["1024x1024"],"size_tiers":{"1024x1024":"1k"},"counts":[1],"default_size":"1024x1024","default_count":1}}}}}`,
+			ConfigJSON: `{"image":{"adapter":"openai-image","modes":{"text_to_image":{"upstream_model_id":"image-resolution-upstream","output":{"sizes":["1024x1024"],"counts":[1],"default_size":"1024x1024","default_count":1}}}}}`,
 		},
 		"video": {
 			PublicModelID: "video", DisplayName: "Video", ModelType: "video",
@@ -283,7 +283,7 @@ func pricingImageProfile(upstreamID string) *entity.ModelProfile {
 	return &entity.ModelProfile{
 		PublicModelID: "image-" + upstreamID, DisplayName: "Image", ModelType: "image",
 		Status: entity.ModelStatusPublished, GroupsJSON: `[]`, ConfigVersion: 1,
-		ConfigJSON: `{"image":{"adapter":"openai-image","modes":{"text_to_image":{"upstream_model_id":"` + upstreamID + `","output":{"sizes":["1024x1024"],"size_tiers":{"1024x1024":"1k"},"counts":[1],"default_size":"1024x1024","default_count":1}}}}}`,
+		ConfigJSON: `{"image":{"adapter":"openai-image","modes":{"text_to_image":{"upstream_model_id":"` + upstreamID + `","output":{"sizes":["1024x1024"],"counts":[1],"default_size":"1024x1024","default_count":1}}}}}`,
 	}
 }
 

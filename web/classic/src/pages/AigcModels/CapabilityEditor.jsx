@@ -294,7 +294,6 @@ function ImageCapabilityEditor({ config, onChange }) {
       if (key === 'sizes' && !value.includes(mode.output.default_size)) {
         mode.output.default_size = value[0] || '';
       }
-      if (key === 'sizes') delete mode.output.size_tiers;
       if (key === 'counts' && !value.includes(mode.output.default_count)) {
         mode.output.default_count = value[0] || 0;
       }
