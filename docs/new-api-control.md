@@ -91,3 +91,49 @@ Wallet performs its micro-CNY conversion.
 the main process, so exchange rate, quota unit, group ratio, and model pricing
 changes become visible without restarting the control process. The reload loop
 is canceled and joined during process shutdown.
+
+## Plain HTTP org-control variant
+
+For local Z-UP integration and private-network deployments, the same control
+binary can run without TLS. This mode is exposed as the `new-api-org-control`
+Compose service behind the `org-control` profile:
+
+```bash
+NEW_API_ORG_CONTROL_TOKEN='replace-with-a-long-random-token' \
+  docker compose --profile org-control up -d --build new-api-org-control
+```
+
+It listens on `127.0.0.1:3011` and requires:
+
+- `NEW_API_CONTROL_TLS_ENABLED=false`
+- `NEW_API_CONTROL_TOKEN` (non-empty)
+
+Business routes require `Authorization: Bearer <token>`. `/health/live` and
+`/health/ready` stay unauthenticated so container health checks work. The
+service still runs with `NODE_TYPE=slave`, uses the same database and Redis as
+the main `new-api` process, and exposes the same `/internal/v1` identity and
+API-key endpoints.
+
+Organization mapping in this variant uses the organization owner's IAM
+identity as the canonical NewAPI user:
+
+```json
+{
+  "event_id": 1001,
+  "iam_user_id": 42,
+  "organization_id": 7,
+  "organization_type": 1,
+  "display_name": "示例科技",
+  "desired_state": "ACTIVE",
+  "lifecycle_version": 3,
+  "source_created_at": 1760000000
+}
+```
+
+Send it to `POST /internal/v1/identities/apply`, then create per-Agent keys with
+`POST /internal/v1/api-keys/create` using the same `iam_user_id`. The API key
+secret is returned once and only a masked key is returned afterwards.
+
+Do not publish the plain-HTTP port on a public interface. Use the mTLS
+`new-api-control` service for production, or put this variant behind a private
+network and a service-to-service token.
