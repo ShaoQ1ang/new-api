@@ -109,7 +109,9 @@ It listens on `127.0.0.1:3011` and requires:
 - `NEW_API_CONTROL_TOKEN` (non-empty)
 
 Business routes require `Authorization: Bearer <token>`. `/health/live` and
-`/health/ready` stay unauthenticated so container health checks work. The
+`/health/ready` stay unauthenticated so container health checks work.
+`/internal/v1/api-keys/authenticate` is also exempt because it authenticates the
+Agent API key from the request body and deliberately rejects credential headers. The
 service still runs with `NODE_TYPE=slave`, uses the same database and Redis as
 the main `new-api` process, and exposes the same `/internal/v1` identity and
 API-key endpoints.

@@ -291,7 +291,7 @@ func routesWithPricingDependencies(dependencies pricingRouteDependencies) http.H
 func bearerAuth(token string, next http.Handler) http.Handler {
 	expected := "Bearer " + token
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path == "/health/live" || request.URL.Path == "/health/ready" {
+		if request.URL.Path == "/health/live" || request.URL.Path == "/health/ready" || request.URL.Path == "/internal/v1/api-keys/authenticate" {
 			next.ServeHTTP(writer, request)
 			return
 		}

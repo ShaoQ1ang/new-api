@@ -257,13 +257,15 @@ func TestBearerAuthRequiresTokenForBusinessRoutes(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, response.Code)
 }
 
-func TestBearerAuthAllowsHealthWithoutToken(t *testing.T) {
+func TestBearerAuthAllowsHealthAndAPIKeyAuthenticationWithoutToken(t *testing.T) {
 	handler := bearerAuth("secret-token", http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusOK)
 	}))
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/health/live", nil))
-	require.Equal(t, http.StatusOK, response.Code)
+	for _, path := range []string{"/health/live", "/health/ready", "/internal/v1/api-keys/authenticate"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, path, nil))
+		require.Equal(t, http.StatusOK, response.Code)
+	}
 }
 
 func TestLoadConfigHTTPModeRequiresToken(t *testing.T) {
