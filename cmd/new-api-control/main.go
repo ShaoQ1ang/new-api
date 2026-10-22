@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -35,6 +36,8 @@ const maxRequestBodyBytes = 64 << 10
 
 type config struct {
 	ListenAddress   string
+	TLSEnabled      bool
+	AuthToken       string
 	ServerCertFile  string
 	ServerKeyFile   string
 	ClientCAFile    string
@@ -136,13 +139,20 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	tlsConfig, err := loadMTLSConfig(processConfig)
-	if err != nil {
-		return err
+	var tlsConfig *tls.Config
+	if processConfig.TLSEnabled {
+		tlsConfig, err = loadMTLSConfig(processConfig)
+		if err != nil {
+			return err
+		}
+	}
+	handler := routes()
+	if !processConfig.TLSEnabled {
+		handler = securityHeaders(bearerAuth(processConfig.AuthToken, handler))
 	}
 	server := &http.Server{
 		Addr:              processConfig.ListenAddress,
-		Handler:           routes(),
+		Handler:           handler,
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
@@ -152,7 +162,11 @@ func run(ctx context.Context) error {
 	}
 	errChannel := make(chan error, 1)
 	go func() {
-		errChannel <- server.ListenAndServeTLS(processConfig.ServerCertFile, processConfig.ServerKeyFile)
+		if processConfig.TLSEnabled {
+			errChannel <- server.ListenAndServeTLS(processConfig.ServerCertFile, processConfig.ServerKeyFile)
+			return
+		}
+		errChannel <- server.ListenAndServe()
 	}()
 	select {
 	case <-ctx.Done():
@@ -176,6 +190,7 @@ func startControlOptionSync(ctx context.Context, syncOptions func(context.Contex
 func loadConfig() (config, error) {
 	result := config{
 		ListenAddress:   strings.TrimSpace(os.Getenv("NEW_API_CONTROL_LISTEN_ADDRESS")),
+		TLSEnabled:      true,
 		ServerCertFile:  strings.TrimSpace(os.Getenv("NEW_API_CONTROL_TLS_CERT_FILE")),
 		ServerKeyFile:   strings.TrimSpace(os.Getenv("NEW_API_CONTROL_TLS_KEY_FILE")),
 		ClientCAFile:    strings.TrimSpace(os.Getenv("NEW_API_CONTROL_CLIENT_CA_FILE")),
@@ -185,8 +200,22 @@ func loadConfig() (config, error) {
 	if result.ListenAddress == "" {
 		result.ListenAddress = ":3010"
 	}
-	if result.ServerCertFile == "" || result.ServerKeyFile == "" || result.ClientCAFile == "" || result.AllowedClientID == "" {
-		return config{}, errors.New("new-api-control TLS cert, key, dedicated client CA, and allowed client identity are required")
+	if raw := strings.TrimSpace(os.Getenv("NEW_API_CONTROL_TLS_ENABLED")); raw != "" {
+		enabled, err := strconv.ParseBool(raw)
+		if err != nil {
+			return config{}, fmt.Errorf("NEW_API_CONTROL_TLS_ENABLED must be a boolean: %w", err)
+		}
+		result.TLSEnabled = enabled
+	}
+	if result.TLSEnabled {
+		if result.ServerCertFile == "" || result.ServerKeyFile == "" || result.ClientCAFile == "" || result.AllowedClientID == "" {
+			return config{}, errors.New("new-api-control TLS cert, key, dedicated client CA, and allowed client identity are required")
+		}
+		return result, nil
+	}
+	result.AuthToken = strings.TrimSpace(os.Getenv("NEW_API_CONTROL_TOKEN"))
+	if result.AuthToken == "" {
+		return config{}, errors.New("NEW_API_CONTROL_TOKEN is required when TLS is disabled")
 	}
 	return result, nil
 }
@@ -257,6 +286,22 @@ func routesWithPricingDependencies(dependencies pricingRouteDependencies) http.H
 	mux.HandleFunc("GET /internal/v1/chat-models", handleListChatModels)
 	mux.HandleFunc("GET /internal/v1/aigc/pricing", handleListAIGCPricing(dependencies))
 	return securityHeaders(mux)
+}
+
+func bearerAuth(token string, next http.Handler) http.Handler {
+	expected := "Bearer " + token
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/health/live" || request.URL.Path == "/health/ready" {
+			next.ServeHTTP(writer, request)
+			return
+		}
+		actual := request.Header.Get("Authorization")
+		if subtle.ConstantTimeCompare([]byte(actual), []byte(expected)) != 1 {
+			writeAPIError(writer, http.StatusUnauthorized, "UNAUTHORIZED", "bearer token is missing or invalid")
+			return
+		}
+		next.ServeHTTP(writer, request)
+	})
 }
 
 func securityHeaders(next http.Handler) http.Handler {

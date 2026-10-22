@@ -234,3 +234,47 @@ func TestControlPricingRouteReturnsCatalogFailureWithoutDetails(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError, response.Code)
 	assert.NotContains(t, response.Body.String(), "private catalog failure")
 }
+
+func TestBearerAuthRequiresTokenForBusinessRoutes(t *testing.T) {
+	handler := bearerAuth("secret-token", http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+
+	for _, authorization := range []string{"", "Bearer wrong", "Basic secret-token"} {
+		request := httptest.NewRequest(http.MethodPost, "/internal/v1/identities/apply", nil)
+		if authorization != "" {
+			request.Header.Set("Authorization", authorization)
+		}
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		require.Equal(t, http.StatusUnauthorized, response.Code)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/internal/v1/identities/apply", nil)
+	request.Header.Set("Authorization", "Bearer secret-token")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	require.Equal(t, http.StatusNoContent, response.Code)
+}
+
+func TestBearerAuthAllowsHealthWithoutToken(t *testing.T) {
+	handler := bearerAuth("secret-token", http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+	}))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/health/live", nil))
+	require.Equal(t, http.StatusOK, response.Code)
+}
+
+func TestLoadConfigHTTPModeRequiresToken(t *testing.T) {
+	t.Setenv("NEW_API_CONTROL_TLS_ENABLED", "false")
+	t.Setenv("NEW_API_CONTROL_TOKEN", "")
+	_, err := loadConfig()
+	require.Error(t, err)
+
+	t.Setenv("NEW_API_CONTROL_TOKEN", "local-token")
+	cfg, err := loadConfig()
+	require.NoError(t, err)
+	assert.False(t, cfg.TLSEnabled)
+	assert.Equal(t, "local-token", cfg.AuthToken)
+}
